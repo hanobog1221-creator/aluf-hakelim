@@ -1,1 +1,1 @@
-{"rewrites":[{"source":"/","destination":"/api/home"}],"headers":[{"source":"/washer-set1.jpg","headers":[{"key":"Content-Type","value":"image/svg+xml; charset=utf-8"},{"key":"Cache-Control","value":"public, max-age=0, must-revalidate"}]}]}
+{"redirects":[{"source":"/","destination":"/api/home","permanent":false}],"headers":[{"source":"/washer-set1.jpg","headers":[{"key":"Content-Type","value":"image/svg+xml; charset=utf-8"},{"key":"Cache-Control","value":"public, max-age=0, must-revalidate"}]}]}
