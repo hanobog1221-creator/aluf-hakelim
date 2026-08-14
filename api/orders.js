@@ -39,29 +39,15 @@ module.exports = async function handler(req, res) {
       created_at: new Date().toISOString()
     };
 
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceKey) {
-      return res.status(200).json({
-        ok: true,
-        persisted: false,
-        storageConfigured: false,
-        orderId,
-        status: order.status,
-        total: order.total,
-        currency: order.currency,
-        items: normalized
-      });
-    }
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co';
+    const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_u8IwJRz4KndmAk13fGZM5A_csTsqjsk';
 
     const dbResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/orders`, {
       method: 'POST',
       headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
+        apikey: publishableKey,
         'Content-Type': 'application/json',
-        Prefer: 'return=representation'
+        Prefer: 'return=minimal'
       },
       body: JSON.stringify(order)
     });
