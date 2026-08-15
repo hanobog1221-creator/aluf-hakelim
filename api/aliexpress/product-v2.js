@@ -25,15 +25,21 @@ module.exports = async function handler(req,res){
     const appKey=process.env.ALIEXPRESS_APP_KEY||'542860';
     const secret=process.env.ALIEXPRESS_APP_SECRET;
     const accessToken=await token();
-    const paths=['/aliexpress/ds/product/get','/ds/product/get','/product/get'];
+    const probes=[
+      {path:'/ds/product/get',extra:{ship_to_country:'IL',target_currency:'USD',target_language:'EN'}},
+      {path:'/offer/ds/product/simplequery',extra:{}},
+      {path:'/postproduct/redefining/findaeproductbyidfordropshipper',extra:{}},
+      {path:'/ds/product/simplequery',extra:{}}
+    ];
     const results=[];
-    for(const path of paths){
-      const params={app_key:appKey,access_token:accessToken,timestamp:String(Date.now()),sign_method:'sha256',product_id:productId,ship_to_country:'IL',target_currency:'USD',target_language:'EN'};
+    for(const probe of probes){
+      const path=probe.path;
+      const params={app_key:appKey,access_token:accessToken,timestamp:String(Date.now()),sign_method:'sha256',product_id:productId,...probe.extra};
       params.sign=sign(params,secret,path);
       const url=`https://api-sg.aliexpress.com/rest${path}?${new URLSearchParams(params).toString()}`;
       const r=await fetch(url,{headers:{accept:'application/json'}});
       const text=await r.text();
-      results.push({path,status:r.status,body:text.slice(0,4000)});
+      results.push({path,status:r.status,body:text.slice(0,8000)});
     }
     return res.status(200).json({ok:true,results});
   }catch(e){
