@@ -1,3 +1,5 @@
+const { getSupplierMapping } = require('./_lib/suppliers');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -14,14 +16,21 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ ok: false, error: 'empty_cart' });
     }
 
-    const normalized = items.map((item) => ({
-      id: String(item.id || ''),
-      name: String(item.name || ''),
-      qty: Math.max(1, Math.floor(Number(item.qty || 1))),
-      price: Number(item.price || 0),
-      variant: item.variant ? String(item.variant) : null,
-      supplierUrl: item.url ? String(item.url) : null
-    })).filter((item) => item.id && item.name && Number.isFinite(item.price) && item.price >= 0);
+    const normalized = items.map((item) => {
+      const id = String(item.id || '');
+      const supplier = getSupplierMapping(id);
+      return {
+        id,
+        name: String(item.name || ''),
+        qty: Math.max(1, Math.floor(Number(item.qty || 1))),
+        price: Number(item.price || 0),
+        variant: supplier ? supplier.variantLabel : (item.variant ? String(item.variant) : null),
+        supplierUrl: supplier ? supplier.sourceUrl : null,
+        supplierProductId: supplier ? supplier.productId : null,
+        supplierSkuId: supplier ? supplier.skuId : null,
+        fulfillmentReady: Boolean(supplier && supplier.readyForFulfillment)
+      };
+    }).filter((item) => item.id && item.name && Number.isFinite(item.price) && item.price >= 0);
 
     if (!normalized.length) {
       return res.status(400).json({ ok: false, error: 'invalid_items' });
