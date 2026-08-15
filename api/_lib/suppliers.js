@@ -20,6 +20,15 @@ const SUPPLIERS = {
     skuId: null,
     readyForFulfillment: false
   },
+  impact: {
+    storeProductId: 'impact',
+    supplier: 'aliexpress',
+    sourceUrl: 'https://a.aliexpress.com/_c4qlMwlt',
+    variantLabel: 'Body only / no battery',
+    productId: '1005010616492119',
+    skuId: null,
+    readyForFulfillment: false
+  },
   washer: {
     storeProductId: 'washer',
     supplier: 'aliexpress',
