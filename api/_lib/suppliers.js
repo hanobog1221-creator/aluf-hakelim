@@ -1,5 +1,5 @@
 // Server-side supplier mapping. Never trust supplier details from the browser.
-// AliExpress productId/skuId are filled only after they are verified against the AliExpress API.
+// Mark readyForFulfillment=true only after the exact AliExpress SKU is verified.
 
 const SUPPLIERS = {
   washer: {
@@ -7,16 +7,16 @@ const SUPPLIERS = {
     supplier: 'aliexpress',
     sourceUrl: 'https://a.aliexpress.com/_c39RYxFp',
     variantLabel: 'Set 1',
-    productId: null,
+    productId: '1005006994420769',
     skuId: null,
     readyForFulfillment: false
   },
   battery588: {
     storeProductId: 'battery588',
     supplier: 'aliexpress',
-    sourceUrl: null,
+    sourceUrl: 'https://a.aliexpress.com/_c3mUoejd',
     variantLabel: 'Battery 1 Charger 1',
-    productId: null,
+    productId: '1005008055230578',
     skuId: null,
     readyForFulfillment: false
   }
