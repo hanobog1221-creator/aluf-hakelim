@@ -18,9 +18,8 @@ module.exports = async function handler(req, res) {
     client_id: APP_KEY,
     redirect_uri: CALLBACK_URL,
     state,
-    view: 'web',
-    sp: 'ae'
+    force_auth: 'true'
   });
 
-  return res.redirect(`https://oauth.aliexpress.com/authorize?${params.toString()}`);
+  return res.redirect(`https://api-sg.aliexpress.com/oauth/authorize?${params.toString()}`);
 };
