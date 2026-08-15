@@ -46,7 +46,7 @@ module.exports = async function handler(req, res) {
     };
     params.sign = signHmacMd5(params, secret);
     const body = new URLSearchParams(params);
-    const r = await fetch('https://api.taobao.com/router/rest', {
+    const r = await fetch('https://eco.taobao.com/router/rest', {
       method: 'POST',
       headers: {'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'},
       body: body.toString()
