@@ -2,6 +2,24 @@
 // Mark readyForFulfillment=true only after the exact AliExpress SKU is verified.
 
 const SUPPLIERS = {
+  socket: {
+    storeProductId: 'socket',
+    supplier: 'aliexpress',
+    sourceUrl: 'https://www.aliexpress.com/item/1005012906553288.html',
+    variantLabel: null,
+    productId: '1005012906553288',
+    skuId: null,
+    readyForFulfillment: false
+  },
+  ratchet: {
+    storeProductId: 'ratchet',
+    supplier: 'aliexpress',
+    sourceUrl: 'https://www.aliexpress.com/item/1005012879937902.html',
+    variantLabel: 'Body only / no battery',
+    productId: '1005012879937902',
+    skuId: null,
+    readyForFulfillment: false
+  },
   washer: {
     storeProductId: 'washer',
     supplier: 'aliexpress',
