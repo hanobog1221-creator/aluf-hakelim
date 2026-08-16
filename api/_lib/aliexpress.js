@@ -6,6 +6,8 @@ const API_BASE = 'https://api-sg.aliexpress.com/rest';
 const TOP_API_BASE = 'https://api.taobao.com/router/rest';
 const REFRESH_PATH = '/auth/token/refresh';
 const REFRESH_EARLY_MS = 30 * 60 * 1000;
+const STORE_URL = 'https://aluf-hakelim-v2-ready.vercel.app/';
+let dsStoreReportAttempted = false;
 
 function signAliExpress(params, appSecret, apiPath) {
   const keys = Object.keys(params)
@@ -41,9 +43,8 @@ function safeTopError(json, status) {
   return err;
 }
 
-async function callTopApi(method, businessParams = {}, options = {}) {
+async function executeTopApi(method, businessParams = {}, session = null) {
   const { appSecret } = getServerConfig();
-  const session = options.session === false ? null : await getValidAccessToken();
   const params = {
     method: String(method),
     app_key: APP_KEY,
@@ -70,8 +71,39 @@ async function callTopApi(method, businessParams = {}, options = {}) {
   const text = await response.text();
   let json = null;
   try { json = JSON.parse(text); } catch {}
-  if (!response.ok || !json || json.error_response) throw safeTopError(json, response.status);
+  if (!response.ok || !json || json.error_response) {
+    const err = safeTopError(json, response.status);
+    console.warn('AliExpress TOP call failed', String(method), err.code, err.details);
+    throw err;
+  }
+  console.log('AliExpress TOP call succeeded', String(method));
   return json;
+}
+
+async function ensureDropshipperReported(session) {
+  if (dsStoreReportAttempted) return;
+  dsStoreReportAttempted = true;
+  try {
+    const json = await executeTopApi('aliexpress.ds.add.info', {
+      param0: { store_url: STORE_URL }
+    }, session);
+    const root = json?.aliexpress_ds_add_info_response || json;
+    console.log('AliExpress DS group diagnostic succeeded', JSON.stringify({
+      result: root?.result ?? null,
+      rsp_code: root?.rsp_code ?? null,
+      rsp_msg: root?.rsp_msg ?? null
+    }));
+  } catch (error) {
+    console.warn('AliExpress DS group diagnostic failed', String(error.code || error.message || error), String(error.details || '').slice(0, 300));
+  }
+}
+
+async function callTopApi(method, businessParams = {}, options = {}) {
+  const session = options.session === false ? null : await getValidAccessToken();
+  if (session && method !== 'aliexpress.ds.add.info' && options.reportStore !== false) {
+    await ensureDropshipperReported(session);
+  }
+  return executeTopApi(method, businessParams, session);
 }
 
 function safeTokenMetadata(token) {
