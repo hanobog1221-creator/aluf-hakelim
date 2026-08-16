@@ -72,6 +72,21 @@ function buildPlaceOrderRequest(order, shippingQuoteOverride = null) {
   };
 }
 
+function buildPlaceOrderRequests(order, shippingQuoteOverride = null) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const groups = new Map();
+  for (const item of items) {
+    const supplierId = String(item.supplierId || '').trim();
+    if (!supplierId) throw new Error(`supplier_identity_missing_${item.id}`);
+    if (!groups.has(supplierId)) groups.set(supplierId, []);
+    groups.get(supplierId).push(item);
+  }
+  return [...groups.entries()].map(([supplierId, supplierItems]) => ({
+    supplierId,
+    request: buildPlaceOrderRequest({ ...order, items: supplierItems }, shippingQuoteOverride)
+  }));
+}
+
 function safePreview(request) {
   return {
     logistics_address: {
@@ -164,7 +179,9 @@ function parsePlaceOrderResponse(json) {
 
 module.exports = {
   buildPlaceOrderRequest,
+  buildPlaceOrderRequests,
   safePreview,
   parsePlaceOrderResponse,
   normalizeOrderIds
 };
+
