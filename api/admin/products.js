@@ -21,6 +21,13 @@ function cleanQuantityLimit(value, fallback = 20) {
   return n;
 }
 
+function cleanIntegerRange(value, min, max, fallback, errorCode) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min || n > max) throw new Error(errorCode);
+  return n;
+}
+
 function cleanCategories(value) {
   if (!Array.isArray(value) || value.length > 10) throw new Error('invalid_categories');
   return value.map((v) => String(v).trim()).filter(Boolean).slice(0, 10);
@@ -127,6 +134,7 @@ module.exports = async function handler(req, res) {
           support_email: cleanText(body.support_email, 160),
           support_hours: cleanText(body.support_hours, 240),
           minimum_profit_ils: cleanNumber(body.minimum_profit_ils, true),
+          payment_quote_ttl_minutes: cleanIntegerRange(body.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl'),
           business_legal_name: cleanText(body.business_legal_name, 160),
           business_tax_id: cleanTaxId(body.business_tax_id),
           business_type: cleanBusinessType(body.business_type),
@@ -159,6 +167,7 @@ module.exports = async function handler(req, res) {
           whatsapp_enabled: row.whatsapp_enabled,
           support_email_set: Boolean(row.support_email),
           minimum_profit_ils: row.minimum_profit_ils,
+          payment_quote_ttl_minutes: row.payment_quote_ttl_minutes,
           business_details_set: Boolean(row.business_legal_name && row.business_tax_id && row.business_type)
         });
         return res.status(200).json({ ok: true, settings });
@@ -332,6 +341,7 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_business_type')) return res.status(400).json({ ok: false, error: 'invalid_business_type' });
     if (message.includes('invalid_tax_id')) return res.status(400).json({ ok: false, error: 'invalid_tax_id' });
     if (message.includes('invalid_quantity_limit')) return res.status(400).json({ ok: false, error: 'invalid_quantity_limit' });
+    if (message.includes('invalid_payment_quote_ttl')) return res.status(400).json({ ok: false, error: 'invalid_payment_quote_ttl' });
     if (message.includes('invalid_number')) return res.status(400).json({ ok: false, error: 'invalid_number' });
     if (message.includes('invalid_supplier_product_id')) return res.status(400).json({ ok: false, error: 'invalid_supplier_product_id' });
     if (message.includes('invalid_supplier_url')) return res.status(400).json({ ok: false, error: 'invalid_supplier_url' });
