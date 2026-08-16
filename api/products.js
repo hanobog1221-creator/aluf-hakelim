@@ -1,3 +1,5 @@
+const { serverHeaders } = require('./_lib/supabase-server');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   // Store state includes the emergency sales switch and must update immediately.
@@ -15,7 +17,7 @@ module.exports = async function handler(req, res) {
       console.error('Public catalog server credentials are missing');
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
-    const headers = { apikey: serverKey, Authorization: `Bearer ${serverKey}` };
+    const headers = serverHeaders({}, serverKey);
 
     const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
@@ -55,9 +57,7 @@ module.exports = async function handler(req, res) {
         desc: row.description || '',
         specs: Array.isArray(row.specs) ? row.specs : [],
         maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
-        // `available` keeps active catalog items visible for browsing.
         available: row.active === true,
-        // `purchaseReady` is fail-closed and controls whether an item may enter the cart.
         purchaseReady,
         shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true
       };
