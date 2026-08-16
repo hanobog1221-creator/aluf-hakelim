@@ -28,7 +28,7 @@ function sampleOrder() {
     ],
     shipping_quote: {
       lines: [
-        { id: 'impact', serviceName: 'AliExpress Standard Shipping' }
+        { id: 'impact', serviceName: 'Old Shipping Service' }
       ]
     }
   };
@@ -48,6 +48,22 @@ test('buildPlaceOrderRequest requires an exact shipping service', () => {
   const order = sampleOrder();
   order.shipping_quote.lines = [];
   assert.throws(() => buildPlaceOrderRequest(order), /shipping_service_missing_impact/);
+});
+
+test('fresh shipping quote overrides the stale order shipping service', () => {
+  const order = sampleOrder();
+  const freshQuote = {
+    lines: [{ id: 'impact', serviceName: 'Fresh AliExpress Shipping' }]
+  };
+  const request = buildPlaceOrderRequest(order, freshQuote);
+  assert.equal(request.product_items[0].logistics_service_name, 'Fresh AliExpress Shipping');
+  assert.notEqual(request.product_items[0].logistics_service_name, 'Old Shipping Service');
+});
+
+test('fresh quote without a valid service blocks instead of falling back to stale service', () => {
+  const order = sampleOrder();
+  const freshQuote = { lines: [{ id: 'impact', serviceName: '' }] };
+  assert.throws(() => buildPlaceOrderRequest(order, freshQuote), /shipping_service_missing_impact/);
 });
 
 test('safePreview does not expose raw phone or street address', () => {
