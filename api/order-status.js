@@ -81,6 +81,10 @@ module.exports = async function handler(req, res) {
         }))
       : [];
 
+    const shippingQuoted = order.shipping_quote_status === 'quoted';
+    const shippingCost = shippingQuoted ? Number(order.shipping_cost || 0) : null;
+    const finalTotal = Number((Number(order.total || 0) + (shippingQuoted ? Number(order.shipping_cost || 0) : 0)).toFixed(2));
+
     return res.status(200).json({
       ok: true,
       order: {
@@ -91,9 +95,9 @@ module.exports = async function handler(req, res) {
         productsSubtotal: Number(order.products_subtotal ?? order.total ?? 0),
         discountAmount: Number(order.discount_amount || 0),
         couponCode: order.coupon_code || null,
-        total: Number(order.total || 0),
+        total: finalTotal,
         currency: order.currency || 'ILS',
-        shippingCost: order.shipping_quote_status === 'quoted' ? Number(order.shipping_cost || 0) : null,
+        shippingCost,
         shippingStatus: order.shipping_quote_status || 'not_quoted',
         trackingNumber: order.tracking_number || null,
         customerNote: order.customer_note || null,
