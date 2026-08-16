@@ -13,7 +13,12 @@
   ],
   "rewrites": [
     { "source": "/api/aliexpress/order-preflight", "destination": "/api/aliexpress/product-v2?action=order-preflight" },
-    { "source": "/api/aliexpress/order-attempts", "destination": "/api/aliexpress/product-v2?action=attempts" }
+    { "source": "/api/aliexpress/order-attempts", "destination": "/api/aliexpress/product-v2?action=attempts" },
+    { "source": "/api/admin/login", "destination": "/api/admin/session?action=login" },
+    { "source": "/api/admin/logout", "destination": "/api/admin/session?action=logout" },
+    { "source": "/api/aliexpress/connect", "destination": "/api/aliexpress/tools?action=connect" },
+    { "source": "/api/aliexpress/callback", "destination": "/api/aliexpress/tools?action=callback" },
+    { "source": "/api/aliexpress/resolve", "destination": "/api/aliexpress/tools?action=resolve" }
   ],
   "headers": [
     {

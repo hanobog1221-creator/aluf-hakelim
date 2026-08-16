@@ -1,5 +1,16 @@
 const crypto = require('crypto');
-const { verifyCredentials, createSession, setSessionCookie, audit, config, dbHeaders, requireSameOrigin } = require('../_lib/admin');
+const {
+  SESSION_COOKIE,
+  parseCookies,
+  verifyCredentials,
+  createSession,
+  deleteSession,
+  setSessionCookie,
+  audit,
+  config,
+  dbHeaders,
+  requireSameOrigin
+} = require('../_lib/admin');
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_FAILURE_LIMIT = 8;
@@ -41,16 +52,8 @@ async function clearFailures(identityHash) {
   });
 }
 
-module.exports = async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ ok: false, error: 'method_not_allowed' });
-  }
+async function handleLogin(req, res) {
   if (!requireSameOrigin(req, res)) return;
-
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const username = String(body.username || '').trim();
@@ -84,4 +87,32 @@ module.exports = async function handler(req, res) {
     console.error('admin login error', error);
     return res.status(500).json({ ok: false, error: 'login_failed' });
   }
+}
+
+async function handleLogout(req, res) {
+  if (!requireSameOrigin(req, res)) return;
+  try {
+    const token = parseCookies(req)[SESSION_COOKIE];
+    if (token) await deleteSession(token);
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`);
+    await audit('logout', 'admin', 'admin', {});
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error('admin logout error', error);
+    return res.status(200).json({ ok: true });
+  }
+}
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+  }
+
+  const action = String(req.query?.action || '').trim();
+  if (action === 'login') return handleLogin(req, res);
+  if (action === 'logout') return handleLogout(req, res);
+  return res.status(400).json({ ok: false, error: 'invalid_session_action' });
 };
