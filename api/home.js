@@ -2,7 +2,8 @@ module.exports = async function handler(req, res) {
   try {
     const protocol = (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
     const host = req.headers.host;
-    const pageUrl = `${protocol}://${host}/index.html`;
+    const origin = `${protocol}://${host}`;
+    const pageUrl = `${origin}/index.html`;
     const response = await fetch(pageUrl, { headers: { 'cache-control': 'no-cache' } });
     let html = await response.text();
 
@@ -11,25 +12,77 @@ module.exports = async function handler(req, res) {
       .replaceAll('יש משלוח לישראל?', 'יש משלוחים לכל הארץ?')
       .replaceAll('בהמשך נחבר כאן WhatsApp ושירות ישיר להזמנות ושאלות.', 'לשאלות על מוצרים והזמנות אפשר לפנות אלינו ישירות ב-WhatsApp.');
 
+    const escapeAttr = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const safeJson = (value) => JSON.stringify(value).replace(/</g, '\\u003c');
+
+    const requestedProductId = String(req.query?.product || '').trim();
+    let selectedProduct = null;
+    if (/^[A-Za-z0-9_-]{1,80}$/.test(requestedProductId)) {
+      try {
+        const productsResponse = await fetch(`${origin}/api/products`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+        if (productsResponse.ok) {
+          const data = await productsResponse.json();
+          selectedProduct = Array.isArray(data?.products)
+            ? data.products.find((product) => String(product.id) === requestedProductId) || null
+            : null;
+        }
+      } catch {}
+    }
+
     if (!html.includes('rel="canonical"')) {
-      const canonical = 'https://aluf-hakelim-v2-ready.vercel.app/';
-      const seo = `
-<link rel="canonical" href="${canonical}">
-<meta name="description" content="אלוף הכלים — כלי עבודה, אביזרי רכב ומוצרים שימושיים להזמנה אונליין.">
-<meta property="og:type" content="website">
-<meta property="og:locale" content="he_IL">
-<meta property="og:site_name" content="אלוף הכלים">
-<meta property="og:title" content="אלוף הכלים | כלי עבודה ואביזרי רכב">
-<meta property="og:description" content="כלי עבודה, אביזרי רכב ומוצרים שימושיים להזמנה אונליין.">
-<meta property="og:url" content="${canonical}">
-<meta name="twitter:card" content="summary_large_image">
-<script type="application/ld+json">${JSON.stringify({
+      const canonical = selectedProduct
+        ? `https://aluf-hakelim-v2-ready.vercel.app/?product=${encodeURIComponent(selectedProduct.id)}`
+        : 'https://aluf-hakelim-v2-ready.vercel.app/';
+      const title = selectedProduct
+        ? `${selectedProduct.name} | אלוף הכלים`
+        : 'אלוף הכלים | כלי עבודה ואביזרי רכב';
+      const description = selectedProduct?.desc
+        ? String(selectedProduct.desc).slice(0, 220)
+        : 'אלוף הכלים — כלי עבודה, אביזרי רכב ומוצרים שימושיים להזמנה אונליין.';
+      const image = selectedProduct?.img
+        ? (String(selectedProduct.img).startsWith('http') ? selectedProduct.img : `${origin}${selectedProduct.img}`)
+        : null;
+      const structured = selectedProduct ? {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: selectedProduct.name,
+        description,
+        image: image ? [image] : undefined,
+        sku: String(selectedProduct.id),
+        offers: {
+          '@type': 'Offer',
+          url: canonical,
+          priceCurrency: 'ILS',
+          price: Number(selectedProduct.price || 0).toFixed(2),
+          availability: selectedProduct.available === false ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock'
+        }
+      } : {
         '@context': 'https://schema.org',
         '@type': 'WebSite',
         name: 'אלוף הכלים',
         url: canonical,
         inLanguage: 'he-IL'
-      })}</script>`;
+      };
+      const seo = `
+<link rel="canonical" href="${escapeAttr(canonical)}">
+<meta name="description" content="${escapeAttr(description)}">
+<meta property="og:type" content="${selectedProduct ? 'product' : 'website'}">
+<meta property="og:locale" content="he_IL">
+<meta property="og:site_name" content="אלוף הכלים">
+<meta property="og:title" content="${escapeAttr(title)}">
+<meta property="og:description" content="${escapeAttr(description)}">
+<meta property="og:url" content="${escapeAttr(canonical)}">
+${image ? `<meta property="og:image" content="${escapeAttr(image)}">` : ''}
+<meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}">
+<meta name="twitter:title" content="${escapeAttr(title)}">
+<meta name="twitter:description" content="${escapeAttr(description)}">
+${image ? `<meta name="twitter:image" content="${escapeAttr(image)}">` : ''}
+<script type="application/ld+json">${safeJson(structured)}</script>`;
+      html = html.replace(/<title>.*?<\/title>/i, `<title>${escapeAttr(title)}</title>`);
       html = html.replace('</head>', `${seo}\n</head>`);
     }
 
