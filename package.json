@@ -1,6 +1,9 @@
 {
   "name": "aluf-hakelim",
   "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
   "engines": {
     "node": "22.x"
   }
