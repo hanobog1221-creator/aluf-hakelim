@@ -1,10 +1,12 @@
 const crypto = require('crypto');
 const { requireAdmin } = require('../_lib/admin');
 const { serverHeaders } = require('../_lib/supabase-server');
+const { callTopApi } = require('../_lib/aliexpress');
 
 const CALLBACK_URL = 'https://aluf-hakelim-v2-ready.vercel.app/api/aliexpress/callback';
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const TOKEN_PATH = '/auth/token/create';
+const AFFILIATE_PROBE_PRODUCT_ID = '1005012879937902';
 
 function signedState() {
   const secret = process.env.ALIEXPRESS_APP_SECRET;
@@ -199,6 +201,35 @@ async function handleResolve(req, res) {
   }
 }
 
+async function handleAffiliateProbe(req, res) {
+  const requested = String(req.query?.product_id || AFFILIATE_PROBE_PRODUCT_ID).trim();
+  if (requested !== AFFILIATE_PROBE_PRODUCT_ID) {
+    return res.status(400).json({ ok: false, error: 'probe_product_not_allowed' });
+  }
+  try {
+    const json = await callTopApi('aliexpress.affiliate.productdetail.get', {
+      product_ids: requested,
+      fields: 'product_id,product_title,sale_price,sale_price_currency,original_price,original_price_currency,target_sale_price,target_sale_price_currency,product_detail_url',
+      target_currency: 'USD',
+      target_language: 'HE',
+      country: 'IL'
+    }, { session: false, reportStore: false });
+    const root = json?.aliexpress_affiliate_productdetail_get_response?.resp_result || null;
+    return res.status(200).json({
+      ok: true,
+      resp_code: root?.resp_code ?? null,
+      resp_msg: root?.resp_msg ?? null,
+      result: root?.result ?? null
+    });
+  } catch (error) {
+    return res.status(200).json({
+      ok: false,
+      error: String(error?.code || error?.message || error),
+      details: String(error?.details || '').slice(0, 300)
+    });
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
@@ -210,5 +241,6 @@ module.exports = async function handler(req, res) {
   if (action === 'connect') return handleConnect(req, res);
   if (action === 'callback') return handleCallback(req, res);
   if (action === 'resolve') return handleResolve(req, res);
+  if (action === 'affiliate-probe') return handleAffiliateProbe(req, res);
   return res.status(400).json({ ok: false, error: 'invalid_aliexpress_action' });
 };
