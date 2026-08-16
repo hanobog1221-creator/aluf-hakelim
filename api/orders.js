@@ -211,7 +211,7 @@ module.exports = async function handler(req, res) {
         id: String(item.id || ''),
         qty: Math.floor(Number(item.qty || 1))
       }))
-      .filter((item) => /^[A-Za-z0-9_-]+$/.test(item.id) && Number.isInteger(item.qty) && item.qty >= 1 && item.qty <= 100);
+      .filter((item) => /^[A-Za-z0-9_-]+$/.test(item.id) && Number.isInteger(item.qty) && item.qty >= 1 && item.qty <= 20);
 
     if (!requested.length || requested.length !== requestedItems.length) {
       return res.status(400).json({ ok: false, error: 'invalid_items' });
@@ -299,7 +299,7 @@ module.exports = async function handler(req, res) {
         return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
       }
 
-      const maxQty = Math.max(1, Math.min(100, Number(product.max_order_quantity || 20)));
+      const maxQty = Math.max(1, Math.min(20, Number(product.max_order_quantity || 20)));
       if (item.qty > maxQty) {
         return res.status(409).json({ ok: false, error: 'quantity_limit', productId: item.id, maxQty });
       }
