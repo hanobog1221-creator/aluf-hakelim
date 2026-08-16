@@ -1,10 +1,12 @@
+const MAX_SUPPLIER_STATE_AGE_MS = 8 * 60 * 60 * 1000;
+
 async function loadOrderForFulfillment(orderId) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) throw new Error('supabase_server_credentials_missing');
 
   const response = await fetch(
-    `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,shipping_quote_status,shipping_quote,shipping_quoted_at,items,customer,supplier_order_id,last_error&limit=1`,
+    `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,shipping_quote_status,shipping_quote,shipping_quoted_at,items,customer,supplier_order_id,last_error,updated_at&limit=1`,
     { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
   );
   if (!response.ok) throw new Error(`order_read_${response.status}`);
@@ -23,7 +25,7 @@ async function loadCurrentSupplierState(order) {
 
   const [productsResponse, settingsResponse] = await Promise.all([
     ids.length
-      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_product_id,supplier_sku_id,fulfillment_ready,supplier_price_ils,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
+      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_product_id,supplier_sku_id,fulfillment_ready,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
       : Promise.resolve({ ok: true, json: async () => [] }),
     fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=minimum_profit_ils&limit=1`, { headers })
   ]);
@@ -38,11 +40,16 @@ async function loadCurrentSupplierState(order) {
   };
 }
 
+function stateIsFresh(value) {
+  const time = value ? Date.parse(value) : NaN;
+  return Number.isFinite(time) && Date.now() - time <= MAX_SUPPLIER_STATE_AGE_MS;
+}
+
 function validateFulfillmentOrder(order, supplierState = null) {
   if (order.payment_status !== 'paid') return { ok: false, reason: 'payment_not_confirmed' };
   if (order.shipping_quote_status !== 'quoted') return { ok: false, reason: 'shipping_not_quoted' };
   if (order.supplier_order_id) return { ok: false, reason: 'supplier_order_already_exists' };
-  if (!['not_started', 'retry'].includes(order.fulfillment_status)) {
+  if (!['not_started', 'ready', 'failed'].includes(order.fulfillment_status)) {
     return { ok: false, reason: 'fulfillment_not_eligible' };
   }
 
@@ -50,8 +57,8 @@ function validateFulfillmentOrder(order, supplierState = null) {
   if (!items.length) return { ok: false, reason: 'no_items' };
 
   const currentProducts = supplierState?.products || null;
-  const minProfitRaw = supplierState?.settings?.minimum_profit_ils;
-  const minimumProfit = minProfitRaw == null ? null : Number(minProfitRaw);
+  const globalMinProfitRaw = supplierState?.settings?.minimum_profit_ils;
+  const globalMinimumProfit = globalMinProfitRaw == null ? null : Number(globalMinProfitRaw);
 
   for (const item of items) {
     if (item.supplier !== 'aliexpress') return { ok: false, reason: 'unsupported_supplier', productId: item.id };
@@ -75,15 +82,47 @@ function validateFulfillmentOrder(order, supplierState = null) {
       if (String(current.supplier_product_id) !== String(item.supplierProductId) || String(current.supplier_sku_id) !== String(item.supplierSkuId)) {
         return { ok: false, reason: 'supplier_mapping_changed', productId: item.id };
       }
-      if (current.supplier_in_stock === false) return { ok: false, reason: 'supplier_out_of_stock', productId: item.id };
-      if (current.supplier_shipping_available === false) return { ok: false, reason: 'supplier_shipping_unavailable', productId: item.id };
 
+      if (current.supplier_in_stock !== true) {
+        return { ok: false, reason: current.supplier_in_stock === false ? 'supplier_out_of_stock' : 'supplier_stock_unknown', productId: item.id };
+      }
+      if (current.supplier_shipping_available !== true) {
+        return { ok: false, reason: current.supplier_shipping_available === false ? 'supplier_shipping_unavailable' : 'supplier_shipping_unknown', productId: item.id };
+      }
+      if (!stateIsFresh(current.last_sync_at)) {
+        return { ok: false, reason: 'supplier_product_sync_stale', productId: item.id, lastSyncAt: current.last_sync_at || null };
+      }
+      if (!stateIsFresh(current.shipping_last_checked_at)) {
+        return { ok: false, reason: 'supplier_shipping_sync_stale', productId: item.id, shippingLastCheckedAt: current.shipping_last_checked_at || null };
+      }
+
+      const supplierPrice = current.supplier_price_ils == null ? null : Number(current.supplier_price_ils);
+      const supplierShipping = current.supplier_shipping == null ? null : Number(current.supplier_shipping);
+      const salePrice = Number(item.price);
+      if (!Number.isFinite(supplierPrice)) return { ok: false, reason: 'supplier_price_unknown', productId: item.id };
+      if (!Number.isFinite(salePrice)) return { ok: false, reason: 'sale_price_invalid', productId: item.id };
+
+      const maxSupplierCostRaw = current.auto_fulfill_max_cost;
+      if (maxSupplierCostRaw != null) {
+        const maxSupplierCost = Number(maxSupplierCostRaw);
+        const totalSupplierCost = Number((supplierPrice + (Number.isFinite(supplierShipping) ? supplierShipping : 0)).toFixed(2));
+        if (Number.isFinite(maxSupplierCost) && totalSupplierCost > maxSupplierCost) {
+          return {
+            ok: false,
+            reason: 'supplier_cost_above_auto_limit',
+            productId: item.id,
+            totalSupplierCost,
+            maxSupplierCost
+          };
+        }
+      }
+
+      const productMinProfitRaw = current.minimum_profit;
+      const productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw);
+      const minimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
       if (Number.isFinite(minimumProfit)) {
-        const supplierCost = current.supplier_price_ils == null ? null : Number(current.supplier_price_ils);
-        const salePrice = Number(item.price);
-        if (!Number.isFinite(supplierCost)) return { ok: false, reason: 'supplier_price_unknown', productId: item.id };
-        if (!Number.isFinite(salePrice)) return { ok: false, reason: 'sale_price_invalid', productId: item.id };
-        const profitPerUnit = Number((salePrice - supplierCost).toFixed(2));
+        // Customer shipping is charged separately from the product price, so product margin is sale price minus supplier product cost.
+        const profitPerUnit = Number((salePrice - supplierPrice).toFixed(2));
         if (profitPerUnit < minimumProfit) {
           return {
             ok: false,
@@ -113,6 +152,7 @@ async function getFulfillmentCandidate(orderId) {
 }
 
 module.exports = {
+  MAX_SUPPLIER_STATE_AGE_MS,
   loadOrderForFulfillment,
   loadCurrentSupplierState,
   validateFulfillmentOrder,
