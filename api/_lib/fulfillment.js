@@ -6,7 +6,7 @@ async function loadOrderForFulfillment(orderId) {
   if (!supabaseUrl || !serviceKey) throw new Error('supabase_server_credentials_missing');
 
   const response = await fetch(
-    `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,shipping_quote_status,shipping_quote,shipping_quoted_at,items,customer,supplier_order_id,last_error,updated_at&limit=1`,
+    `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,shipping_quote_status,shipping_quote,shipping_quoted_at,items,customer,supplier_order_id,supplier_order_ids,last_error,updated_at&limit=1`,
     { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
   );
   if (!response.ok) throw new Error(`order_read_${response.status}`);
@@ -45,10 +45,15 @@ function stateIsFresh(value) {
   return Number.isFinite(time) && Date.now() - time <= MAX_SUPPLIER_STATE_AGE_MS;
 }
 
+function hasSupplierOrder(order) {
+  if (order.supplier_order_id) return true;
+  return Array.isArray(order.supplier_order_ids) && order.supplier_order_ids.length > 0;
+}
+
 function validateFulfillmentOrder(order, supplierState = null) {
   if (order.payment_status !== 'paid') return { ok: false, reason: 'payment_not_confirmed' };
   if (order.shipping_quote_status !== 'quoted') return { ok: false, reason: 'shipping_not_quoted' };
-  if (order.supplier_order_id) return { ok: false, reason: 'supplier_order_already_exists' };
+  if (hasSupplierOrder(order)) return { ok: false, reason: 'supplier_order_already_exists' };
   if (!['not_started', 'ready', 'failed'].includes(order.fulfillment_status)) {
     return { ok: false, reason: 'fulfillment_not_eligible' };
   }
@@ -121,7 +126,6 @@ function validateFulfillmentOrder(order, supplierState = null) {
       const productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw);
       const minimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
       if (Number.isFinite(minimumProfit)) {
-        // Customer shipping is charged separately from the product price, so product margin is sale price minus supplier product cost.
         const profitPerUnit = Number((salePrice - supplierPrice).toFixed(2));
         if (profitPerUnit < minimumProfit) {
           return {
