@@ -1,8 +1,7 @@
-const { serverHeaders } = require('./_lib/supabase-server');
+const { apiKeyHeaders } = require('./_lib/supabase-server');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  // Store state includes the emergency sales switch and must update immediately.
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'GET') {
@@ -12,12 +11,12 @@ module.exports = async function handler(req, res) {
 
   try {
     const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-    const serverKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serverKey) {
-      console.error('Public catalog server credentials are missing');
+    const configuredKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !configuredKey) {
+      console.error('Public catalog Supabase credentials are missing');
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
-    const headers = serverHeaders({}, serverKey);
+    const headers = apiKeyHeaders({}, configuredKey);
 
     const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
@@ -32,7 +31,7 @@ module.exports = async function handler(req, res) {
 
     if (!productsResponse.ok) {
       const details = await productsResponse.text();
-      console.error('Supabase product catalog failed:', productsResponse.status, details);
+      console.error('Supabase product catalog failed:', productsResponse.status, details.slice(0, 300));
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
 
