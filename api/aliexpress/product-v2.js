@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken } = require('../_lib/aliexpress');
+const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken, callTopApi } = require('../_lib/aliexpress');
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { quoteAliExpressFreight, convertToIls, quoteCartShipping } = require('../_lib/shipping');
 const { getFulfillmentCandidate } = require('../_lib/fulfillment');
@@ -55,7 +55,60 @@ function normalizedSku(sku) {
   };
 }
 
-async function callProduct(productId) {
+function snapshotFromResult(productId, result, source) {
+  if (!result || typeof result !== 'object') {
+    const err = new Error('unexpected_product_response');
+    err.code = 'unexpected_product_response';
+    throw err;
+  }
+  const base = result.ae_item_base_info_dto || result;
+  const skus = skuRows(result).map(normalizedSku).filter((sku) => sku.id);
+  return {
+    productId: String(productId),
+    status: base.product_status_type || result.product_status_type || null,
+    title: base.subject || null,
+    skus,
+    source
+  };
+}
+
+async function callProductTop(productId) {
+  let detailedError = null;
+  try {
+    const json = await callTopApi('aliexpress.ds.product.get', {
+      product_id: String(productId),
+      ship_to_country: 'IL',
+      target_currency: 'USD',
+      target_language: 'EN'
+    });
+    const root = json.aliexpress_ds_product_get_response || json;
+    const result = root.result || root;
+    const snapshot = snapshotFromResult(productId, result, 'top_ds_product_get');
+    if (snapshot.skus.length) return snapshot;
+  } catch (error) {
+    detailedError = error;
+  }
+
+  try {
+    const json = await callTopApi('aliexpress.offer.ds.product.simplequery', {
+      product_id: String(productId),
+      local_country: 'IL',
+      local_language: 'en'
+    });
+    const root = json.aliexpress_offer_ds_product_simplequery_response || json;
+    const snapshot = snapshotFromResult(productId, root, 'top_ds_product_simplequery');
+    if (snapshot.skus.length || snapshot.status) return snapshot;
+  } catch (error) {
+    if (!detailedError || /permission|authorize/i.test(String(error.code || error.message || ''))) detailedError = error;
+  }
+
+  if (detailedError) throw detailedError;
+  const error = new Error('top_product_empty');
+  error.code = 'top_product_empty';
+  throw error;
+}
+
+async function callProductLegacy(productId) {
   const secret = process.env.ALIEXPRESS_APP_SECRET;
   if (!secret) throw new Error('aliexpress_app_secret_missing');
   const accessToken = await getValidAccessToken();
@@ -86,23 +139,20 @@ async function callProduct(productId) {
 
   const root = json.aliexpress_ds_product_get_response || json;
   const result = root.result || json.result;
-  if (!result) {
-    const err = new Error('unexpected_product_response');
-    err.code = 'unexpected_product_response';
-    err.details = text.slice(0, 1200);
-    throw err;
-  }
+  return snapshotFromResult(productId, result, 'legacy_rest_ds_product_get');
+}
 
-  const base = result.ae_item_base_info_dto || result;
-  const skus = skuRows(result).map(normalizedSku).filter((sku) => sku.id);
-  return {
-    productId: String(productId),
-    status: base.product_status_type || result.product_status_type || null,
-    title: base.subject || null,
-    skus,
-    rawCode: root.rsp_code || null,
-    rawMessage: root.rsp_msg || null
-  };
+async function callProduct(productId) {
+  try {
+    return await callProductTop(productId);
+  } catch (topError) {
+    try {
+      return await callProductLegacy(productId);
+    } catch (legacyError) {
+      if (/permission|authorize/i.test(String(topError.code || topError.message || ''))) throw topError;
+      throw legacyError;
+    }
+  }
 }
 
 async function writeSyncHistory(product, row) {
@@ -395,6 +445,7 @@ async function handleProductSync(req, res, cron) {
           results.push({
             id: product.id,
             ok: true,
+            source: snapshot.source || null,
             skuVerified: saved.skuVerified,
             ready: saved.ready,
             inStock: saved.update.supplier_in_stock,
@@ -435,10 +486,11 @@ async function handleProductSync(req, res, cron) {
       return res.status(200).json({ ok: true, snapshot, saved });
     } catch (error) {
       if (product) await markSyncError(product, error);
+      const errorText = String(error.code || error.message || error);
       return res.status(200).json({
         ok: false,
-        error: String(error.code || error.message || error),
-        waitingForAliExpressPermission: String(error.code || '').includes('InsufficientPermission')
+        error: errorText,
+        waitingForAliExpressPermission: /permission|authorize/i.test(errorText)
       });
     }
   } catch (error) {
