@@ -3,7 +3,7 @@ const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken, callTopApi } = r
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { quoteAliExpressFreight, convertToIls, quoteCartShipping } = require('../_lib/shipping');
 const { getFulfillmentCandidate } = require('../_lib/fulfillment');
-const { buildPlaceOrderRequest, safePreview } = require('../_lib/aliexpress-order');
+const { buildPlaceOrderRequests, safePreview } = require('../_lib/aliexpress-order');
 
 const PRODUCT_PATH = '/ds/product/get';
 
@@ -392,15 +392,16 @@ async function handleOrderPreflight(req, res) {
       return res.status(409).json({ ok: false, error: 'preflight_blocked', validation: shippingValidation });
     }
 
-    const request = buildPlaceOrderRequest(order, freshShipping);
+    const supplierRequests = buildPlaceOrderRequests(order, freshShipping);
     const requestFingerprint = crypto
       .createHash('sha256')
-      .update(JSON.stringify(request), 'utf8')
+      .update(JSON.stringify(supplierRequests), 'utf8')
       .digest('hex');
     const attempt = await recordPreparedAttempt(orderId, requestFingerprint);
 
     await audit('supplier_order_preflight_ready', 'order', orderId, {
-      items: request.product_items.length,
+      items: supplierRequests.reduce((sum, group) => sum + group.request.product_items.length, 0),
+      supplierGroups: supplierRequests.length,
       requestFingerprint,
       attemptId: attempt?.id || null,
       chargedShipping,
@@ -417,7 +418,10 @@ async function handleOrderPreflight(req, res) {
       chargedShipping,
       freshSupplierShipping: currentShipping,
       shippingCovered: currentShipping <= chargedShipping + 0.01,
-      preview: safePreview(request),
+      supplierOrders: supplierRequests.map((group) => ({
+        supplierId: group.supplierId,
+        preview: safePreview(group.request)
+      })),
       liveSupplierRequestSent: false,
       nextStep: 'supplier_place_order_endpoint_not_enabled'
     });
@@ -523,3 +527,4 @@ module.exports = async function handler(req, res) {
   if (!cron && !await requireAdmin(req, res)) return;
   return handleProductSync(req, res, cron);
 };
+
