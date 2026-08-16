@@ -10,6 +10,22 @@ function text(value, max) {
   return out || null;
 }
 
+async function writeOrderEvent(supabaseUrl, orderId, eventType, payload = {}) {
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/order_events`, {
+      method: 'POST',
+      headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        order_id: orderId,
+        event_type: eventType,
+        payload
+      })
+    });
+  } catch (error) {
+    console.error('order event write failed', error);
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -49,6 +65,8 @@ module.exports = async function handler(req, res) {
       if ('supplier_order_id' in body) update.supplier_order_id = text(body.supplier_order_id, 120);
       if ('tracking_number' in body) update.tracking_number = text(body.tracking_number, 160);
       if ('last_error' in body) update.last_error = text(body.last_error, 1200);
+      if ('admin_note' in body) update.admin_note = text(body.admin_note, 2000);
+      if ('customer_note' in body) update.customer_note = text(body.customer_note, 800);
 
       if (!Object.keys(update).length) return res.status(400).json({ ok: false, error: 'no_changes' });
       update.updated_at = new Date().toISOString();
@@ -64,7 +82,16 @@ module.exports = async function handler(req, res) {
       }
       const order = (await response.json())[0] || null;
       if (!order) return res.status(404).json({ ok: false, error: 'order_not_found' });
-      await audit('order_update', 'order', orderId, { fields: Object.keys(update) });
+
+      const changedFields = Object.keys(update).filter((key) => key !== 'updated_at');
+      await audit('order_update', 'order', orderId, { fields: changedFields });
+      await writeOrderEvent(supabaseUrl, orderId, 'admin_order_update', {
+        fields: changedFields,
+        status: order.status,
+        fulfillmentStatus: order.fulfillment_status,
+        hasTracking: Boolean(order.tracking_number),
+        hasCustomerNote: Boolean(order.customer_note)
+      });
       return res.status(200).json({ ok: true, order });
     }
 
