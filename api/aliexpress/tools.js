@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { requireAdmin } = require('../_lib/admin');
+const { serverHeaders } = require('../_lib/supabase-server');
 
 const CALLBACK_URL = 'https://aluf-hakelim-v2-ready.vercel.app/api/aliexpress/callback';
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
@@ -160,12 +161,10 @@ async function handleCallback(req, res) {
 
   const dbResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/aliexpress_tokens?on_conflict=account_key`, {
     method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
+    headers: serverHeaders({
       'Content-Type': 'application/json',
       Prefer: 'resolution=merge-duplicates,return=minimal'
-    },
+    }, serviceKey),
     body: JSON.stringify(row)
   });
 
