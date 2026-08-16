@@ -6,6 +6,7 @@ const { getFulfillmentCandidate } = require('../_lib/fulfillment');
 const { buildPlaceOrderRequests, safePreview } = require('../_lib/aliexpress-order');
 
 const PRODUCT_PATH = '/ds/product/get';
+const VERIFIED_CAPTURE_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
 function isCron(req) {
   const secret = process.env.CRON_SECRET;
@@ -279,19 +280,44 @@ async function updateProduct(product, snapshot) {
   return { selectedSku: selected, skuVerified, ready, update, freight };
 }
 
+function hasFreshVerifiedPdp(product) {
+  const source = String(product.sku_verified_by || '');
+  const verifiedAt = Date.parse(product.sku_verified_at || '');
+  const productAt = Date.parse(product.last_sync_at || '');
+  const shippingAt = Date.parse(product.shipping_last_checked_at || '');
+  const now = Date.now();
+  return Boolean(
+    source.startsWith('aliexpress_pdp') &&
+    Number.isFinite(verifiedAt) && now - verifiedAt <= VERIFIED_CAPTURE_MAX_AGE_MS &&
+    Number.isFinite(productAt) && now - productAt <= VERIFIED_CAPTURE_MAX_AGE_MS &&
+    Number.isFinite(shippingAt) && now - shippingAt <= VERIFIED_CAPTURE_MAX_AGE_MS &&
+    product.supplier_sku_id &&
+    product.supplier_in_stock === true &&
+    product.supplier_price_ils != null &&
+    product.supplier_shipping_available === true
+  );
+}
+
 async function markSyncError(product, error) {
   const { supabaseUrl } = config();
   const message = String(error.code || error.message || error).slice(0, 300);
-  await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
-    method: 'PATCH',
-    headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-    body: JSON.stringify({
-      supplier_sync_error: message,
-      fulfillment_ready: false,
-      updated_at: new Date().toISOString()
-    })
-  }).catch(() => {});
+  const permissionError = /permission|authorize/i.test(message);
+  const preservedVerifiedData = permissionError && hasFreshVerifiedPdp(product);
+
+  if (!preservedVerifiedData) {
+    await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
+      method: 'PATCH',
+      headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        supplier_sync_error: message,
+        fulfillment_ready: false,
+        updated_at: new Date().toISOString()
+      })
+    }).catch(() => {});
+  }
+
   await writeSyncHistory(product, { error: message });
+  return { preservedVerifiedData };
 }
 
 async function recordPreparedAttempt(orderId, requestFingerprint) {
@@ -461,8 +487,8 @@ async function handleProductSync(req, res, cron) {
             supplierError: saved.update.supplier_sync_error || null
           });
         } catch (error) {
-          await markSyncError(product, error);
-          results.push({ id: product.id, ok: false, error: String(error.code || error.message || error) });
+          const marked = await markSyncError(product, error);
+          results.push({ id: product.id, ok: false, error: String(error.code || error.message || error), preservedVerifiedData: marked.preservedVerifiedData });
         }
       }
       return res.status(200).json({ ok: true, synced: results.length, results });
@@ -489,12 +515,14 @@ async function handleProductSync(req, res, cron) {
       if (product) saved = await updateProduct(product, snapshot);
       return res.status(200).json({ ok: true, snapshot, saved });
     } catch (error) {
-      if (product) await markSyncError(product, error);
+      let marked = { preservedVerifiedData: false };
+      if (product) marked = await markSyncError(product, error);
       const errorText = String(error.code || error.message || error);
       return res.status(200).json({
         ok: false,
         error: errorText,
-        waitingForAliExpressPermission: /permission|authorize/i.test(errorText)
+        waitingForAliExpressPermission: /permission|authorize/i.test(errorText),
+        preservedVerifiedData: marked.preservedVerifiedData
       });
     }
   } catch (error) {
@@ -527,4 +555,3 @@ module.exports = async function handler(req, res) {
   if (!cron && !await requireAdmin(req, res)) return;
   return handleProductSync(req, res, cron);
 };
-
