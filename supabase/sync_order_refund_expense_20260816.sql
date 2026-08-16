@@ -36,7 +36,7 @@ begin
       coalesce(new.currency, 'ILS'),
       new.payment_reference,
       new.order_id,
-      'order_refund',
+      'refund',
       v_source_key,
       now()
     )
@@ -50,7 +50,7 @@ begin
       updated_at = now();
   else
     delete from public.business_expenses
-    where source = 'order_refund'
+    where source = 'refund'
       and source_key = v_source_key;
   end if;
 
