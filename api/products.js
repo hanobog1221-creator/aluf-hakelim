@@ -10,19 +10,26 @@ module.exports = async function handler(req, res) {
   try {
     const supabaseUrl = (process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co').replace(/\/$/, '');
     const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_u8IwJRz4KndmAk13fGZM5A_csTsqjsk';
+    const headers = { apikey: publishableKey };
 
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at,last_sync_at&active=eq.true&order=sort_order.asc`,
-      { headers: { apikey: publishableKey } }
-    );
+    const [productsResponse, settingsResponse] = await Promise.all([
+      fetch(
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at,last_sync_at&active=eq.true&order=sort_order.asc`,
+        { headers }
+      ),
+      fetch(
+        `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=whatsapp_enabled,whatsapp_number,whatsapp_message,support_email,support_hours&limit=1`,
+        { headers }
+      )
+    ]);
 
-    if (!response.ok) {
-      const details = await response.text();
-      console.error('Supabase product catalog failed:', response.status, details);
+    if (!productsResponse.ok) {
+      const details = await productsResponse.text();
+      console.error('Supabase product catalog failed:', productsResponse.status, details);
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
 
-    const rows = await response.json();
+    const rows = await productsResponse.json();
     const products = rows.map((row) => ({
       id: String(row.id),
       name: String(row.name),
@@ -44,7 +51,29 @@ module.exports = async function handler(req, res) {
       supplierSyncedAt: row.last_sync_at || null
     }));
 
-    return res.status(200).json({ ok: true, products });
+    let store = {
+      whatsappEnabled: false,
+      whatsappNumber: null,
+      whatsappMessage: 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.',
+      supportEmail: null,
+      supportHours: null
+    };
+
+    if (settingsResponse.ok) {
+      const settingsRows = await settingsResponse.json();
+      const row = settingsRows[0];
+      if (row) {
+        store = {
+          whatsappEnabled: row.whatsapp_enabled === true,
+          whatsappNumber: row.whatsapp_number || null,
+          whatsappMessage: row.whatsapp_message || store.whatsappMessage,
+          supportEmail: row.support_email || null,
+          supportHours: row.support_hours || null
+        };
+      }
+    }
+
+    return res.status(200).json({ ok: true, products, store });
   } catch (error) {
     console.error('Products API error:', error);
     return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
