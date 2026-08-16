@@ -3,6 +3,7 @@ const { summarizeAccounting } = require('../_lib/accounting');
 
 const ORDER_STATUSES = new Set(['draft','payment_pending','paid','processing','ordered','shipped','completed','cancelled','error']);
 const FULFILLMENT_STATUSES = new Set(['not_started','waiting','ready','ordering','ordered','shipped','delivered','failed','cancelled']);
+const REFUND_STATUSES = new Set(['none','requested','approved','rejected','processing','partial','refunded']);
 const EXPENSE_CATEGORIES = new Set(['supplier_purchase','shipping','payment_fee','advertising','software','refund','bank_fee','other']);
 
 function text(value, max) {
@@ -75,6 +76,70 @@ function accountingDate(order) {
   return order.paid_at || order.created_at || null;
 }
 
+function parseRefundDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error('invalid_refund_date');
+  return date.toISOString();
+}
+
+async function loadOrder(supabaseUrl, orderId) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=*&limit=1`, {
+    headers: dbHeaders()
+  });
+  if (!response.ok) throw new Error(`order_read_${response.status}`);
+  return (await response.json())[0] || null;
+}
+
+function buildRefundUpdate(body, current) {
+  const wantsRefund = ['refund_status','refund_amount','refunded_at'].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+  if (!wantsRefund) return null;
+
+  const nextStatus = Object.prototype.hasOwnProperty.call(body, 'refund_status')
+    ? String(body.refund_status || 'none')
+    : String(current.refund_status || 'none');
+  if (!REFUND_STATUSES.has(nextStatus)) throw new Error('invalid_refund_status');
+
+  const paidTotal = Number((Number(current.total || 0) + Number(current.shipping_cost || 0)).toFixed(2));
+  const nextAmount = Object.prototype.hasOwnProperty.call(body, 'refund_amount')
+    ? Number(body.refund_amount)
+    : Number(current.refund_amount || 0);
+  if (!Number.isFinite(nextAmount) || nextAmount < 0 || nextAmount > paidTotal) throw new Error('invalid_refund_amount');
+
+  const completed = nextStatus === 'partial' || nextStatus === 'refunded';
+  if (completed && (!current.paid_at || !['paid','refunded'].includes(String(current.payment_status || '')))) {
+    throw new Error('refund_requires_paid_order');
+  }
+  if (nextStatus === 'partial' && (nextAmount <= 0 || nextAmount >= paidTotal)) throw new Error('invalid_partial_refund_amount');
+  if (nextStatus === 'refunded' && (paidTotal <= 0 || Number(nextAmount.toFixed(2)) !== paidTotal)) {
+    throw new Error('invalid_full_refund_amount');
+  }
+  if (['requested','approved','rejected','processing'].includes(nextStatus) && current.payment_status === 'refunded') {
+    throw new Error('completed_refund_cannot_reopen');
+  }
+
+  const update = {
+    refund_status: nextStatus,
+    refund_amount: Number(nextAmount.toFixed(2))
+  };
+
+  if (nextStatus === 'none') {
+    update.refund_amount = 0;
+    update.refunded_at = null;
+    if (current.paid_at && current.payment_status === 'refunded') update.payment_status = 'paid';
+  } else if (nextStatus === 'partial') {
+    update.payment_status = 'paid';
+    if (Object.prototype.hasOwnProperty.call(body, 'refunded_at')) update.refunded_at = parseRefundDate(body.refunded_at);
+  } else if (nextStatus === 'refunded') {
+    update.payment_status = 'refunded';
+    if (Object.prototype.hasOwnProperty.call(body, 'refunded_at')) update.refunded_at = parseRefundDate(body.refunded_at);
+  } else {
+    update.refunded_at = null;
+  }
+
+  return update;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -99,7 +164,6 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, expenses: true, year, items: expenses, summary: expensesSummary });
         }
 
-        // A refunded order was still originally paid, so accounting is based on paid_at rather than current payment_status.
         const response = await fetch(`${supabaseUrl}/rest/v1/orders?paid_at=not.is.null&select=*&order=created_at.asc&limit=5000`, {
           headers: dbHeaders()
         });
@@ -190,6 +254,9 @@ module.exports = async function handler(req, res) {
       const orderId = String(body.order_id || '').trim();
       if (!/^AH-[A-Z0-9-]{5,60}$/.test(orderId)) return res.status(400).json({ ok: false, error: 'invalid_order_id' });
 
+      const current = await loadOrder(supabaseUrl, orderId);
+      if (!current) return res.status(404).json({ ok: false, error: 'order_not_found' });
+
       const update = {};
       if ('status' in body) {
         const status = String(body.status || '');
@@ -207,6 +274,9 @@ module.exports = async function handler(req, res) {
       if ('admin_note' in body) update.admin_note = text(body.admin_note, 2000);
       if ('customer_note' in body) update.customer_note = text(body.customer_note, 800);
 
+      const refundUpdate = buildRefundUpdate(body, current);
+      if (refundUpdate) Object.assign(update, refundUpdate);
+
       if (!Object.keys(update).length) return res.status(400).json({ ok: false, error: 'no_changes' });
       update.updated_at = new Date().toISOString();
 
@@ -217,17 +287,24 @@ module.exports = async function handler(req, res) {
       });
       if (!response.ok) {
         const details = await response.text();
+        if (/refund|completed_refund/i.test(details)) return res.status(400).json({ ok: false, error: 'invalid_refund_update' });
         throw new Error(`order_update_${response.status}_${details.slice(0, 200)}`);
       }
       const order = (await response.json())[0] || null;
       if (!order) return res.status(404).json({ ok: false, error: 'order_not_found' });
 
       const changedFields = Object.keys(update).filter((key) => key !== 'updated_at');
-      await audit('order_update', 'order', orderId, { fields: changedFields });
-      await writeOrderEvent(supabaseUrl, orderId, 'admin_order_update', {
+      await audit(refundUpdate ? 'order_refund_record_update' : 'order_update', 'order', orderId, {
+        fields: changedFields,
+        refund_status: refundUpdate ? order.refund_status : undefined,
+        refund_amount: refundUpdate ? order.refund_amount : undefined
+      });
+      await writeOrderEvent(supabaseUrl, orderId, refundUpdate ? 'admin_refund_record_update' : 'admin_order_update', {
         fields: changedFields,
         status: order.status,
         fulfillmentStatus: order.fulfillment_status,
+        refundStatus: order.refund_status,
+        refundAmount: Number(order.refund_amount || 0),
         hasTracking: Boolean(order.tracking_number),
         hasCustomerNote: Boolean(order.customer_note)
       });
@@ -237,7 +314,15 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST, PATCH, DELETE');
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   } catch (error) {
+    const message = String(error.message || error);
     console.error('admin orders error', error);
+    if (message.includes('invalid_refund_status')) return res.status(400).json({ ok: false, error: 'invalid_refund_status' });
+    if (message.includes('invalid_refund_amount')) return res.status(400).json({ ok: false, error: 'invalid_refund_amount' });
+    if (message.includes('invalid_partial_refund_amount')) return res.status(400).json({ ok: false, error: 'invalid_partial_refund_amount' });
+    if (message.includes('invalid_full_refund_amount')) return res.status(400).json({ ok: false, error: 'invalid_full_refund_amount' });
+    if (message.includes('refund_requires_paid_order')) return res.status(400).json({ ok: false, error: 'refund_requires_paid_order' });
+    if (message.includes('completed_refund_cannot_reopen')) return res.status(400).json({ ok: false, error: 'completed_refund_cannot_reopen' });
+    if (message.includes('invalid_refund_date')) return res.status(400).json({ ok: false, error: 'invalid_refund_date' });
     return res.status(500).json({ ok: false, error: 'admin_orders_failed' });
   }
 };
