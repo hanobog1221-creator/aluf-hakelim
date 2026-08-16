@@ -91,7 +91,7 @@ async function callProduct(productId) {
   }
 
   const base = result.ae_item_base_info_dto || result;
-  const skus = skuRows(result).map(normalizedSku);
+  const skus = skuRows(result).map(normalizedSku).filter((sku) => sku.id);
   return {
     productId: String(productId),
     status: base.product_status_type || result.product_status_type || null,
@@ -129,9 +129,9 @@ async function writeSyncHistory(product, row) {
 
 async function updateProduct(product, snapshot) {
   const { supabaseUrl } = config();
-  const selected = product.supplier_sku_id
-    ? snapshot.skus.find((s) => s.id === String(product.supplier_sku_id))
-    : null;
+  const selectedId = product.supplier_sku_id ? String(product.supplier_sku_id) : null;
+  const selected = selectedId ? snapshot.skus.find((s) => s.id === selectedId) || null : null;
+  const selectedMissing = Boolean(selectedId && !selected);
   const availableSkus = snapshot.skus.filter((s) => s.inStock !== false);
   const fallback = availableSkus.find((s) => s.price != null) || snapshot.skus.find((s) => s.price != null) || null;
   const source = selected || fallback;
@@ -161,28 +161,44 @@ async function updateProduct(product, snapshot) {
     shippingError = String(error.code || error.message || error).slice(0, 300);
   }
 
+  const now = new Date().toISOString();
+  const skuVerified = Boolean(selected);
+  const shippingAvailable = Boolean(freight);
+  const ready = Boolean(
+    product.active === true &&
+    skuVerified &&
+    selected.inStock === true &&
+    shippingAvailable &&
+    supplierPriceIls != null
+  );
+
   const update = {
-    supplier_in_stock: inStock,
+    supplier_in_stock: selectedMissing ? false : inStock,
     supplier_stock: selected?.stock ?? null,
     supplier_price: source?.price ?? null,
     supplier_currency: source?.currency || null,
     supplier_price_ils: supplierPriceIls,
-    last_sync_at: new Date().toISOString(),
-    supplier_sync_error: null,
+    last_sync_at: now,
+    supplier_sync_error: selectedMissing ? 'selected_sku_missing' : null,
     shipping_sync_error: shippingError,
-    updated_at: new Date().toISOString()
+    sku_verified_at: skuVerified ? now : null,
+    sku_verified_by: skuVerified ? 'supplier_sync' : null,
+    fulfillment_ready: ready,
+    updated_at: now
   };
 
   if (freight) {
     update.supplier_shipping = freight.amountIls;
     update.shipping_currency = 'ILS';
     update.supplier_shipping_available = true;
-    update.shipping_last_checked_at = new Date().toISOString();
+    update.shipping_last_checked_at = now;
   } else if (shippingError === 'no_shipping_option') {
     update.supplier_shipping = null;
     update.shipping_currency = null;
     update.supplier_shipping_available = false;
-    update.shipping_last_checked_at = new Date().toISOString();
+    update.shipping_last_checked_at = now;
+  } else {
+    update.supplier_shipping_available = null;
   }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
@@ -190,7 +206,10 @@ async function updateProduct(product, snapshot) {
     headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
     body: JSON.stringify(update)
   });
-  if (!response.ok) throw new Error(`product_sync_save_${response.status}`);
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`product_sync_save_${response.status}_${details.slice(0, 200)}`);
+  }
 
   await writeSyncHistory(product, {
     supplierProductId: snapshot.productId,
@@ -199,12 +218,12 @@ async function updateProduct(product, snapshot) {
     price: update.supplier_price,
     currency: update.supplier_currency,
     priceIls: update.supplier_price_ils,
-    shippingAvailable: Object.prototype.hasOwnProperty.call(update, 'supplier_shipping_available') ? update.supplier_shipping_available : null,
+    shippingAvailable: update.supplier_shipping_available ?? null,
     shippingIls: Object.prototype.hasOwnProperty.call(update, 'supplier_shipping') ? update.supplier_shipping : null,
-    error: null
+    error: update.supplier_sync_error || null
   });
 
-  return { selectedSku: selected || null, update, freight };
+  return { selectedSku: selected, skuVerified, ready, update, freight };
 }
 
 async function markSyncError(product, error) {
@@ -215,6 +234,7 @@ async function markSyncError(product, error) {
     headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
     body: JSON.stringify({
       supplier_sync_error: message,
+      fulfillment_ready: false,
       updated_at: new Date().toISOString()
     })
   }).catch(() => {});
@@ -245,12 +265,15 @@ module.exports = async function handler(req, res) {
           results.push({
             id: product.id,
             ok: true,
+            skuVerified: saved.skuVerified,
+            ready: saved.ready,
             inStock: saved.update.supplier_in_stock,
             price: saved.update.supplier_price,
             priceIls: saved.update.supplier_price_ils,
             shipping: saved.update.supplier_shipping ?? null,
             shippingAvailable: saved.update.supplier_shipping_available ?? null,
-            shippingError: saved.update.shipping_sync_error || null
+            shippingError: saved.update.shipping_sync_error || null,
+            supplierError: saved.update.supplier_sync_error || null
           });
         } catch (error) {
           await markSyncError(product, error);
