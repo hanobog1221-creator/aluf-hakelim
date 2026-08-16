@@ -101,6 +101,31 @@ async function callProduct(productId) {
   };
 }
 
+async function writeSyncHistory(product, row) {
+  try {
+    const { supabaseUrl } = config();
+    await fetch(`${supabaseUrl}/rest/v1/supplier_sync_history`, {
+      method: 'POST',
+      headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        store_product_id: String(product.id),
+        supplier_product_id: product.supplier_product_id || row.supplierProductId || null,
+        supplier_sku_id: product.supplier_sku_id || null,
+        in_stock: row.inStock ?? null,
+        stock: row.stock ?? null,
+        price: row.price ?? null,
+        currency: row.currency || null,
+        price_ils: row.priceIls ?? null,
+        shipping_available: row.shippingAvailable ?? null,
+        shipping_ils: row.shippingIls ?? null,
+        sync_error: row.error ? String(row.error).slice(0, 300) : null
+      })
+    });
+  } catch (error) {
+    console.error('supplier sync history write failed', error);
+  }
+}
+
 async function updateProduct(product, snapshot) {
   const { supabaseUrl } = config();
   const selected = product.supplier_sku_id
@@ -165,19 +190,34 @@ async function updateProduct(product, snapshot) {
     body: JSON.stringify(update)
   });
   if (!response.ok) throw new Error(`product_sync_save_${response.status}`);
+
+  await writeSyncHistory(product, {
+    supplierProductId: snapshot.productId,
+    inStock: update.supplier_in_stock,
+    stock: update.supplier_stock,
+    price: update.supplier_price,
+    currency: update.supplier_currency,
+    priceIls: update.supplier_price_ils,
+    shippingAvailable: Object.prototype.hasOwnProperty.call(update, 'supplier_shipping_available') ? update.supplier_shipping_available : null,
+    shippingIls: Object.prototype.hasOwnProperty.call(update, 'supplier_shipping') ? update.supplier_shipping : null,
+    error: null
+  });
+
   return { selectedSku: selected || null, update, freight };
 }
 
-async function markSyncError(productId, error) {
+async function markSyncError(product, error) {
   const { supabaseUrl } = config();
-  await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(productId)}`, {
+  const message = String(error.code || error.message || error).slice(0, 300);
+  await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
     method: 'PATCH',
     headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
     body: JSON.stringify({
-      supplier_sync_error: String(error.code || error.message || error).slice(0, 300),
+      supplier_sync_error: message,
       updated_at: new Date().toISOString()
     })
   }).catch(() => {});
+  await writeSyncHistory(product, { error: message });
 }
 
 module.exports = async function handler(req, res) {
@@ -213,7 +253,7 @@ module.exports = async function handler(req, res) {
             shippingError: saved.update.shipping_sync_error || null
           });
         } catch (error) {
-          await markSyncError(product.id, error);
+          await markSyncError(product, error);
           results.push({ id: product.id, ok: false, error: String(error.code || error.message || error) });
         }
       }
@@ -241,7 +281,7 @@ module.exports = async function handler(req, res) {
       if (product) saved = await updateProduct(product, snapshot);
       return res.status(200).json({ ok: true, snapshot, saved });
     } catch (error) {
-      if (product) await markSyncError(product.id, error);
+      if (product) await markSyncError(product, error);
       return res.status(200).json({
         ok: false,
         error: String(error.code || error.message || error),
