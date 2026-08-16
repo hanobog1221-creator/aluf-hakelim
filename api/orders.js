@@ -64,7 +64,7 @@ module.exports = async function handler(req, res) {
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready&id=in.(${encodeURIComponent(idFilter)})`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping,shipping_currency,last_sync_at&id=in.(${encodeURIComponent(idFilter)})`,
       {
         headers: {
           apikey: serviceKey,
@@ -85,7 +85,7 @@ module.exports = async function handler(req, res) {
     const normalized = [];
     for (const item of requested) {
       const product = byId.get(item.id);
-      if (!product || product.active !== true) {
+      if (!product || product.active !== true || product.supplier_in_stock === false) {
         return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
       }
 
@@ -104,7 +104,9 @@ module.exports = async function handler(req, res) {
         supplierUrl: product.supplier_url || null,
         supplierProductId: product.supplier_product_id || null,
         supplierSkuId: product.supplier_sku_id || null,
-        fulfillmentReady: Boolean(product.fulfillment_ready)
+        fulfillmentReady: Boolean(product.fulfillment_ready),
+        supplierStockKnown: product.supplier_in_stock !== null,
+        supplierSyncedAt: product.last_sync_at || null
       });
     }
 
