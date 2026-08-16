@@ -136,6 +136,7 @@ module.exports = async function handler(req, res) {
 
         const row = {
           id: 'primary',
+          sales_enabled: hasOwn(body, 'sales_enabled') ? body.sales_enabled === true : current.sales_enabled === true,
           whatsapp_enabled: hasOwn(body, 'whatsapp_enabled') ? body.whatsapp_enabled === true : current.whatsapp_enabled === true,
           whatsapp_number: hasOwn(body, 'whatsapp_number') ? cleanWhatsappNumber(body.whatsapp_number) : (current.whatsapp_number || null),
           whatsapp_message: hasOwn(body, 'whatsapp_message')
@@ -177,6 +178,7 @@ module.exports = async function handler(req, res) {
         const settings = (await response.json())[0] || row;
         await audit('store_settings_update', 'site_settings', 'primary', {
           fields: Object.keys(body).filter((key) => key !== 'action'),
+          sales_enabled: row.sales_enabled,
           whatsapp_enabled: row.whatsapp_enabled,
           support_email_set: Boolean(row.support_email),
           minimum_profit_ils: row.minimum_profit_ils,
