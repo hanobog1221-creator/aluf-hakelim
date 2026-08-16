@@ -46,6 +46,28 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(aa, bb);
 }
 
+function expectedOrigin(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return host ? `${proto}://${host}` : null;
+}
+
+function requireSameOrigin(req, res) {
+  const site = String(req.headers['sec-fetch-site'] || '').trim().toLowerCase();
+  if (site && !['same-origin', 'same-site', 'none'].includes(site)) {
+    res.status(403).json({ ok: false, error: 'cross_site_request_blocked' });
+    return false;
+  }
+
+  const origin = String(req.headers.origin || '').trim().replace(/\/$/, '');
+  const expected = expectedOrigin(req);
+  if (origin && expected && origin !== expected) {
+    res.status(403).json({ ok: false, error: 'origin_mismatch' });
+    return false;
+  }
+  return true;
+}
+
 async function verifyCredentials(username, password) {
   const { supabaseUrl } = config();
   const response = await fetch(`${supabaseUrl}/rest/v1/admin_credentials?username=eq.${encodeURIComponent(String(username))}&select=username,password_salt,password_hash&limit=1`, {
@@ -105,6 +127,10 @@ async function requireAdmin(req, res) {
     res.status(401).json({ ok: false, error: 'unauthorized' });
     return false;
   }
+
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase()) && !requireSameOrigin(req, res)) {
+    return false;
+  }
   return true;
 }
 
@@ -139,6 +165,7 @@ module.exports = {
   createSession,
   deleteSession,
   requireAdmin,
+  requireSameOrigin,
   setSessionCookie,
   audit
 };
