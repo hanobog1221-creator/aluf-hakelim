@@ -2,6 +2,8 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /admin-tools
+Disallow: /launch-checklist
+Disallow: /track
 Disallow: /api/
 
 Sitemap: https://aluf-hakelim-v2-ready.vercel.app/sitemap.xml
