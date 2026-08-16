@@ -1,3 +1,29 @@
+const crypto = require('crypto');
+
+function requestFingerprint(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = forwarded || String(req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown');
+  return crypto.createHash('sha256').update(`order-status:${ip}`, 'utf8').digest('hex');
+}
+
+async function consumeLookupRateLimit(req, supabaseUrl, serviceKey) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_api_rate_limit`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      p_key: requestFingerprint(req),
+      p_limit: 30,
+      p_window_seconds: 600
+    })
+  });
+  if (!response.ok) throw new Error(`rate_limit_check_${response.status}`);
+  return (await response.json()) === true;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -20,6 +46,12 @@ module.exports = async function handler(req, res) {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !serviceKey) {
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const allowed = await consumeLookupRateLimit(req, supabaseUrl, serviceKey);
+    if (!allowed) {
+      res.setHeader('Retry-After', '600');
+      return res.status(429).json({ ok: false, error: 'too_many_requests' });
     }
 
     const response = await fetch(
