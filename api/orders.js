@@ -7,6 +7,12 @@ function normalizeCouponCode(value) {
   return code;
 }
 
+function normalizeRequestId(value) {
+  const id = String(value || '').trim();
+  if (!id) return null;
+  return /^[A-Za-z0-9_-]{8,100}$/.test(id) ? id : '__INVALID__';
+}
+
 async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal }) {
   if (!code) return { code: null, discountAmount: 0, coupon: null };
   if (code === '__INVALID__') {
@@ -80,6 +86,48 @@ async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal
   };
 }
 
+function responseFromStoredOrder(order, duplicate = true) {
+  const productsSubtotal = Number(order.products_subtotal ?? (Number(order.total || 0) + Number(order.discount_amount || 0)));
+  const discountAmount = Number(order.discount_amount || 0);
+  const discountedProductsSubtotal = Number(order.total || 0);
+  const shippingCostRaw = Number(order.shipping_cost || 0);
+  const shippingStatus = order.shipping_quote_status || 'failed';
+  const shippingCost = shippingStatus === 'quoted' ? shippingCostRaw : null;
+  const finalTotal = Number((discountedProductsSubtotal + shippingCostRaw).toFixed(2));
+  return {
+    ok: true,
+    persisted: true,
+    duplicate,
+    orderId: order.order_id,
+    status: order.status,
+    paymentStatus: order.payment_status,
+    fulfillmentStatus: order.fulfillment_status,
+    productsSubtotal,
+    discountAmount,
+    discountedProductsSubtotal,
+    couponCode: order.coupon_code || null,
+    coupon: null,
+    shippingStatus,
+    shippingCost,
+    shippingCurrency: 'ILS',
+    shippingLines: order.shipping_quote?.lines || [],
+    total: finalTotal,
+    currency: order.currency || 'ILS',
+    items: Array.isArray(order.items) ? order.items : [],
+    waitingForAliExpressPermission: Boolean(order.shipping_quote?.waitingForAliExpressPermission)
+  };
+}
+
+async function findExistingRequest({ supabaseUrl, serviceKey, requestId }) {
+  if (!requestId) return null;
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/orders?client_request_id=eq.${encodeURIComponent(requestId)}&select=*&limit=1`,
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+  );
+  if (!response.ok) throw new Error(`idempotency_lookup_${response.status}`);
+  return (await response.json())[0] || null;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -135,12 +183,24 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ ok: false, error: 'invalid_customer' });
     }
 
+    const requestId = normalizeRequestId(body.clientRequestId);
+    if (requestId === '__INVALID__') return res.status(400).json({ ok: false, error: 'invalid_request_id' });
+
     const supabaseUrl = (process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co').replace(/\/$/, '');
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!serviceKey) {
       console.error('SUPABASE_SERVICE_ROLE_KEY is missing');
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    if (body.quoteOnly !== true && requestId) {
+      const existing = await findExistingRequest({ supabaseUrl, serviceKey, requestId });
+      if (existing) {
+        const existingPhone = String(existing.customer?.phone || '').replace(/\D/g, '');
+        if (existingPhone !== phoneDigits) return res.status(409).json({ ok: false, error: 'idempotency_conflict' });
+        return res.status(200).json(responseFromStoredOrder(existing, true));
+      }
     }
 
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
@@ -257,6 +317,7 @@ module.exports = async function handler(req, res) {
     const now = new Date().toISOString();
     const order = {
       order_id: orderId,
+      client_request_id: requestId,
       status: 'draft',
       payment_status: 'unpaid',
       fulfillment_status: 'not_started',
@@ -288,6 +349,13 @@ module.exports = async function handler(req, res) {
 
     if (!dbResponse.ok) {
       const details = await dbResponse.text();
+      if (dbResponse.status === 409 && requestId) {
+        const existing = await findExistingRequest({ supabaseUrl, serviceKey, requestId });
+        if (existing) {
+          const existingPhone = String(existing.customer?.phone || '').replace(/\D/g, '');
+          if (existingPhone === phoneDigits) return res.status(200).json(responseFromStoredOrder(existing, true));
+        }
+      }
       console.error('Supabase order insert failed:', dbResponse.status, details);
       return res.status(500).json({ ok: false, error: 'order_storage_failed' });
     }
@@ -295,6 +363,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       persisted: true,
+      duplicate: false,
       orderId,
       status: order.status,
       paymentStatus: order.payment_status,
