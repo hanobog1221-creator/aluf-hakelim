@@ -1,6 +1,7 @@
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+  // Store state includes the emergency sales switch and must update immediately.
+  res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -9,16 +10,16 @@ module.exports = async function handler(req, res) {
 
   try {
     const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceKey) {
+    const serverKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serverKey) {
       console.error('Public catalog server credentials are missing');
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
-    const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+    const headers = { apikey: serverKey, Authorization: `Bearer ${serverKey}` };
 
     const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at&active=eq.true&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,fulfillment_ready,supplier_in_stock,supplier_shipping_available&active=eq.true&order=sort_order.asc`,
         { headers }
       ),
       fetch(
@@ -34,26 +35,33 @@ module.exports = async function handler(req, res) {
     }
 
     const rows = await productsResponse.json();
-    const products = rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      price: Number(row.selling_price),
-      old: row.old_price == null ? null : Number(row.old_price),
-      currency: row.currency || 'ILS',
-      img: row.image_url || null,
-      cat: Array.isArray(row.categories) ? row.categories : [],
-      kind: row.kind || '',
-      badge: row.badge || '',
-      badgeClass: row.badge_class || '',
-      desc: row.description || '',
-      specs: Array.isArray(row.specs) ? row.specs : [],
-      maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
-      available: row.active === true && row.supplier_in_stock !== false && row.supplier_shipping_available !== false,
-      shipping: row.supplier_shipping == null ? null : Number(row.supplier_shipping),
-      shippingAvailable: row.supplier_shipping_available,
-      shippingCurrency: row.shipping_currency || null,
-      shippingCheckedAt: row.shipping_last_checked_at || null
-    }));
+    const products = rows.map((row) => {
+      const purchaseReady = row.active === true
+        && row.fulfillment_ready === true
+        && row.supplier_in_stock === true
+        && row.supplier_shipping_available === true;
+
+      return {
+        id: String(row.id),
+        name: String(row.name),
+        price: Number(row.selling_price),
+        old: row.old_price == null ? null : Number(row.old_price),
+        currency: row.currency || 'ILS',
+        img: row.image_url || null,
+        cat: Array.isArray(row.categories) ? row.categories : [],
+        kind: row.kind || '',
+        badge: row.badge || '',
+        badgeClass: row.badge_class || '',
+        desc: row.description || '',
+        specs: Array.isArray(row.specs) ? row.specs : [],
+        maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
+        // `available` keeps active catalog items visible for browsing.
+        available: row.active === true,
+        // `purchaseReady` is fail-closed and controls whether an item may enter the cart.
+        purchaseReady,
+        shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true
+      };
+    });
 
     let store = {
       salesEnabled: false,
@@ -77,6 +85,8 @@ module.exports = async function handler(req, res) {
           supportHours: row.support_hours || null
         };
       }
+    } else {
+      console.error('Public store settings read failed:', settingsResponse.status, (await settingsResponse.text()).slice(0, 300));
     }
 
     return res.status(200).json({ ok: true, products, store });
