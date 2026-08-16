@@ -12,12 +12,13 @@ function israelPhoneParts(value) {
   return { phoneCountry: '+972', mobileNo: digits };
 }
 
-function shippingLineMap(order) {
-  const lines = Array.isArray(order?.shipping_quote?.lines) ? order.shipping_quote.lines : [];
+function shippingLineMap(order, shippingQuoteOverride = null) {
+  const source = shippingQuoteOverride || order?.shipping_quote || null;
+  const lines = Array.isArray(source?.lines) ? source.lines : [];
   return new Map(lines.map((line) => [String(line.id || ''), line]));
 }
 
-function buildPlaceOrderRequest(order) {
+function buildPlaceOrderRequest(order, shippingQuoteOverride = null) {
   const customer = order?.customer || {};
   const items = Array.isArray(order?.items) ? order.items : [];
   if (!items.length) throw new Error('no_items');
@@ -32,7 +33,7 @@ function buildPlaceOrderRequest(order) {
   const address = `${street} ${houseNumber}`.trim();
   const apartment = clean(customer.apartment, 20);
   const zip = clean(customer.postalCode, 20);
-  const shippingByProduct = shippingLineMap(order);
+  const shippingByProduct = shippingLineMap(order, shippingQuoteOverride);
 
   const productItems = items.map((item) => {
     const productId = String(item.supplierProductId || '');
