@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>קליטת SKU ומלאי | אלוף הכלים</title>
+<style>
+:root{--dark:#0b1118;--yellow:#ffc928;--line:#dfe4e9;--muted:#687684;--ok:#176b3d;--bad:#9d1d26}*{box-sizing:border-box}body{margin:0;font-family:Arial,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#eef1f4;color:#171717}.top{background:var(--dark);color:#fff}.topin{max-width:900px;margin:auto;padding:15px;display:flex;justify-content:space-between;gap:10px;align-items:center}.brand{font-size:21px;font-weight:950}.brand span{color:var(--yellow)}.top a{color:#fff;text-decoration:none;border:1px solid #38485a;border-radius:9px;padding:8px 10px;font-weight:850}.wrap{max-width:900px;margin:20px auto;padding:0 14px}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:16px;margin-bottom:12px}.panel h1,.panel h2{margin:0 0 8px}.muted{color:var(--muted);font-size:12px;line-height:1.6}.notice{background:#fff8d8;border:1px solid #efd36d;border-radius:11px;padding:11px 13px;margin:12px 0;font-size:13px;line-height:1.55}.ok{background:#effaf3;border-color:#b8dec7;color:#155d35}.bad{background:#fff4f4;border-color:#ffd0d2;color:#8c1822}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{display:flex;flex-direction:column;gap:5px}.field.full{grid-column:1/-1}.field label{font-size:12px;font-weight:900;color:#596571}.field input,.field select{border:1px solid #ccd4dc;border-radius:10px;padding:10px;background:#fff;width:100%}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:var(--yellow);color:#111;padding:10px 14px;font-weight:950;cursor:pointer;text-decoration:none}.btn.dark{background:#111923;color:#fff}.btn.light{background:#fff;border:1px solid #d7dde3}.hidden{display:none!important}@media(max-width:650px){.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.topin{align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="top"><div class="topin"><div class="brand">אלוף <span>הכלים</span> · SKU ומלאי</div><a href="/suppliers">חזרה לספקים</a></div></div>
+<main class="wrap">
+<section class="panel">
+<h1>קליטת SKU ומלאי מהעמוד הפתוח</h1>
+<div class="muted">הכלי מחפש עמוק בנתוני React/JavaScript שכבר נטענו בעמוד AliExpress. הוא לא שומר כלום עד שאתה בוחר מועמד ולוחץ שמור.</div>
+<div class="notice"><b>פעם אחת:</b> גרור את הכפתור לסרגל הסימניות. אחר כך פתח מוצר ב-AliExpress, בחר את הווריאנט המדויק ולחץ על הסימנייה.</div>
+<div class="row"><a id="bookmark" class="btn" href="#">🔎 מצא SKU ומלאי</a><button id="copy" class="btn light" type="button">העתק קוד סימנייה</button></div>
+<div id="copyMsg" class="muted" style="margin-top:7px"></div>
+</section>
+<section class="panel">
+<h2>תוצאה</h2>
+<div id="status" class="notice">ממתין לקליטה מעמוד AliExpress.</div>
+<div id="form" class="hidden">
+<div class="grid">
+<div class="field full"><label>מוצר באתר</label><select id="product"></select></div>
+<div class="field"><label>Product ID</label><input id="productId" readonly></div>
+<div class="field"><label>וריאנט שנבחר</label><input id="variant" readonly></div>
+<div class="field full"><label>מועמדי SKU</label><select id="sku"></select></div>
+<div class="field"><label>SKU ID</label><input id="skuId" readonly></div>
+<div class="field"><label>מקור</label><input id="source" readonly></div>
+<div class="field"><label>מצב מלאי</label><input id="stockStatus" readonly></div>
+<div class="field"><label>כמות זמינה</label><input id="stockQty" readonly></div>
+<div class="field full"><label>מאפייני SKU</label><input id="attr" readonly></div>
+</div>
+<div class="row"><button id="save" class="btn dark" type="button">שמור SKU ומלאי באדמין</button></div>
+<div id="saveMsg" class="notice hidden"></div>
+<div id="diag" class="muted" style="margin-top:10px"></div>
+</div>
+</section>
+</main>
+<script>
+const $=s=>document.querySelector(s);let products=[],payload=null,candidates=[],chosen=null;
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function makeBookmarklet(){
+ const target=location.origin+'/supplier-sku-capture.html';
+ const code=`(()=>{try{
+const T=e=>String(e?.innerText||e?.textContent||'').replace(/\\s+/g,' ').trim();
+const norm=s=>String(s||'').toLowerCase().replace(/[\\s_\\-:;|/]+/g,' ').trim();
+const url=document.querySelector('link[rel=canonical]')?.href||location.href;const pid=(url.match(/(?:item\\/|product\\/)(\\d{8,20})\\.html/i)||location.href.match(/(?:item\\/|product\\/)(\\d{8,20})\\.html/i)||[])[1]||'';
+const selected=[...document.querySelectorAll('[aria-checked="true"],[aria-selected="true"],[class*="sku-item--selected"],[class*="sku-item"][class*="selected"]')].filter(e=>String(e.className||'').toLowerCase().includes('sku')||e.closest('[class*="sku"]'));
+const labels=[],selIds=[];for(const e of selected){let t=e.getAttribute('title')||e.getAttribute('aria-label')||e.querySelector('img')?.alt||T(e);t=String(t||'').trim();if(t&&t.length<100&&!labels.includes(t))labels.push(t);const dump=(e.outerHTML||'')+' '+[...(e.attributes||[])].map(a=>a.value).join(' ');for(const m of dump.matchAll(/\\b\\d{2,18}\\b/g))if(!selIds.includes(m[0]))selIds.push(m[0])}const variant=labels.slice(0,5).join(' / ');
+const out=[],seen=new Set();let walked=0,reactRoots=0,windowRoots=0,scriptHits=0;
+const qtyOf=o=>{for(const k of ['availQuantity','availableQuantity','inventory','stock','quantity','totalStock','skuStock']){const n=Number(o?.[k]);if(Number.isInteger(n)&&n>=0&&n<=100000000)return n}return null};
+const boolOf=o=>{for(const k of ['isAvailable','available','isSellable','sellable','inStock'])if(typeof o?.[k]==='boolean')return o[k];return null};
+const add=(obj,source,path,forcedId)=>{if(!obj||typeof obj!=='object')return;let id=String(forcedId??obj.skuId??obj.skuIdStr??obj.sku_id??obj.skuID??'').trim();if(!/^\\d{5,30}$/.test(id))return;const val=obj.skuVal&&typeof obj.skuVal==='object'?obj.skuVal:obj;const qty=qtyOf(val)??qtyOf(obj);let stock=boolOf(val);if(stock===null)stock=boolOf(obj);if(qty!==null)stock=qty>0;const attr=String(obj.skuAttr??obj.sku_attr??obj.skuPropIds??obj.skuPropertyIds??obj.properties??obj.propIds??'');const text=norm(attr+' '+JSON.stringify(obj).slice(0,1200));let score=0;for(const l of labels){const nl=norm(l);if(nl&&text.includes(nl))score+=20}for(const x of selIds)if(text.includes(x))score+=5;if(source.includes('react'))score+=4;if(source.includes('window'))score+=2;if(qty!==null)score+=2;const key=id+'|'+String(qty)+'|'+attr;const row={id,qty,inStock:stock,attr:attr.slice(0,300),source,path:String(path||'').slice(0,220),score};const old=out.find(x=>x.id===id);if(!old)out.push(row);else if(score>old.score)Object.assign(old,row);seen.add(key)};
+const walk=(root,source,maxNodes=18000)=>{const ws=new WeakSet();let count=0;const rec=(o,d,path,parentKey)=>{if(!o||typeof o!=='object'||d>10||count++>maxNodes)return;if(ws.has(o))return;ws.add(o);walked++;try{const explicit=o.skuId??o.skuIdStr??o.sku_id??o.skuID;if(explicit!=null)add(o,source,path,explicit);if(/skuPriceList|skuList|skuPrices|skuMap|skuData/i.test(parentKey||'')){if(Array.isArray(o))for(const x of o.slice(0,800))add(x,source,path);else add(o,source,path)}const entries=Array.isArray(o)?o.slice(0,800).map((v,i)=>[i,v]):Object.entries(o).slice(0,900);for(const [k,v] of entries){if(v&&typeof v==='object')rec(v,d+1,path+'.'+k,String(k))}}catch{}};try{rec(root,0,source,'')}catch{}};
+for(const name of ['runParams','__INIT_DATA__','__INITIAL_STATE__','__NEXT_DATA__','__APOLLO_STATE__','__PRELOADED_STATE__','__SSR_DATA__','dataLayer']){try{const r=window[name];if(r&&typeof r==='object'){windowRoots++;walk(r,'window:'+name,14000)}}catch{}}
+for(const k of Object.keys(window).filter(k=>/sku|product|detail|state|data|init/i.test(k)).slice(0,120)){try{const r=window[k];if(r&&typeof r==='object'){windowRoots++;walk(r,'window:'+k,5000)}}catch{}}
+const roots=[];for(const e of selected){let n=e;for(let i=0;n&&i<8;i++,n=n.parentElement)roots.push(n)}roots.push(document.body);for(const el of roots){try{for(const k of Object.getOwnPropertyNames(el)){if(/^__reactProps\\$|^__reactFiber\\$|^__reactContainer\\$|^__vueParentComponent/.test(k)){reactRoots++;walk(el[k],'react:'+k,12000)}}}catch{}}
+const scripts=[...document.scripts].map(s=>s.textContent||'').filter(Boolean);for(const s of scripts){let m;const re=/(?:\\"|'|\\b)(skuIdStr|skuId|sku_id|skuID)(?:\\"|'|\\b)\\s*[:=]\\s*[\\"']?(\\d{5,30})/ig;while((m=re.exec(s))&&out.length<500){scriptHits++;const chunk=s.slice(Math.max(0,m.index-1800),Math.min(s.length,m.index+2800));const aq=(chunk.match(/(?:availQuantity|availableQuantity|inventory|stock|quantity)\\s*[\\"']?\\s*[:=]\\s*[\\"']?(\\d{1,9})/i)||[])[1];const attr=(chunk.match(/(?:skuAttr|sku_attr|skuPropIds|skuPropertyIds)\\s*[\\"']?\\s*[:=]\\s*[\\"']([^\\"']{0,350})[\\"']/i)||[])[1]||'';add({skuId:m[2],skuAttr:attr,skuVal:{availQuantity:aq==null?undefined:Number(aq)}},'script','inline',m[2])}}
+out.sort((a,b)=>b.score-a.score||(b.qty??-1)-(a.qty??-1));const data={v:5,productId:pid,pageUrl:url,variant,labels,selectedIds:selIds.slice(0,30),candidates:out.slice(0,80),diag:{walked,reactRoots,windowRoots,scriptHits,total:out.length},capturedAt:new Date().toISOString()};window.open(${JSON.stringify(target)}+'#data='+encodeURIComponent(JSON.stringify(data)),'_blank')
+}catch(e){alert('SKU capture failed: '+e.message)}})()`;
+ return 'javascript:'+code.replace(/\n/g,'');
+}
+const bookmark=makeBookmarklet();$('#bookmark').href=bookmark;$('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(bookmark);$('#copyMsg').textContent='הקוד הועתק.'}catch{$('#copyMsg').textContent='לא הצלחנו להעתיק אוטומטית.'}};
+async function load(){const r=await fetch('/api/admin/products',{cache:'no-store',headers:{accept:'application/json'}});if(r.status===401){$('#status').className='notice bad';$('#status').innerHTML='צריך להתחבר לאדמין קודם. <a href="/admin">כניסה לניהול</a>';throw new Error('unauthorized')}const d=await r.json();if(!r.ok||!d.ok)throw new Error('load_failed');products=d.products||[]}
+function decode(){const raw=location.hash.startsWith('#data=')?location.hash.slice(6):'';try{return raw?JSON.parse(decodeURIComponent(raw)):null}catch{return null}}
+function apply(row){chosen=row||null;$('#skuId').value=row?.id||'';$('#source').value=row?.source||'';$('#attr').value=row?.attr||'';$('#stockQty').value=row?.qty??'';$('#stockStatus').value=row?.inStock===true?'במלאי':row?.inStock===false?'אזל מהמלאי':'לא ידוע'}
+function fill(){payload=decode();if(!payload)return;const match=products.find(p=>String(p.supplier_product_id||'')===String(payload.productId||''));$('#product').innerHTML=products.map(p=>`<option value="${esc(p.id)}" ${match&&p.id===match.id?'selected':''}>${esc(p.name)} · ${esc(p.supplier_product_id||'')}</option>`).join('');$('#productId').value=payload.productId||'';$('#variant').value=payload.variant||'';candidates=Array.isArray(payload.candidates)?payload.candidates.filter(x=>x&&/^\d{5,30}$/.test(String(x.id||''))):[];$('#form').classList.remove('hidden');$('#diag').textContent=`אבחון: ${candidates.length} מועמדי SKU · React roots: ${payload.diag?.reactRoots||0} · Window roots: ${payload.diag?.windowRoots||0} · Script hits: ${payload.diag?.scriptHits||0}`;if(!candidates.length){$('#status').className='notice bad';$('#status').textContent='עדיין לא נמצא SKU. האבחון נשמר במסך כדי שנדע מאיפה להמשיך.';$('#sku').innerHTML='<option>לא נמצא SKU</option>';apply(null);return}$('#sku').innerHTML=candidates.map((x,i)=>`<option value="${i}">SKU ${esc(x.id)} · ${x.inStock===true?'במלאי':x.inStock===false?'אזל':'מלאי לא ידוע'}${x.qty!=null?' · כמות '+esc(x.qty):''}${x.attr?' · '+esc(x.attr):''} · ${esc(x.source)}</option>`).join('');$('#sku').onchange=()=>apply(candidates[Number($('#sku').value)||0]);apply(candidates[0]);$('#status').className='notice '+(match?'ok':'');$('#status').textContent=match?'נמצאו מועמדי SKU. ודא שהווריאנט וה-SKU מתאימים ואז שמור.':'נמצאו SKU אבל לא נמצא Product ID תואם אוטומטית; בחר מוצר נכון לפני שמירה.'}
+$('#save').onclick=async()=>{if(!chosen){$('#saveMsg').className='notice bad';$('#saveMsg').textContent='אין SKU לשמירה.';$('#saveMsg').classList.remove('hidden');return}const product=products.find(p=>p.id===$('#product').value);if(!product)return;const productId=String($('#productId').value||'');if(String(product.supplier_product_id||'')!==productId){$('#saveMsg').className='notice bad';$('#saveMsg').textContent='Product ID לא תואם למוצר שבחרת.';$('#saveMsg').classList.remove('hidden');return}$('#save').disabled=true;try{const r=await fetch('/api/admin/supplier-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:product.id,supplier_product_id:productId,supplier_sku_id:chosen.id,supplier_stock:chosen.qty,supplier_in_stock:chosen.inStock,captured_at:payload.capturedAt})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.error||'save_failed');$('#saveMsg').className='notice ok';$('#saveMsg').textContent='נשמר ✓ SKU והמלאי עודכנו במוצר.'}catch(e){$('#saveMsg').className='notice bad';$('#saveMsg').textContent='השמירה נכשלה: '+e.message}finally{$('#saveMsg').classList.remove('hidden');$('#save').disabled=false}};
+(async()=>{try{await load();fill()}catch(e){if(e.message!=='unauthorized'){$('#status').className='notice bad';$('#status').textContent='טעינת האדמין נכשלה.'}}})();
+</script>
+</body>
+</html>
