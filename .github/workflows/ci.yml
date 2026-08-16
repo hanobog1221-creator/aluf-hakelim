@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,6 +31,32 @@ jobs:
             node --check "$file"
           done < <(find . -type f -name '*.js' -not -path './.git/*' -print0)
 
+      - name: Check inline HTML JavaScript
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          for (const name of fs.readdirSync('.').filter((n) => n.endsWith('.html'))) {
+            const html = fs.readFileSync(name, 'utf8');
+            const re = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
+            let match;
+            let index = 0;
+            while ((match = re.exec(html))) {
+              const attrs = match[1] || '';
+              if (/\bsrc\s*=/i.test(attrs)) continue;
+              const typeMatch = attrs.match(/\btype\s*=\s*["']([^"']+)["']/i);
+              if (typeMatch && !['text/javascript', 'application/javascript'].includes(typeMatch[1].toLowerCase())) continue;
+              index += 1;
+              try {
+                new Function(match[2]);
+              } catch (error) {
+                throw new Error(`${name} inline script ${index}: ${error.message}`);
+              }
+            }
+            console.log(`Checked ${name}`);
+          }
+          NODE
+
       - name: Validate JSON files
         shell: bash
         run: |
@@ -38,3 +65,6 @@ jobs:
             echo "Checking $file"
             node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$file"
           done < <(find . -type f -name '*.json' -not -path './.git/*' -print0)
+
+      - name: Run safety tests
+        run: npm test
