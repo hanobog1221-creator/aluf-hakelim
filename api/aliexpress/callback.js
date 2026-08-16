@@ -26,6 +26,18 @@ function validSignedState(value, secret) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+function safeTokenMetadata(token) {
+  return {
+    code: token?.code ?? null,
+    request_id: token?.request_id ?? null,
+    expires_in: token?.expires_in ?? null,
+    refresh_expires_in: token?.refresh_expires_in ?? token?.re_expires_in ?? null,
+    token_type: token?.token_type ?? null,
+    user_id: token?.user_id ?? token?.seller_id ?? null,
+    user_nick: token?.user_nick ?? token?.account ?? null
+  };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
@@ -86,7 +98,7 @@ module.exports = async function handler(req, res) {
     refresh_expires_at: refreshExpiresAt,
     user_id: token.user_id ? String(token.user_id) : (token.seller_id ? String(token.seller_id) : null),
     user_nick: token.user_nick ? String(token.user_nick) : (token.account ? String(token.account) : null),
-    raw: token,
+    raw: safeTokenMetadata(token),
     updated_at: new Date(now).toISOString()
   };
 
