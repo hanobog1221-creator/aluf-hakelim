@@ -1,3 +1,4 @@
+const { requireAdmin } = require('./_lib/admin');
 const { apiKeyHeaders, keyKind } = require('./_lib/supabase-server');
 
 module.exports = async function handler(req, res) {
@@ -8,6 +9,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
+  if (!await requireAdmin(req, res)) return;
 
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
   const configuredKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
