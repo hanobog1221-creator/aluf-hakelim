@@ -193,6 +193,7 @@
       const couponMessage = couponError(result);
       if (couponMessage) throw new Error(couponMessage);
       if (result.error === 'product_unavailable') throw new Error('אחד המוצרים כבר אינו זמין להזמנה.');
+      if (result.error === 'quantity_limit') throw new Error(`ניתן להזמין עד ${Number(result.maxQty || 1)} יחידות מהמוצר הזה.`);
       if (result.error === 'invalid_customer') throw new Error('יש לבדוק את פרטי המשלוח ולנסות שוב.');
       if (result.error === 'idempotency_conflict') throw new Error('הבקשה השתנתה במהלך השמירה. סגור את החלון ופתח מחדש.');
       throw new Error('לא הצלחנו לבדוק את ההזמנה כרגע. נסה שוב בעוד רגע.');
