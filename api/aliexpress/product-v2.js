@@ -1,5 +1,6 @@
 const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken } = require('../_lib/aliexpress');
 const { requireAdmin, config, dbHeaders } = require('../_lib/admin');
+const { quoteAliExpressFreight } = require('../_lib/shipping');
 
 const PRODUCT_PATH = '/ds/product/get';
 
@@ -112,6 +113,19 @@ async function updateProduct(product, snapshot) {
     ? selected.inStock
     : (snapshot.status ? snapshot.status === 'onSelling' && availableSkus.length > 0 : null);
 
+  let freight = null;
+  let shippingError = null;
+  try {
+    freight = await quoteAliExpressFreight({
+      productId: product.supplier_product_id || snapshot.productId,
+      qty: 1,
+      countryCode: 'IL',
+      shipFromCountry: product.supplier_ship_from_country || 'CN'
+    });
+  } catch (error) {
+    shippingError = String(error.code || error.message || error).slice(0, 300);
+  }
+
   const update = {
     supplier_in_stock: inStock,
     supplier_stock: selected?.stock ?? null,
@@ -119,8 +133,21 @@ async function updateProduct(product, snapshot) {
     supplier_currency: source?.currency || null,
     last_sync_at: new Date().toISOString(),
     supplier_sync_error: null,
+    shipping_sync_error: shippingError,
     updated_at: new Date().toISOString()
   };
+
+  if (freight) {
+    update.supplier_shipping = freight.amountIls;
+    update.shipping_currency = 'ILS';
+    update.supplier_shipping_available = true;
+    update.shipping_last_checked_at = new Date().toISOString();
+  } else if (shippingError === 'no_shipping_option') {
+    update.supplier_shipping = null;
+    update.shipping_currency = null;
+    update.supplier_shipping_available = false;
+    update.shipping_last_checked_at = new Date().toISOString();
+  }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
     method: 'PATCH',
@@ -128,7 +155,7 @@ async function updateProduct(product, snapshot) {
     body: JSON.stringify(update)
   });
   if (!response.ok) throw new Error(`product_sync_save_${response.status}`);
-  return { selectedSku: selected || null, update };
+  return { selectedSku: selected || null, update, freight };
 }
 
 async function markSyncError(productId, error) {
@@ -165,7 +192,15 @@ module.exports = async function handler(req, res) {
         try {
           const snapshot = await callProduct(product.supplier_product_id);
           const saved = await updateProduct(product, snapshot);
-          results.push({ id: product.id, ok: true, inStock: saved.update.supplier_in_stock, price: saved.update.supplier_price });
+          results.push({
+            id: product.id,
+            ok: true,
+            inStock: saved.update.supplier_in_stock,
+            price: saved.update.supplier_price,
+            shipping: saved.update.supplier_shipping ?? null,
+            shippingAvailable: saved.update.supplier_shipping_available ?? null,
+            shippingError: saved.update.shipping_sync_error || null
+          });
         } catch (error) {
           await markSyncError(product.id, error);
           results.push({ id: product.id, ok: false, error: String(error.code || error.message || error) });
