@@ -1,7 +1,4 @@
 {
-  "crons": [
-    { "path": "/api/aliexpress/product-v2?sync=all", "schedule": "15 * * * *" }
-  ],
   "redirects": [
     { "source": "/", "destination": "/api/home", "permanent": false },
     { "source": "/admin", "destination": "/admin-v2.html", "permanent": false },
