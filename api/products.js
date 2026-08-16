@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
         { headers }
       ),
       fetch(
-        `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=whatsapp_enabled,whatsapp_number,whatsapp_message,support_email,support_hours&limit=1`,
+        `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,whatsapp_enabled,whatsapp_number,whatsapp_message,support_email,support_hours&limit=1`,
         { headers }
       )
     ]);
@@ -56,6 +56,7 @@ module.exports = async function handler(req, res) {
     }));
 
     let store = {
+      salesEnabled: false,
       whatsappEnabled: false,
       whatsappNumber: null,
       whatsappMessage: 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.',
@@ -68,6 +69,7 @@ module.exports = async function handler(req, res) {
       const row = settingsRows[0];
       if (row) {
         store = {
+          salesEnabled: row.sales_enabled === true,
           whatsappEnabled: row.whatsapp_enabled === true,
           whatsappNumber: row.whatsapp_number || null,
           whatsappMessage: row.whatsapp_message || store.whatsappMessage,
