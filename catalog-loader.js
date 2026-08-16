@@ -10,19 +10,21 @@
     if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
 
     if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    const sellableProducts = data.products.filter((product) => product.available !== false);
-    products.splice(0, products.length, ...sellableProducts);
+    const visibleProducts = data.products.filter((product) => product.available !== false);
+    products.splice(0, products.length, ...visibleProducts);
     const store = data.store || {};
 
     const style = document.createElement('style');
     style.textContent = `
-      .ahShippingLine{font-size:13px;font-weight:850;color:#344454;margin:2px 0 8px}.ahShippingLine.free{color:#208b4b}
+      .ahShippingLine{font-size:13px;font-weight:850;color:#344454;margin:2px 0 8px}.ahShippingLine.pending{color:#8b6500}
+      .ahSalesNotice{max-width:1180px;margin:10px auto 0;padding:10px 14px;background:#fff8d8;border:1px solid #efd36d;border-radius:11px;font-size:13px;font-weight:850;color:#6e5200;text-align:center}
       .ahWaFloat{position:fixed;left:18px;bottom:18px;z-index:145;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#073b1a;padding:12px 16px;font-weight:950;box-shadow:0 10px 28px #0003;text-decoration:none}
       .ahWaFloat svg{width:24px;height:24px;display:block;flex:0 0 auto}.ahWaProduct{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;text-align:center;border:1px solid #20b858;border-radius:10px;padding:11px 13px;font-weight:900;color:#126832;background:#effdf4;text-decoration:none}.ahWaProduct svg{width:20px;height:20px;flex:0 0 auto}
       .ahTrackFooter{color:#fff;font-weight:850;text-decoration:underline;text-underline-offset:3px}
       .ahCardActions{position:absolute;top:9px;left:9px;z-index:4;display:flex;gap:6px}.ahMiniBtn{width:35px;height:35px;border:1px solid #d8dde2;border-radius:999px;background:#fffffff2;box-shadow:0 3px 12px #0002;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}.ahMiniBtn.saved{background:#fff1f1;border-color:#f1b8bd}
       .ahModalActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.ahActionBtn{border:1px solid #d7dde3;border-radius:10px;background:#fff;padding:11px 12px;font-weight:900;cursor:pointer}.ahActionBtn.saved{background:#fff1f1;border-color:#f1b8bd;color:#9d1e2a}
-      @media(max-width:620px){.ahWaFloat{left:10px;bottom:10px;padding:11px 13px}.ahWaFloat b{display:none}}
+      #modalContent .add:disabled{opacity:.58;cursor:not-allowed}
+      @media(max-width:620px){.ahWaFloat{left:10px;bottom:10px;padding:11px 13px}.ahWaFloat b{display:none}.ahSalesNotice{margin:8px 10px 0}}
     `;
     document.head.appendChild(style);
 
@@ -31,10 +33,10 @@
     }
 
     function shippingText(product) {
-      if (product.shippingAvailable === false) return 'אין אפשרות משלוח כרגע';
-      const amount = product.shipping == null ? null : Number(product.shipping);
-      if (Number.isFinite(amount) && amount <= 0) return 'משלוח חינם';
-      if (Number.isFinite(amount) && amount > 0) return `משלוח ${typeof money === 'function' ? money(amount) : '₪' + amount.toFixed(2)}`;
+      if (product.purchaseReady !== true) {
+        if (product.shippingAvailable === false) return 'אין אפשרות משלוח כרגע';
+        return 'זמינות ומשלוח בבדיקה';
+      }
       return 'משלוח יחושב לפי הכתובת';
     }
 
@@ -91,10 +93,30 @@
       }
     }
 
+    function productFor(id) {
+      return products.find((p) => String(p.id) === String(id)) || null;
+    }
+
     function maxQtyFor(id) {
-      const product = products.find((p) => String(p.id) === String(id));
+      const product = productFor(id);
       const value = Number(product?.maxQty || 20);
-      return Number.isInteger(value) ? Math.max(1, Math.min(100, value)) : 20;
+      return Number.isInteger(value) ? Math.max(1, Math.min(20, value)) : 20;
+    }
+
+    function blockedPurchaseMessage(product) {
+      if (store.salesEnabled !== true) return 'המכירות ייפתחו בקרוב';
+      if (!product || product.purchaseReady !== true) return 'המוצר עדיין בבדיקת זמינות ולא ניתן להזמין אותו כרגע';
+      return '';
+    }
+
+    if (store.salesEnabled !== true && !document.getElementById('ahSalesNotice')) {
+      const notice = document.createElement('div');
+      notice.id = 'ahSalesNotice';
+      notice.className = 'ahSalesNotice';
+      notice.textContent = 'החנות פתוחה לצפייה. המכירות ייפתחו לאחר השלמת בדיקות הספק והתשלום.';
+      const firstMain = document.querySelector('main') || document.querySelector('.wrap') || document.body.firstElementChild;
+      if (firstMain?.parentNode) firstMain.parentNode.insertBefore(notice, firstMain);
+      else document.body.prepend(notice);
     }
 
     if (whatsappNumber && !document.getElementById('ahWaFloat')) {
@@ -134,8 +156,7 @@
             line.className = 'ahShippingLine';
             priceRow.parentNode.insertBefore(line, priceRow);
           }
-          const amount = product.shipping == null ? null : Number(product.shipping);
-          line.classList.toggle('free', Number.isFinite(amount) && amount <= 0);
+          line.classList.toggle('pending', product.purchaseReady !== true);
           line.textContent = '🚚 ' + shippingText(product);
         }
 
@@ -175,17 +196,23 @@
       const originalOpenProduct = window.openProduct;
       window.openProduct = function patchedOpenProduct(id) {
         originalOpenProduct(id);
-        const product = products.find((p) => String(p.id) === String(id));
+        const product = productFor(id);
         if (!product) return;
         const modalInfo = document.querySelector('#modalContent .modalInfo');
         const priceRow = modalInfo?.querySelector('.priceRow');
         if (!modalInfo || !priceRow) return;
         const line = document.createElement('div');
-        line.className = 'ahShippingLine';
-        const amount = product.shipping == null ? null : Number(product.shipping);
-        line.classList.toggle('free', Number.isFinite(amount) && amount <= 0);
+        line.className = 'ahShippingLine' + (product.purchaseReady !== true ? ' pending' : '');
         line.textContent = '🚚 ' + shippingText(product);
         priceRow.parentNode.insertBefore(line, priceRow);
+
+        const addButton = modalInfo.querySelector('.add');
+        const blockedMessage = blockedPurchaseMessage(product);
+        if (addButton && blockedMessage) {
+          addButton.disabled = true;
+          addButton.textContent = blockedMessage;
+          addButton.title = blockedMessage;
+        }
 
         if (whatsappNumber) {
           const existing = modalInfo.querySelector('.ahWaProduct');
@@ -196,7 +223,6 @@
           wa.rel = 'noopener noreferrer';
           wa.href = whatsappUrl(`יש לי שאלה לגבי המוצר: ${product.name}`);
           wa.innerHTML = whatsappIconSvg() + '<span>שאלה על המוצר ב-WhatsApp</span>';
-          const addButton = modalInfo.querySelector('.add');
           if (addButton) addButton.insertAdjacentElement('afterend', wa);
           else modalInfo.appendChild(wa);
         }
@@ -231,11 +257,16 @@
       supportEmail: store.supportEmail || null,
       supportHours: store.supportHours || null
     };
+    window.alufStoreState = {
+      salesEnabled: store.salesEnabled === true,
+      productReady: (id) => productFor(id)?.purchaseReady === true
+    };
 
     if (typeof cart !== 'undefined' && cart && typeof cart === 'object') {
       let changed = false;
       for (const id of Object.keys(cart)) {
-        if (!products.some((product) => String(product.id) === String(id))) {
+        const product = productFor(id);
+        if (!product || product.purchaseReady !== true) {
           delete cart[id];
           changed = true;
           continue;
@@ -254,6 +285,12 @@
       const originalAddToCart = window.addToCart;
       const originalChangeQty = window.changeQty;
       window.addToCart = function limitedAddToCart(id) {
+        const product = productFor(id);
+        const blockedMessage = blockedPurchaseMessage(product);
+        if (blockedMessage) {
+          if (typeof showToast === 'function') showToast(blockedMessage);
+          return;
+        }
         const maxQty = maxQtyFor(id);
         const current = Number((typeof cart !== 'undefined' && cart?.[id]) || 0);
         if (current >= maxQty) {
@@ -263,6 +300,14 @@
         originalAddToCart(id);
       };
       window.changeQty = function limitedChangeQty(id, delta) {
+        const product = productFor(id);
+        if (Number(delta) > 0) {
+          const blockedMessage = blockedPurchaseMessage(product);
+          if (blockedMessage) {
+            if (typeof showToast === 'function') showToast(blockedMessage);
+            return;
+          }
+        }
         const maxQty = maxQtyFor(id);
         const current = Number((typeof cart !== 'undefined' && cart?.[id]) || 0);
         if (Number(delta) > 0 && current >= maxQty) {
