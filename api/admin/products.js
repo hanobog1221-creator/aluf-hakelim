@@ -14,6 +14,13 @@ function cleanNumber(value, nullable = false) {
   return Number(n.toFixed(2));
 }
 
+function cleanQuantityLimit(value, fallback = 20) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 100) throw new Error('invalid_quantity_limit');
+  return n;
+}
+
 function cleanCategories(value) {
   if (!Array.isArray(value) || value.length > 10) throw new Error('invalid_categories');
   return value.map((v) => String(v).trim()).filter(Boolean).slice(0, 10);
@@ -199,6 +206,7 @@ module.exports = async function handler(req, res) {
         categories: cleanCategories(Array.isArray(body.categories) ? body.categories : []),
         specs: [],
         sort_order: Number.isInteger(Number(body.sort_order)) ? Number(body.sort_order) : 0,
+        max_order_quantity: cleanQuantityLimit(body.max_order_quantity, 20),
         supplier: 'aliexpress',
         supplier_url: cleanText(body.supplier_url, 2000),
         supplier_product_id: cleanText(body.supplier_product_id, 100),
@@ -251,6 +259,7 @@ module.exports = async function handler(req, res) {
       if ('supplier_product_id' in body) update.supplier_product_id = cleanText(body.supplier_product_id, 100);
       if ('supplier_sku_id' in body) update.supplier_sku_id = cleanText(body.supplier_sku_id, 100);
       if ('variant_label' in body) update.variant_label = cleanText(body.variant_label, 200);
+      if ('max_order_quantity' in body) update.max_order_quantity = cleanQuantityLimit(body.max_order_quantity, existing.max_order_quantity || 20);
       if ('sort_order' in body) {
         const sort = Number(body.sort_order);
         if (!Number.isInteger(sort) || sort < -10000 || sort > 10000) return res.status(400).json({ ok: false, error: 'invalid_sort_order' });
@@ -289,6 +298,7 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_date')) return res.status(400).json({ ok: false, error: 'invalid_date' });
     if (message.includes('invalid_business_type')) return res.status(400).json({ ok: false, error: 'invalid_business_type' });
     if (message.includes('invalid_tax_id')) return res.status(400).json({ ok: false, error: 'invalid_tax_id' });
+    if (message.includes('invalid_quantity_limit')) return res.status(400).json({ ok: false, error: 'invalid_quantity_limit' });
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
