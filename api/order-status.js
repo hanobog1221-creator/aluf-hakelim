@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
     }
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,items,customer,tracking_number,created_at,updated_at&limit=1`,
+      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,shipping_quote_status,items,customer,tracking_number,customer_note,created_at,updated_at&limit=1`,
       { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
     );
 
@@ -61,8 +61,10 @@ module.exports = async function handler(req, res) {
         couponCode: order.coupon_code || null,
         total: Number(order.total || 0),
         currency: order.currency || 'ILS',
-        shippingCost: Number(order.shipping_cost || 0),
+        shippingCost: order.shipping_quote_status === 'quoted' ? Number(order.shipping_cost || 0) : null,
+        shippingStatus: order.shipping_quote_status || 'not_quoted',
         trackingNumber: order.tracking_number || null,
+        customerNote: order.customer_note || null,
         items,
         createdAt: order.created_at,
         updatedAt: order.updated_at
