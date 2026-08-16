@@ -66,7 +66,7 @@ module.exports = async function handler(req, res) {
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
       {
         headers: {
           apikey: serviceKey,
@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
     const normalized = [];
     for (const item of requested) {
       const product = byId.get(item.id);
-      if (!product || product.active !== true || product.supplier_in_stock === false) {
+      if (!product || product.active !== true || product.supplier_in_stock === false || product.supplier_shipping_available === false) {
         return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
       }
 
@@ -157,7 +157,7 @@ module.exports = async function handler(req, res) {
       payment_status: 'unpaid',
       fulfillment_status: 'not_started',
       currency: 'ILS',
-      total: finalTotal,
+      total: productsSubtotal,
       shipping_cost: shippingCost,
       shipping_quote_status: shippingQuote.status,
       shipping_quote: shippingQuote,
@@ -197,7 +197,7 @@ module.exports = async function handler(req, res) {
       shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
       shippingCurrency: 'ILS',
       shippingLines: shippingQuote.lines || [],
-      total: order.total,
+      total: finalTotal,
       currency: order.currency,
       items: normalized,
       waitingForAliExpressPermission: Boolean(shippingQuote.waitingForAliExpressPermission)
