@@ -27,6 +27,19 @@ function cleanWhatsappNumber(value) {
   return text;
 }
 
+function cleanCouponCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{2,40}$/.test(code)) throw new Error('invalid_coupon_code');
+  return code;
+}
+
+function cleanDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) throw new Error('invalid_date');
+  return date.toISOString();
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -37,15 +50,18 @@ module.exports = async function handler(req, res) {
     const { supabaseUrl } = config();
 
     if (req.method === 'GET') {
-      const [productsResponse, settingsResponse] = await Promise.all([
+      const [productsResponse, settingsResponse, couponsResponse] = await Promise.all([
         fetch(`${supabaseUrl}/rest/v1/products?select=*&order=sort_order.asc,created_at.asc`, { headers: dbHeaders() }),
-        fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=*&limit=1`, { headers: dbHeaders() })
+        fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=*&limit=1`, { headers: dbHeaders() }),
+        fetch(`${supabaseUrl}/rest/v1/coupons?select=*&order=created_at.desc`, { headers: dbHeaders() })
       ]);
       if (!productsResponse.ok) throw new Error(`products_read_${productsResponse.status}`);
       if (!settingsResponse.ok) throw new Error(`settings_read_${settingsResponse.status}`);
+      if (!couponsResponse.ok) throw new Error(`coupons_read_${couponsResponse.status}`);
       const products = await productsResponse.json();
       const settings = (await settingsResponse.json())[0] || null;
-      return res.status(200).json({ ok: true, products, settings });
+      const coupons = await couponsResponse.json();
+      return res.status(200).json({ ok: true, products, settings, coupons });
     }
 
     if (req.method === 'POST') {
@@ -89,6 +105,57 @@ module.exports = async function handler(req, res) {
           minimum_profit_ils: row.minimum_profit_ils
         });
         return res.status(200).json({ ok: true, settings });
+      }
+
+      if (body.action === 'coupon_save') {
+        const code = cleanCouponCode(body.code);
+        const discountType = String(body.discount_type || 'percent');
+        if (!['percent', 'fixed'].includes(discountType)) {
+          return res.status(400).json({ ok: false, error: 'invalid_discount_type' });
+        }
+        const discountValue = cleanNumber(body.discount_value);
+        if (discountValue <= 0 || (discountType === 'percent' && discountValue > 100)) {
+          return res.status(400).json({ ok: false, error: 'invalid_discount_value' });
+        }
+        const usageLimit = body.usage_limit === null || body.usage_limit === undefined || body.usage_limit === ''
+          ? null
+          : Number(body.usage_limit);
+        if (usageLimit !== null && (!Number.isInteger(usageLimit) || usageLimit < 1 || usageLimit > 1000000)) {
+          return res.status(400).json({ ok: false, error: 'invalid_usage_limit' });
+        }
+        const startsAt = cleanDate(body.starts_at);
+        const endsAt = cleanDate(body.ends_at);
+        if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
+          return res.status(400).json({ ok: false, error: 'invalid_coupon_dates' });
+        }
+
+        const row = {
+          code,
+          active: body.active !== false,
+          discount_type: discountType,
+          discount_value: discountValue,
+          min_order: cleanNumber(body.min_order),
+          max_discount: cleanNumber(body.max_discount, true),
+          starts_at: startsAt,
+          ends_at: endsAt,
+          usage_limit: usageLimit,
+          updated_at: new Date().toISOString()
+        };
+        const response = await fetch(`${supabaseUrl}/rest/v1/coupons?on_conflict=code`, {
+          method: 'POST',
+          headers: dbHeaders({
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=merge-duplicates,return=representation'
+          }),
+          body: JSON.stringify(row)
+        });
+        if (!response.ok) {
+          const details = await response.text();
+          throw new Error(`coupon_save_${response.status}_${details.slice(0, 200)}`);
+        }
+        const coupon = (await response.json())[0] || row;
+        await audit('coupon_save', 'coupon', code, { active: row.active, discount_type: row.discount_type, discount_value: row.discount_value });
+        return res.status(200).json({ ok: true, coupon });
       }
 
       const id = String(body.id || '').trim();
@@ -195,9 +262,10 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   } catch (error) {
     console.error('admin products error', error);
-    if (String(error.message || error).includes('invalid_whatsapp_number')) {
-      return res.status(400).json({ ok: false, error: 'invalid_whatsapp_number' });
-    }
+    const message = String(error.message || error);
+    if (message.includes('invalid_whatsapp_number')) return res.status(400).json({ ok: false, error: 'invalid_whatsapp_number' });
+    if (message.includes('invalid_coupon_code')) return res.status(400).json({ ok: false, error: 'invalid_coupon_code' });
+    if (message.includes('invalid_date')) return res.status(400).json({ ok: false, error: 'invalid_date' });
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
