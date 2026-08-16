@@ -77,7 +77,7 @@
     currentAttemptId = makeAttemptId();
     const total = cartTotal(entries);
     bodyBox.innerHTML = `
-      <div class="ahCheckoutNote"><b>החנות נמצאת בהרצה.</b> בשלב זה לא מתבצע חיוב.</div>
+      <div class="ahCheckoutNote"><b>החנות נמצאת בהרצה.</b> אפשר לבדוק פרטי משלוח וסכום, אבל שמירת הזמנה וחיוב ייפתחו רק כשהמכירות יופעלו.</div>
       <form id="ahCheckoutForm" novalidate>
         <div class="ahCheckoutGrid">
           <div class="ahField full"><label for="ahFullName">שם מלא *</label><input id="ahFullName" name="fullName" autocomplete="name" maxlength="80" required></div>
@@ -112,6 +112,7 @@
       if (!submit || submit.dataset.stage === 'quote') return;
       submit.dataset.stage = 'quote';
       submit.textContent = 'בדיקת פרטים והמשך';
+      submit.disabled = false;
       const shipping = document.getElementById('ahShippingCost');
       const grand = document.getElementById('ahGrandTotal');
       const status = document.getElementById('ahShippingStatus');
@@ -192,6 +193,7 @@
     if (!response.ok || !result.ok) {
       const couponMessage = couponError(result);
       if (couponMessage) throw new Error(couponMessage);
+      if (result.error === 'sales_disabled') throw new Error('המכירות עדיין לא נפתחו. אפשר לבדוק את הסל, אבל עדיין אי אפשר לשמור הזמנה או לבצע תשלום.');
       if (result.error === 'product_unavailable') throw new Error('אחד המוצרים כבר אינו זמין להזמנה.');
       if (result.error === 'quantity_limit') throw new Error(`ניתן להזמין עד ${Number(result.maxQty || 1)} יחידות מהמוצר הזה.`);
       if (result.error === 'invalid_customer') throw new Error('יש לבדוק את פרטי המשלוח ולנסות שוב.');
@@ -246,6 +248,21 @@
             shipping.textContent = Number(quote.shippingCost || 0) <= 0 ? 'חינם' : money(quote.shippingCost);
             shipping.className = Number(quote.shippingCost || 0) <= 0 ? 'ahShippingFree' : '';
           }
+        } else if (quote.shippingPending) {
+          if (shipping) { shipping.textContent = 'בבדיקה'; shipping.className = 'ahShippingPending'; }
+        }
+
+        if (quote.salesEnabled === false) {
+          if (status) status.textContent = quote.shippingStatus === 'quoted'
+            ? 'הסכום עודכן, אבל המכירות עדיין לא נפתחו. לא תישמר הזמנה ולא יתבצע חיוב.'
+            : 'אפשר לבדוק את הפרטים, אבל המכירות עדיין לא נפתחו ולא תישמר הזמנה.';
+          submit.dataset.stage = 'closed';
+          submit.textContent = 'המכירות ייפתחו בקרוב';
+          submit.disabled = true;
+          return;
+        }
+
+        if (quote.shippingStatus === 'quoted') {
           if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר ועלות המשלוח עודכנה.` : 'עלות המשלוח עודכנה לפי הכתובת.';
           submit.dataset.stage = 'finalize';
           submit.textContent = 'אישור ושמירת הזמנה';
@@ -254,7 +271,6 @@
         }
 
         if (quote.shippingPending) {
-          if (shipping) { shipping.textContent = 'בבדיקה'; shipping.className = 'ahShippingPending'; }
           if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר. עלות המשלוח עדיין בבדיקה.` : 'עלות המשלוח עדיין בבדיקה. לא יתבצע חיוב.';
           submit.dataset.stage = 'finalize-pending';
           submit.textContent = 'שמור הזמנה';
@@ -263,6 +279,10 @@
         }
 
         throw new Error('לא נמצאה כרגע אפשרות משלוח תקינה לכתובת הזאת.');
+      }
+
+      if (submit.dataset.stage === 'closed') {
+        throw new Error('המכירות עדיין לא נפתחו.');
       }
 
       submit.textContent = 'שומר...';
@@ -293,6 +313,7 @@
       submit.disabled = false;
       if (submit.dataset.stage === 'quote') submit.textContent = 'בדיקת פרטים והמשך';
       else if (submit.dataset.stage === 'finalize-pending') submit.textContent = 'שמור הזמנה';
+      else if (submit.dataset.stage === 'closed') { submit.textContent = 'המכירות ייפתחו בקרוב'; submit.disabled = true; }
       else submit.textContent = 'אישור ושמירת הזמנה';
     }
   }
