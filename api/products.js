@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
 
     const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at&active=eq.true&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at&active=eq.true&order=sort_order.asc`,
         { headers }
       ),
       fetch(
@@ -43,6 +43,7 @@ module.exports = async function handler(req, res) {
       badgeClass: row.badge_class || '',
       desc: row.description || '',
       specs: Array.isArray(row.specs) ? row.specs : [],
+      maxQty: Math.max(1, Math.min(100, Number(row.max_order_quantity || 20))),
       available: row.active === true && row.supplier_in_stock !== false && row.supplier_shipping_available !== false,
       shipping: row.supplier_shipping == null ? null : Number(row.supplier_shipping),
       shippingAvailable: row.supplier_shipping_available,
