@@ -146,6 +146,7 @@ async function quoteCartShipping(lines, countryCode = 'IL') {
 
 module.exports = {
   FREIGHT_PATH,
+  convertToIls,
   quoteAliExpressFreight,
   quoteCartShipping
 };
