@@ -28,7 +28,7 @@
 <script>
 const $=s=>document.querySelector(s);let store={};let currentOrderId='';
 function money(v){return '₪'+Number(v||0).toFixed(2)}
-function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]))}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function normalizeWa(v){let d=String(v||'').replace(/\D/g,'');if(d.startsWith('0'))d='972'+d.slice(1);return d}
 function waUrl(orderId){const n=normalizeWa(store.whatsappNumber);if(!store.whatsappEnabled||!n)return null;const base=store.whatsappMessage||'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.';return `https://wa.me/${n}?text=${encodeURIComponent(base+'\nמספר הזמנה: '+orderId)}`}
 function statusLabel(o){if(o.status==='cancelled'||o.fulfillmentStatus==='cancelled')return 'בוטלה';if(o.status==='error'||o.fulfillmentStatus==='failed')return 'דורשת בדיקה';if(o.fulfillmentStatus==='delivered'||o.status==='completed')return 'נמסרה';if(o.fulfillmentStatus==='shipped'||o.status==='shipped')return 'נשלחה';if(['ordered','ordering','ready','processing'].includes(o.fulfillmentStatus)||['ordered','processing'].includes(o.status))return 'בטיפול';if(o.paymentStatus==='paid'||o.status==='paid')return 'התשלום התקבל';return 'התקבלה'}
