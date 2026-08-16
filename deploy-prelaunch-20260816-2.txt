@@ -1,1 +1,2 @@
 Prelaunch hardening deployment marker: expenses, accounting summary, quantity limits, admin links, supplier sync history.
+Retry importer deployment after Vercel rate limit: 2026-08-17.
