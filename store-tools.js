@@ -37,6 +37,20 @@
     let applying = false;
     let observer = null;
 
+    function wireWhatsAppCta(attempt = 0) {
+      const button = document.querySelector('.cta .blackBtn');
+      const contact = window.alufStoreContact;
+      if (button && contact && contact.whatsappNumber && typeof contact.whatsappUrl === 'function') {
+        button.textContent = 'פתח WhatsApp';
+        button.onclick = () => {
+          const url = contact.whatsappUrl('אשמח לעזרה בבחירת כלי.');
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        };
+        return;
+      }
+      if (attempt < 20) setTimeout(() => wireWhatsAppCta(attempt + 1), 250);
+    }
+
     function list() {
       try { return typeof products !== 'undefined' && Array.isArray(products) ? products : []; } catch { return []; }
     }
@@ -134,6 +148,7 @@
     });
     watch();
     apply();
+    wireWhatsAppCta();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(boot, 50));
