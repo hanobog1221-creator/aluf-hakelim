@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { serverHeaders } = require('./supabase-server');
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const API_BASE = 'https://api-sg.aliexpress.com/rest';
@@ -39,7 +40,7 @@ async function readTokenRow() {
   const { supabaseUrl, serviceKey } = getServerConfig();
   const response = await fetch(
     `${supabaseUrl}/rest/v1/aliexpress_tokens?account_key=eq.primary&select=*&limit=1`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    { headers: serverHeaders({}, serviceKey) }
   );
   if (!response.ok) throw new Error(`token_read_${response.status}`);
   const rows = await response.json();
@@ -75,12 +76,10 @@ async function saveTokenRow(existing, token) {
 
   const response = await fetch(`${supabaseUrl}/rest/v1/aliexpress_tokens?on_conflict=account_key`, {
     method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
+    headers: serverHeaders({
       'Content-Type': 'application/json',
       Prefer: 'resolution=merge-duplicates,return=minimal'
-    },
+    }, serviceKey),
     body: JSON.stringify(row)
   });
 
