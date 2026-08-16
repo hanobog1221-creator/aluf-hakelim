@@ -35,6 +35,7 @@
     const favButton = document.getElementById('ahFavoritesOnly');
     let favoritesOnly = false;
     let applying = false;
+    let observer = null;
 
     function list() {
       try { return typeof products !== 'undefined' && Array.isArray(products) ? products : []; } catch { return []; }
@@ -66,13 +67,19 @@
       });
       return cards;
     }
+    function watch() {
+      if (observer) observer.observe(grid, { childList: true });
+    }
     function apply() {
       if (applying) return;
       applying = true;
+      if (observer) observer.disconnect();
       try {
         const query = String(search.value || '').trim().toLocaleLowerCase('he');
         const favs = favorites();
-        const byId = new Map(list().map(p => [String(p.id), p]));
+        const allProducts = list();
+        const byId = new Map(allProducts.map(p => [String(p.id), p]));
+        const defaultIndex = new Map(allProducts.map((p, index) => [String(p.id), index]));
         const cards = mapFreshCards();
         let shown = 0;
         for (const card of cards) {
@@ -86,16 +93,18 @@
         }
 
         const mode = sort.value;
-        const compare = (a, b) => {
+        const ordered = [...cards].sort((a, b) => {
           const pa = byId.get(String(a.dataset.ahProductId || ''));
           const pb = byId.get(String(b.dataset.ahProductId || ''));
           if (!pa || !pb) return 0;
           if (mode === 'low') return Number(pa.price || 0) - Number(pb.price || 0);
           if (mode === 'high') return Number(pb.price || 0) - Number(pa.price || 0);
           if (mode === 'name') return String(pa.name || '').localeCompare(String(pb.name || ''), 'he');
-          return list().findIndex(x => String(x.id) === String(pa.id)) - list().findIndex(x => String(x.id) === String(pb.id));
-        };
-        [...cards].sort(compare).forEach(card => grid.appendChild(card));
+          return Number(defaultIndex.get(String(pa.id)) || 0) - Number(defaultIndex.get(String(pb.id)) || 0);
+        });
+        ordered.forEach((card, index) => {
+          if (grid.children[index] !== card) grid.insertBefore(card, grid.children[index] || null);
+        });
 
         document.getElementById('ahResultInfo').textContent = query || favoritesOnly ? `${shown} מוצרים מתאימים` : '';
         noResults.classList.toggle('show', shown === 0 && cards.length > 0);
@@ -103,6 +112,7 @@
         favButton.textContent = favoritesOnly ? '♥ מציג מועדפים' : '♡ המועדפים שלי';
       } finally {
         applying = false;
+        watch();
       }
     }
 
@@ -118,8 +128,11 @@
       setTimeout(() => search.focus(), 350);
     });
 
-    const observer = new MutationObserver(() => setTimeout(apply, 0));
-    observer.observe(grid, { childList: true, subtree: true });
+    observer = new MutationObserver(() => {
+      Array.from(grid.querySelectorAll('.product')).forEach(card => delete card.dataset.ahProductId);
+      setTimeout(apply, 0);
+    });
+    watch();
     apply();
   }
 
