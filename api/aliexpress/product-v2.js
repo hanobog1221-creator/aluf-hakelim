@@ -153,7 +153,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const { supabaseUrl } = config();
-    const syncAll = String(req.query.sync || '') === 'all';
+    const syncAll = cron || String(req.query.sync || '') === 'all';
 
     if (syncAll) {
       if (!cron) return res.status(403).json({ ok: false, error: 'cron_only' });
