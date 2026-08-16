@@ -24,6 +24,7 @@ function safeDiagnostic(body) {
   const raw = body.diagnostic && typeof body.diagnostic === 'object' ? body.diagnostic : {};
   const compact = {
     productId,
+    pageUrl: String(raw.pageUrl || '').slice(0, 2000),
     capturedAt: cleanDate(body.captured_at),
     variant: String(raw.variant || '').slice(0, 300),
     selectedHtml: String(raw.selectedHtml || '').slice(0, 7000),
@@ -34,7 +35,11 @@ function safeDiagnostic(body) {
     counts: raw.counts && typeof raw.counts === 'object' ? raw.counts : {}
   };
   let encoded = JSON.stringify(compact);
-  if (encoded.length > 90000) encoded = encoded.slice(0, 90000);
+  if (encoded.length > 90000) {
+    compact.cacheMatches = compact.cacheMatches.slice(0, 12);
+    compact.resourcePaths = compact.resourcePaths.slice(0, 40);
+    encoded = JSON.stringify(compact).slice(0, 90000);
+  }
   return { compact, encoded };
 }
 
@@ -49,17 +54,35 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const { supabaseUrl } = config();
 
     if (body.action === 'diagnostic') {
       const { compact, encoded } = safeDiagnostic(body);
       console.log('ALI_DEEP_DIAGNOSTIC', encoded);
+      const saveDiagnostic = await fetch(`${supabaseUrl}/rest/v1/supplier_capture_debug`, {
+        method: 'POST',
+        headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
+        body: JSON.stringify({
+          product_id: null,
+          supplier_product_id: compact.productId,
+          page_url: compact.pageUrl || null,
+          captured_at: compact.capturedAt,
+          payload: compact
+        })
+      });
+      if (!saveDiagnostic.ok) {
+        const details = await saveDiagnostic.text();
+        throw new Error(`diagnostic_save_${saveDiagnostic.status}_${details.slice(0, 200)}`);
+      }
+      const saved = (await saveDiagnostic.json())[0] || null;
       await audit('supplier_deep_diagnostic', 'product', compact.productId, {
         variant: compact.variant,
         cache_match_count: compact.cacheMatches.length,
         resource_path_count: compact.resourcePaths.length,
-        global_count: compact.globals.length
+        global_count: compact.globals.length,
+        snapshot_id: saved && saved.id || null
       });
-      return res.status(200).json({ ok: true, received: true });
+      return res.status(200).json({ ok: true, received: true, snapshot_id: saved && saved.id || null });
     }
 
     const id = cleanId(body.id, /^[A-Za-z0-9_-]{1,80}$/, 'invalid_product_id');
@@ -69,7 +92,6 @@ module.exports = async function handler(req, res) {
     const stock = cleanStock(body.supplier_stock);
     const inStock = body.supplier_in_stock === true ? true : body.supplier_in_stock === false ? false : stock === null ? null : stock > 0;
 
-    const { supabaseUrl } = config();
     const read = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(id)}&select=id,supplier_product_id,supplier_sku_id,variant_label&limit=1`, { headers: dbHeaders() });
     if (!read.ok) throw new Error(`product_read_${read.status}`);
     const product = (await read.json())[0];
