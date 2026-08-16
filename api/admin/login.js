@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { verifyCredentials, createSession, setSessionCookie, audit, config, dbHeaders } = require('../_lib/admin');
+const { verifyCredentials, createSession, setSessionCookie, audit, config, dbHeaders, requireSameOrigin } = require('../_lib/admin');
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_FAILURE_LIMIT = 8;
@@ -49,6 +49,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
+  if (!requireSameOrigin(req, res)) return;
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
