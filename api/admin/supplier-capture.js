@@ -32,15 +32,24 @@ function safeDiagnostic(body) {
     globals: Array.isArray(raw.globals) ? raw.globals.slice(0, 40).map((v) => String(v).slice(0, 200)) : [],
     cacheMatches: Array.isArray(raw.cacheMatches) ? raw.cacheMatches.slice(0, 30) : [],
     resourcePaths: Array.isArray(raw.resourcePaths) ? raw.resourcePaths.slice(0, 80) : [],
+    networkBodies: Array.isArray(raw.networkBodies) ? raw.networkBodies.slice(0, 12).map((v) => ({
+      host: String(v && v.host || '').slice(0, 180),
+      path: String(v && v.path || '').slice(0, 320),
+      status: Number.isFinite(Number(v && v.status)) ? Number(v.status) : null,
+      queryKeys: Array.isArray(v && v.queryKeys) ? v.queryKeys.slice(0, 40).map((x) => String(x).slice(0, 100)) : [],
+      snippets: Array.isArray(v && v.snippets) ? v.snippets.slice(0, 24).map((x) => String(x).slice(0, 900)) : [],
+      error: String(v && v.error || '').slice(0, 300)
+    })) : [],
     counts: raw.counts && typeof raw.counts === 'object' ? raw.counts : {}
   };
   let encoded = JSON.stringify(compact);
-  if (encoded.length > 90000) {
+  if (encoded.length > 120000) {
     compact.cacheMatches = compact.cacheMatches.slice(0, 12);
     compact.resourcePaths = compact.resourcePaths.slice(0, 40);
-    encoded = JSON.stringify(compact).slice(0, 90000);
+    compact.networkBodies = compact.networkBodies.slice(0, 6).map((x) => ({ ...x, snippets: x.snippets.slice(0, 10) }));
+    encoded = JSON.stringify(compact);
   }
-  return { compact, encoded };
+  return { compact, encoded: encoded.slice(0, 120000) };
 }
 
 module.exports = async function handler(req, res) {
@@ -79,6 +88,7 @@ module.exports = async function handler(req, res) {
         variant: compact.variant,
         cache_match_count: compact.cacheMatches.length,
         resource_path_count: compact.resourcePaths.length,
+        network_body_count: compact.networkBodies.length,
         global_count: compact.globals.length,
         snapshot_id: saved && saved.id || null
       });
