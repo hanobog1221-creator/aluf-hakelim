@@ -10,7 +10,8 @@
     if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
 
     if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    products.splice(0, products.length, ...data.products);
+    const sellableProducts = data.products.filter((product) => product.available !== false);
+    products.splice(0, products.length, ...sellableProducts);
 
     if (typeof cart !== 'undefined' && cart && typeof cart === 'object') {
       let changed = false;
