@@ -17,7 +17,7 @@ function cleanNumber(value, nullable = false) {
 function cleanQuantityLimit(value, fallback = 20) {
   if (value === null || value === undefined || value === '') return fallback;
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > 100) throw new Error('invalid_quantity_limit');
+  if (!Number.isInteger(n) || n < 1 || n > 20) throw new Error('invalid_quantity_limit');
   return n;
 }
 
