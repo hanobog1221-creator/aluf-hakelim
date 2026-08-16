@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { quoteCartShipping } = require('./_lib/shipping');
 
 const TERMS_VERSION = '2026-08-16';
@@ -43,6 +44,31 @@ function customerShippingStatus(status) {
 
 function shippingPending(quote) {
   return quote?.status !== 'quoted' && Boolean(quote?.waitingForAliExpressPermission);
+}
+
+function requestFingerprint(req, kind) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const ip = forwarded || String(req.headers['x-real-ip'] || req.socket?.remoteAddress || 'unknown');
+  return crypto.createHash('sha256').update(`${kind}:${ip}`).digest('hex');
+}
+
+async function consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly }) {
+  const kind = quoteOnly ? 'quote' : 'order';
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_api_rate_limit`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      p_key: requestFingerprint(req, kind),
+      p_limit: quoteOnly ? 60 : 15,
+      p_window_seconds: quoteOnly ? 600 : 3600
+    })
+  });
+  if (!response.ok) throw new Error(`rate_limit_check_${response.status}`);
+  return (await response.json()) === true;
 }
 
 async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal }) {
@@ -228,6 +254,12 @@ module.exports = async function handler(req, res) {
     if (!serviceKey) {
       console.error('SUPABASE_SERVICE_ROLE_KEY is missing');
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const allowed = await consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly: body.quoteOnly === true });
+    if (!allowed) {
+      res.setHeader('Retry-After', body.quoteOnly === true ? '600' : '3600');
+      return res.status(429).json({ ok: false, error: 'too_many_requests' });
     }
 
     if (body.quoteOnly !== true && requestId) {
