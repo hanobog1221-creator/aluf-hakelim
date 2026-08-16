@@ -30,6 +30,14 @@
 
   const bodyBox = document.getElementById('ahCheckoutBody');
   const closeButton = overlay.querySelector('.ahCheckoutClose');
+  let currentAttemptId = null;
+
+  function makeAttemptId() {
+    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+      return 'req_' + globalThis.crypto.randomUUID();
+    }
+    return 'req_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 14);
+  }
 
   function currentCartEntries() {
     const saved = (() => { try { return JSON.parse(localStorage.getItem('alufCart') || '{}'); } catch { return {}; } })();
@@ -59,11 +67,13 @@
   function renderForm() {
     const entries = currentCartEntries();
     if (!entries.length) {
+      currentAttemptId = null;
       bodyBox.innerHTML = '<div class="empty">הסל ריק. הוסף מוצר לפני מעבר להזמנה.</div>';
       overlay.classList.add('open');
       return;
     }
 
+    currentAttemptId = makeAttemptId();
     const total = cartTotal(entries);
     bodyBox.innerHTML = `
       <div class="ahCheckoutNote"><b>המערכת עדיין בהכנה.</b> כרגע לא מתבצע חיוב ולא נשלחת הזמנה ל‑AliExpress.</div>
@@ -162,6 +172,7 @@
   }
 
   async function postOrderPayload(entries, customer, quoteOnly) {
+    if (!currentAttemptId) currentAttemptId = makeAttemptId();
     const response = await fetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -169,6 +180,7 @@
         items: entries.map(([id, qty]) => ({ id, qty: Number(qty) })),
         customer,
         couponCode: couponCode(),
+        clientRequestId: currentAttemptId,
         quoteOnly
       })
     });
@@ -178,6 +190,7 @@
       if (couponMessage) throw new Error(couponMessage);
       if (result.error === 'product_unavailable') throw new Error('אחד המוצרים כבר אינו זמין להזמנה.');
       if (result.error === 'invalid_customer') throw new Error('יש לבדוק את פרטי המשלוח ולנסות שוב.');
+      if (result.error === 'idempotency_conflict') throw new Error('הבקשה השתנתה במהלך השמירה. סגור את החלון ופתח מחדש.');
       throw new Error('לא הצלחנו לבדוק את ההזמנה כרגע. נסה שוב בעוד רגע.');
     }
     return result;
@@ -267,6 +280,7 @@
           <p style="color:#68717c;line-height:1.6">לא בוצע חיוב ולא נשלחה הזמנה לספק. כשנחבר את הסליקה, התשלום יוכל להמשיך רק אחרי בדיקת מחיר המשלוח.</p>
           <button class="ahCheckoutSubmit" type="button" id="ahCheckoutDone">סגור</button>
         </div>`;
+      currentAttemptId = null;
       document.getElementById('ahCheckoutDone')?.addEventListener('click', closeCheckout);
     } catch (error) {
       showError(error.message || 'אירעה שגיאה.');
