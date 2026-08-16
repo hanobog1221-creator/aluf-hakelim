@@ -8,9 +8,13 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const supabaseUrl = (process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co').replace(/\/$/, '');
-    const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_u8IwJRz4KndmAk13fGZM5A_csTsqjsk';
-    const headers = { apikey: publishableKey };
+    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      console.error('Public catalog server credentials are missing');
+      return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
+    }
+    const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
 
     const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
@@ -43,7 +47,7 @@ module.exports = async function handler(req, res) {
       badgeClass: row.badge_class || '',
       desc: row.description || '',
       specs: Array.isArray(row.specs) ? row.specs : [],
-      maxQty: Math.max(1, Math.min(100, Number(row.max_order_quantity || 20))),
+      maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
       available: row.active === true && row.supplier_in_stock !== false && row.supplier_shipping_available !== false,
       shipping: row.supplier_shipping == null ? null : Number(row.supplier_shipping),
       shippingAvailable: row.supplier_shipping_available,
