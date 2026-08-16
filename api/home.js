@@ -38,6 +38,9 @@ module.exports = async function handler(req, res) {
     if (!html.includes('/checkout.js')) {
       html = html.replace('</body>', '<script src="/checkout.js"></script></body>');
     }
+    if (!html.includes('/store-tools.js')) {
+      html = html.replace('</body>', '<script src="/store-tools.js"></script></body>');
+    }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
