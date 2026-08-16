@@ -15,15 +15,15 @@ async function writeOrderEvent(supabaseUrl, orderId, eventType, payload = {}) {
     await fetch(`${supabaseUrl}/rest/v1/order_events`, {
       method: 'POST',
       headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-      body: JSON.stringify({
-        order_id: orderId,
-        event_type: eventType,
-        payload
-      })
+      body: JSON.stringify({ order_id: orderId, event_type: eventType, payload })
     });
   } catch (error) {
     console.error('order event write failed', error);
   }
+}
+
+function accountingDate(order) {
+  return order.paid_at || order.created_at || null;
 }
 
 module.exports = async function handler(req, res) {
@@ -36,6 +36,43 @@ module.exports = async function handler(req, res) {
     const { supabaseUrl } = config();
 
     if (req.method === 'GET') {
+      const accounting = String(req.query?.accounting || '') === '1';
+      if (accounting) {
+        const currentYear = new Date().getUTCFullYear();
+        const year = Number(req.query?.year || currentYear);
+        if (!Number.isInteger(year) || year < 2020 || year > 2100) {
+          return res.status(400).json({ ok: false, error: 'invalid_year' });
+        }
+        const response = await fetch(`${supabaseUrl}/rest/v1/orders?payment_status=eq.paid&select=*&order=created_at.asc&limit=5000`, {
+          headers: dbHeaders()
+        });
+        if (!response.ok) throw new Error(`accounting_orders_read_${response.status}`);
+        const allPaid = await response.json();
+        const orders = allPaid.filter((order) => {
+          const date = accountingDate(order);
+          if (!date) return false;
+          const d = new Date(date);
+          return Number.isFinite(d.getTime()) && d.getUTCFullYear() === year;
+        });
+        const summary = orders.reduce((acc, order) => {
+          const productsSubtotal = Number(order.products_subtotal || 0);
+          const discount = Number(order.discount_amount || 0);
+          const productsAfterDiscount = Number(order.total || 0);
+          const shipping = Number(order.shipping_cost || 0);
+          const paidTotal = Number((productsAfterDiscount + shipping).toFixed(2));
+          acc.orders += 1;
+          acc.productsSubtotal += productsSubtotal;
+          acc.discounts += discount;
+          acc.shipping += shipping;
+          acc.revenue += paidTotal;
+          if (order.fiscal_document_status === 'issued') acc.documentsIssued += 1;
+          else acc.documentsMissing += 1;
+          return acc;
+        }, { orders: 0, productsSubtotal: 0, discounts: 0, shipping: 0, revenue: 0, documentsIssued: 0, documentsMissing: 0 });
+        for (const key of ['productsSubtotal','discounts','shipping','revenue']) summary[key] = Number(summary[key].toFixed(2));
+        return res.status(200).json({ ok: true, accounting: true, year, orders, summary });
+      }
+
       const limitRaw = Number(req.query?.limit || 100);
       const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(200, Math.floor(limitRaw))) : 100;
       const response = await fetch(`${supabaseUrl}/rest/v1/orders?select=*&order=created_at.desc&limit=${limit}`, {
