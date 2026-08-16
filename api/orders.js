@@ -1,3 +1,5 @@
+const { quoteCartShipping } = require('./_lib/shipping');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -64,7 +66,7 @@ module.exports = async function handler(req, res) {
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping,shipping_currency,last_sync_at&id=in.(${encodeURIComponent(idFilter)})`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
       {
         headers: {
           apikey: serviceKey,
@@ -104,13 +106,49 @@ module.exports = async function handler(req, res) {
         supplierUrl: product.supplier_url || null,
         supplierProductId: product.supplier_product_id || null,
         supplierSkuId: product.supplier_sku_id || null,
+        supplierShipFromCountry: product.supplier_ship_from_country || 'CN',
         fulfillmentReady: Boolean(product.fulfillment_ready),
         supplierStockKnown: product.supplier_in_stock !== null,
         supplierSyncedAt: product.last_sync_at || null
       });
     }
 
-    const total = normalized.reduce((sum, item) => sum + item.price * item.qty, 0);
+    const productsSubtotal = Number(normalized.reduce((sum, item) => sum + item.price * item.qty, 0).toFixed(2));
+    let shippingQuote;
+    try {
+      shippingQuote = await quoteCartShipping(normalized, customer.countryCode);
+    } catch (error) {
+      const code = String(error.code || error.message || error);
+      const waitingForAliExpressPermission = code.includes('InsufficientPermission') || code.includes('InvalidApiPath');
+      shippingQuote = {
+        status: waitingForAliExpressPermission ? 'pending_permission' : 'failed',
+        total: null,
+        currency: 'ILS',
+        quotedAt: null,
+        lines: [],
+        error: code.slice(0, 300),
+        waitingForAliExpressPermission
+      };
+    }
+
+    const shippingCost = shippingQuote.status === 'quoted' ? Number(shippingQuote.total || 0) : 0;
+    const finalTotal = Number((productsSubtotal + shippingCost).toFixed(2));
+
+    if (body.quoteOnly === true) {
+      return res.status(200).json({
+        ok: true,
+        quoteOnly: true,
+        productsSubtotal,
+        shippingStatus: shippingQuote.status,
+        shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
+        shippingCurrency: 'ILS',
+        shippingLines: shippingQuote.lines || [],
+        total: shippingQuote.status === 'quoted' ? finalTotal : null,
+        canFinalize: shippingQuote.status === 'quoted',
+        waitingForAliExpressPermission: Boolean(shippingQuote.waitingForAliExpressPermission)
+      });
+    }
+
     const orderId = `AH-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const now = new Date().toISOString();
     const order = {
@@ -119,8 +157,11 @@ module.exports = async function handler(req, res) {
       payment_status: 'unpaid',
       fulfillment_status: 'not_started',
       currency: 'ILS',
-      total: Number(total.toFixed(2)),
-      shipping_cost: 0,
+      total: finalTotal,
+      shipping_cost: shippingCost,
+      shipping_quote_status: shippingQuote.status,
+      shipping_quote: shippingQuote,
+      shipping_quoted_at: shippingQuote.quotedAt || null,
       items: normalized,
       customer,
       created_at: now,
@@ -151,9 +192,15 @@ module.exports = async function handler(req, res) {
       status: order.status,
       paymentStatus: order.payment_status,
       fulfillmentStatus: order.fulfillment_status,
+      productsSubtotal,
+      shippingStatus: shippingQuote.status,
+      shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
+      shippingCurrency: 'ILS',
+      shippingLines: shippingQuote.lines || [],
       total: order.total,
       currency: order.currency,
-      items: normalized
+      items: normalized,
+      waitingForAliExpressPermission: Boolean(shippingQuote.waitingForAliExpressPermission)
     });
   } catch (error) {
     console.error('Order API error:', error);
