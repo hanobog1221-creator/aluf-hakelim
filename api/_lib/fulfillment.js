@@ -71,14 +71,14 @@ function validateFulfillmentOrder(order, supplierState = null) {
       return { ok: false, reason: 'supplier_sku_not_verified', productId: item.id };
     }
     const qty = Number(item.qty || 0);
-    if (!Number.isInteger(qty) || qty < 1 || qty > 100) {
+    if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
       return { ok: false, reason: 'invalid_quantity', productId: item.id };
     }
 
     if (currentProducts) {
       const current = currentProducts.get(String(item.id));
       if (!current || current.active !== true) return { ok: false, reason: 'product_inactive', productId: item.id };
-      const maxQty = Math.max(1, Math.min(100, Number(current.max_order_quantity || 20)));
+      const maxQty = Math.max(1, Math.min(20, Number(current.max_order_quantity || 20)));
       if (qty > maxQty) return { ok: false, reason: 'quantity_limit_changed', productId: item.id, maxQty };
       if (current.supplier !== 'aliexpress') return { ok: false, reason: 'supplier_changed', productId: item.id };
       if (!current.fulfillment_ready || !current.supplier_product_id || !current.supplier_sku_id) {
@@ -125,17 +125,19 @@ function validateFulfillmentOrder(order, supplierState = null) {
       const productMinProfitRaw = current.minimum_profit;
       const productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw);
       const minimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
-      if (Number.isFinite(minimumProfit)) {
-        const profitPerUnit = Number((salePrice - supplierPrice).toFixed(2));
-        if (profitPerUnit < minimumProfit) {
-          return {
-            ok: false,
-            reason: 'minimum_profit_not_met',
-            productId: item.id,
-            profitPerUnit,
-            minimumProfit
-          };
-        }
+      if (!Number.isFinite(minimumProfit)) {
+        return { ok: false, reason: 'minimum_profit_not_configured', productId: item.id };
+      }
+
+      const profitPerUnit = Number((salePrice - supplierPrice).toFixed(2));
+      if (profitPerUnit < minimumProfit) {
+        return {
+          ok: false,
+          reason: 'minimum_profit_not_met',
+          productId: item.id,
+          profitPerUnit,
+          minimumProfit
+        };
       }
     }
   }
