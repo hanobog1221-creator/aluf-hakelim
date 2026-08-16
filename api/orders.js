@@ -183,11 +183,11 @@ module.exports = async function handler(req, res) {
     const requested = requestedItems
       .map((item) => ({
         id: String(item.id || ''),
-        qty: Math.min(20, Math.max(1, Math.floor(Number(item.qty || 1))))
+        qty: Math.floor(Number(item.qty || 1))
       }))
-      .filter((item) => /^[A-Za-z0-9_-]+$/.test(item.id) && Number.isFinite(item.qty));
+      .filter((item) => /^[A-Za-z0-9_-]+$/.test(item.id) && Number.isInteger(item.qty) && item.qty >= 1 && item.qty <= 100);
 
-    if (!requested.length) {
+    if (!requested.length || requested.length !== requestedItems.length) {
       return res.status(400).json({ ok: false, error: 'invalid_items' });
     }
 
@@ -242,7 +242,7 @@ module.exports = async function handler(req, res) {
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,max_order_quantity,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
       {
         headers: {
           apikey: serviceKey,
@@ -265,6 +265,11 @@ module.exports = async function handler(req, res) {
       const product = byId.get(item.id);
       if (!product || product.active !== true || product.supplier_in_stock === false || product.supplier_shipping_available === false) {
         return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
+      }
+
+      const maxQty = Math.max(1, Math.min(100, Number(product.max_order_quantity || 20)));
+      if (item.qty > maxQty) {
+        return res.status(409).json({ ok: false, error: 'quantity_limit', productId: item.id, maxQty });
       }
 
       const price = Number(product.selling_price);
