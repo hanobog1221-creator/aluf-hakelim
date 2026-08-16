@@ -14,42 +14,71 @@
 <main class="wrap" id="app"><div class="hero"><div class="muted">טוען את מצב החנות...</div></div></main>
 <script>
 const app=document.getElementById('app');
+const MAX_SYNC_AGE_MS=8*60*60*1000;
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function api(url){const r=await fetch(url,{headers:{accept:'application/json'}});const d=await r.json().catch(()=>({}));if(r.status===401)throw new Error('unauthorized');if(!r.ok||!d.ok)throw new Error(d.error||'request_failed');return d}
 function item(level,title,text){const symbol=level==='ok'?'✓':level==='bad'?'!':'•';return `<div class="check ${level}"><span class="icon">${symbol}</span><div><b>${esc(title)}</b><div class="muted">${esc(text)}</div></div></div>`}
+function fresh(value){const t=value?Date.parse(value):NaN;return Number.isFinite(t)&&Date.now()-t<=MAX_SYNC_AGE_MS}
 function render(products,orders,settings){
   const active=products.filter(p=>p.active);
   const businessReady=Boolean(settings.business_legal_name&&settings.business_tax_id&&settings.business_type&&settings.business_address&&settings.business_phone);
+  const productIdsReady=active.length>0&&active.every(p=>p.supplier_product_id);
+  const skusSelected=active.length>0&&active.every(p=>p.supplier_sku_id);
+  const skusVerified=active.length>0&&active.every(p=>p.sku_verified_at);
+  const stockKnownGood=active.length>0&&active.every(p=>p.supplier_in_stock===true);
+  const shippingKnownGood=active.length>0&&active.every(p=>p.supplier_shipping_available===true);
+  const supplierCostsKnown=active.length>0&&active.every(p=>p.supplier_price_ils!=null);
+  const productSyncFresh=active.length>0&&active.every(p=>fresh(p.last_sync_at));
+  const shippingSyncFresh=active.length>0&&active.every(p=>fresh(p.shipping_last_checked_at));
+  const automationReady=active.length>0&&active.every(p=>p.fulfillment_ready===true)&&skusVerified&&stockKnownGood&&shippingKnownGood&&supplierCostsKnown&&productSyncFresh&&shippingSyncFresh;
+  const supplierApiLive=active.length>0&&active.some(p=>p.last_sync_at)&&active.every(p=>!p.supplier_sync_error);
+
   const freeChecks=[
     {l:settings.whatsapp_enabled&&settings.whatsapp_number?'ok':'bad',t:'WhatsApp עסקי',x:settings.whatsapp_enabled&&settings.whatsapp_number?'מחובר ומופעל באתר עם כפתור WhatsApp ברור.':'עדיין לא מחובר או כבוי.'},
     {l:settings.support_email?'ok':'warn',t:'אימייל שירות',x:settings.support_email?'מוגדר במערכת.':'אפשר להשלים בהמשך כשיהיה אימייל עסקי.'},
-    {l:settings.minimum_profit_ils!=null?'ok':'warn',t:'הגנת רווח',x:settings.minimum_profit_ils!=null?`רווח מינימלי מוגדר: ₪${Number(settings.minimum_profit_ils).toFixed(2)}.`:'עדיין לא הוגדר סכום רווח מינימלי.'},
-    {l:'ok',t:'מעקב הזמנה ללקוח',x:'עמוד המעקב מוכן ומציג סטטוס, סכומים ומספר מעקב.'},
+    {l:settings.minimum_profit_ils!=null?'ok':'warn',t:'הגנת רווח כללית',x:settings.minimum_profit_ils!=null?`רווח מינימלי כללי מוגדר: ₪${Number(settings.minimum_profit_ils).toFixed(2)}. ניתן גם להגדיר חריגה לכל מוצר.`:'עדיין לא הוגדר סכום רווח מינימלי כללי; קיימת תמיכה גם בהגנה לכל מוצר.'},
+    {l:'ok',t:'מעקב הזמנה ללקוח',x:'עמוד המעקב מוכן, מוגבל בניסיונות ומציג סה״כ כולל משלוח, סטטוס ומספר מעקב.'},
     {l:'ok',t:'קופונים והנחות',x:'הקופונים מחושבים בשרת וכוללים מגבלות שימוש ותוקף.'},
-    {l:'ok',t:'הגנות Checkout',x:'קיימות הגנות נגד בקשות כפולות, הצפה, כמות חריגה ומוצר שאינו זמין.'},
+    {l:'ok',t:'הגנות Checkout',x:'קיימות הגנות נגד בקשות כפולות, הצפה, כמות חריגה, תנאים שלא אושרו ומוצר שאינו זמין.'},
     {l:'ok',t:'חשבונות והוצאות',x:'קיימים ריכוז הכנסות, הוצאות, CSV וסיכום חודשי לקראת הנהלת חשבונות.'},
-    {l:'ok',t:'מדיניות ופרטיות',x:'עמוד המידע ללקוחות קיים ומוכן לעדכון סופי לפני מכירות אמיתיות.'}
+    {l:'ok',t:'מדיניות ופרטיות',x:'עמוד מידע ללקוחות קיים, והלקוח נדרש לאשר תנאים לפני יצירת הזמנה.'},
+    {l:'ok',t:'אבטחת נתוני ספק וניהול',x:'פרטי ספק, SKU, עלויות, הזמנות ולוגים אינם חשופים דרך מפתח הדפדפן; מסכי הניהול מוגנים.'}
   ];
+
   const productChecks=[
-    {l:active.every(p=>p.supplier_product_id)?'ok':'bad',t:'Product ID לכל מוצר פעיל',x:active.every(p=>p.supplier_product_id)?'לכל המוצרים הפעילים יש מזהה מוצר.':'יש מוצר פעיל שחסר לו Product ID.'},
-    {l:active.every(p=>p.supplier_sku_id)?'ok':'bad',t:'SKU מדויק לכל מוצר פעיל',x:active.every(p=>p.supplier_sku_id)?'כל ה-SKUים הוגדרו.':'חסרים SKUים מדויקים; לא תתבצע הזמנה אוטומטית עד שהם יאומתו.'},
-    {l:active.every(p=>p.fulfillment_ready)?'ok':'bad',t:'מוצרים מאומתים לאוטומציה',x:active.every(p=>p.fulfillment_ready)?'כל המוצרים הפעילים מאומתים להזמנה אוטומטית.':'יש מוצרים שחסומים בכוונה להזמנה אוטומטית.'},
-    {l:active.every(p=>p.supplier_in_stock!==null)?'ok':'warn',t:'בדיקת מלאי חיה',x:active.every(p=>p.supplier_in_stock!==null)?'מצב מלאי ידוע לכל מוצר פעיל.':'חלק מהמוצרים עדיין ממתינים לסנכרון מלאי.'},
-    {l:active.every(p=>p.supplier_shipping_available!==null)?'ok':'warn',t:'בדיקת משלוחים חיה',x:active.every(p=>p.supplier_shipping_available!==null)?'מצב המשלוח ידוע לכל מוצר פעיל.':'חלק מהמוצרים עדיין ממתינים לבדיקת משלוח.'},
-    {l:active.every(p=>p.supplier_price_ils!=null)?'ok':'warn',t:'עלות מוצר בש״ח',x:active.every(p=>p.supplier_price_ils!=null)?'עלות המוצרים ידועה וניתן לחשב רווח מדויק.':'חלק מעלויות המוצרים עדיין ממתינות לסנכרון.'}
+    {l:productIdsReady?'ok':'bad',t:'Product ID לכל מוצר פעיל',x:productIdsReady?'לכל המוצרים הפעילים יש מזהה מוצר.':'יש מוצר פעיל שחסר לו Product ID.'},
+    {l:skusSelected?'ok':'bad',t:'SKU מדויק לכל מוצר פעיל',x:skusSelected?'כל ה-SKUים נבחרו.':'חסרים SKUים מדויקים.'},
+    {l:skusVerified?'ok':'bad',t:'אימות SKU מול AliExpress',x:skusVerified?'כל ה-SKUים אומתו בסנכרון מול הספק.':'SKU שנבחר עדיין לא נחשב מוכן עד שהוא מופיע שוב בתשובת הספק ונרשם זמן אימות.'},
+    {l:stockKnownGood?'ok':'warn',t:'מלאי חי וחיובי',x:stockKnownGood?'כל המוצרים הפעילים מסומנים במלאי.':'מלאי לא ידוע או אזל חוסם אוטומציה.'},
+    {l:shippingKnownGood?'ok':'warn',t:'משלוח חי וחיובי',x:shippingKnownGood?'משלוח לישראל זמין לכל מוצר פעיל.':'משלוח לא ידוע או לא זמין חוסם אוטומציה.'},
+    {l:supplierCostsKnown?'ok':'warn',t:'עלות מוצר בש״ח',x:supplierCostsKnown?'עלות המוצרים ידועה וניתן להפעיל הגנות רווח/עלות.':'חלק מעלויות המוצרים עדיין ממתינות לסנכרון.'},
+    {l:productSyncFresh&&shippingSyncFresh?'ok':'warn',t:'טריות נתוני ספק',x:productSyncFresh&&shippingSyncFresh?'בדיקות המוצר והמשלוח של כל המוצרים הפעילים בוצעו ב-8 השעות האחרונות.':'מידע חסר או ישן מ-8 שעות חוסם הזמנה אוטומטית.'},
+    {l:automationReady?'ok':'bad',t:'מוכנות אוטומציה מלאה',x:automationReady?'כל המוצרים הפעילים עברו SKU, מלאי, משלוח, מחיר וטריות נתונים.':'לפחות מוצר אחד נשאר חסום בכוונה עד שכל בדיקות הספק יעברו.'}
   ];
+
+  const safetyChecks=[
+    {l:'ok',t:'Preflight לפני הזמנת ספק',x:'לפני הזמנה אצל הספק מתבצעת בדיקה מחודשת של תשלום, מיפוי SKU, מלאי, משלוח, טריות נתונים ורווח.'},
+    {l:'ok',t:'בדיקת מחיר משלוח מחדש',x:'ה-Preflight מחשב משלוח מחדש לאותו סל; אם עלות הספק עלתה מעל הסכום שנגבה מהלקוח, התהליך נעצר.'},
+    {l:'ok',t:'מניעת הזמנת ספק כפולה',x:'קיים יומן ניסיונות, fingerprint לבקשה ונעילה שמונעת יותר מניסיון פתוח אחד לאותה הזמנה.'},
+    {l:'ok',t:'תמיכה בכמה Order IDs אצל הספק',x:'המערכת יכולה לשמור כמה מספרי הזמנה של AliExpress לאותה הזמנת לקוח, ולא רק מספר יחיד.'},
+    {l:'ok',t:'תקרת כמות בטוחה',x:'כמות למוצר מוגבלת עד 20 גם בדאטאבייס, בהתאם לחישוב המשלוח אצל הספק.'},
+    {l:'ok',t:'מצב Dry Run',x:'מסך Fulfillment מאפשר לבדוק מוכנות ולבנות את בקשת הספק בלי לשלוח הזמנה אמיתית.'}
+  ];
+
   const externalChecks=[
-    {l:'bad',t:'הרשאת ספק/API',x:'החיבור קיים אבל ההרשאה החיצונית עדיין חוסמת את נתוני המוצר והמשלוח החיים.'},
-    {l:'bad',t:'סליקה אמיתית',x:'בכוונה לא חוברה עדיין כדי לא להתחיל חלקים בתשלום.'},
-    {l:'bad',t:'קבלה/חשבונית חוקית',x:'תתחבר למערכת חשבונאית מתאימה רק אחרי פתיחת העסק ובחירת שירות.'},
+    {l:supplierApiLive?'ok':'bad',t:'הרשאת ספק/API',x:supplierApiLive?'סנכרון ספק חי הצליח לאחרונה.':'החיבור קיים, אבל הרשאת AliExpress החיצונית עדיין מונעת את סנכרון המוצר/משלוח החי.'},
+    {l:'bad',t:'סליקה אמיתית',x:'עדיין לא חובר ספק סליקה אמיתי. מנגנון אישור התשלום בשרת מוכן לבדוק מטבע וסכום כולל משלוח.'},
+    {l:'bad',t:'קבלה/חשבונית חוקית',x:'יש לחבר מערכת מסמכים חשבונאיים מתאימה אחרי פתיחת העסק ובחירת שירות.'},
     {l:businessReady?'ok':'warn',t:'פרטי העסק',x:businessReady?'פרטי העסק הושלמו במערכת.':'יש להשלים שם רשמי, מספר עוסק, סוג עסק, כתובת וטלפון לפני מכירות אמיתיות.'},
-    {l:orders.some(o=>['completed','shipped'].includes(o.status))?'ok':'warn',t:'בדיקת הזמנה מקצה לקצה',x:orders.some(o=>['completed','shipped'].includes(o.status))?'קיימת הזמנה שעברה תהליך מתקדם.':'הבדיקה הסופית תתבצע אחרי חיבור סליקה והרשאת הספק.'}
+    {l:orders.some(o=>['completed','shipped'].includes(o.status))?'ok':'warn',t:'בדיקת הזמנה מקצה לקצה',x:orders.some(o=>['completed','shipped'].includes(o.status))?'קיימת הזמנה שעברה תהליך מתקדם.':'הבדיקה הסופית תתבצע אחרי חיבור סליקה והרשאת הספק.'},
+    {l:'warn',t:'הזמנה אמיתית אצל AliExpress',x:'בכוונה לא הופעלה עדיין. קודם נאמת את הרשאת placeorder ואת שלב התשלום אצל הספק כדי שלא ניצור הזמנות כפולות או ממתינות לתשלום.'}
   ];
-  const checks=[...freeChecks,...productChecks,...externalChecks];
+
+  const checks=[...freeChecks,...productChecks,...safetyChecks,...externalChecks];
   const passed=checks.filter(c=>c.l==='ok').length;
   const pct=Math.round((passed/checks.length)*100);
   const critical=checks.filter(c=>c.l==='bad').length;
-  app.innerHTML=`<section class="hero"><h1>מצב מוכנות להשקה</h1><div class="muted">כל מה שאפשר להכין בלי תשלום מרוכז כאן. חסם אדום לא אומר שהאתר תקול — הוא אומר שיש שלב חיצוני שעוד לא ניתן להשלים.</div><div class="score"><b>${pct}%</b><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="muted">${critical} חסמים</span></div><div class="links"><a class="btn yellow" href="/admin-tools">הגדרות והתראות</a><a class="btn" href="/admin">מוצרים והזמנות</a><a class="btn" href="/accounting">חשבונות</a><a class="btn" href="/expenses">הוצאות</a><a class="btn" href="/policies" target="_blank">עמוד מידע ללקוחות</a></div><div class="note"><b>היעד:</b> כששלושת החיבורים החיצוניים — הרשאת המוצר, סליקה ומסמכים חשבונאיים — יהיו זמינים, לא נצטרך לבנות מחדש את החנות; רק לחבר אותם לתשתית שכבר הוכנה.</div></section><div class="grid"><section class="card"><h2>מוכן בלי תשלום</h2>${freeChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>מוצרים ואוטומציה</h2>${productChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>חיבורים חיצוניים לפני מכירות אמיתיות</h2>${externalChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>מצב מוצרים</h2>${item(active.length?'ok':'bad','מוצרים פעילים',`${active.length} מוצרים פעילים כרגע.`)}${item(active.filter(p=>p.fulfillment_ready).length===active.length&&active.length?'ok':'warn','מוכנים להזמנה אוטומטית',`${active.filter(p=>p.fulfillment_ready).length} מתוך ${active.length} מוכנים.`)}${item(active.filter(p=>p.supplier_sku_id).length===active.length&&active.length?'ok':'warn','SKU מאומת',`${active.filter(p=>p.supplier_sku_id).length} מתוך ${active.length} עם SKU.`)}</section></div>`
+  app.innerHTML=`<section class="hero"><h1>מצב מוכנות להשקה</h1><div class="muted">הציון מפריד בין תשתית שכבר מוכנה לבין חיבורים חיצוניים ונתוני ספק שעדיין חסומים. מידע לא ידוע נחשב חסימה — לא מנחשים.</div><div class="score"><b>${pct}%</b><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="muted">${critical} חסמים קריטיים</span></div><div class="links"><a class="btn yellow" href="/suppliers">ספקים ואוטומציה</a><a class="btn yellow" href="/fulfillment">Fulfillment / Preflight</a><a class="btn" href="/admin-tools">הגדרות והתראות</a><a class="btn" href="/admin">מוצרים והזמנות</a><a class="btn" href="/accounting">חשבונות</a><a class="btn" href="/expenses">הוצאות</a><a class="btn" href="/policies" target="_blank">עמוד מידע ללקוחות</a></div><div class="note"><b>היעד:</b> לאחר פתיחת הרשאת AliExpress, נבחר ונאמת SKU לכל מוצר ונקבל מחיר/מלאי/משלוח חי. לאחר חיבור סליקה ומסמכים חשבונאיים נבצע בדיקת קצה-לקצה ורק אז נפעיל הזמנת ספק אמיתית.</div></section><div class="grid"><section class="card"><h2>תשתית החנות</h2>${freeChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>מוצרים וסנכרון</h2>${productChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>הגנות Fulfillment</h2>${safetyChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>חיבורים חיצוניים</h2>${externalChecks.map(c=>item(c.l,c.t,c.x)).join('')}</section><section class="card"><h2>מצב מוצרים</h2>${item(active.length?'ok':'bad','מוצרים פעילים',`${active.length} מוצרים פעילים כרגע.`)}${item(active.filter(p=>p.fulfillment_ready).length===active.length&&active.length?'ok':'warn','מוכנים ברמת DB',`${active.filter(p=>p.fulfillment_ready).length} מתוך ${active.length} מסומנים מוכנים.`)}${item(active.filter(p=>p.sku_verified_at).length===active.length&&active.length?'ok':'warn','SKU מאומת',`${active.filter(p=>p.sku_verified_at).length} מתוך ${active.length} עברו אימות מול הספק.`)}</section></div>`
 }
 (async()=>{try{const [p,o]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders?limit=100')]);render(p.products||[],o.orders||[],p.settings||{})}catch(e){if(e.message==='unauthorized')app.innerHTML='<div class="hero login"><h2>צריך להתחבר לניהול</h2><div class="muted">עמוד המוכנות מוגן באותה התחברות של ה-Admin.</div><div class="links" style="justify-content:center"><a class="btn yellow" href="/admin">כניסה לניהול</a></div></div>';else app.innerHTML='<div class="hero"><b>לא הצלחנו לטעון את מצב החנות.</b></div>'}})();
 </script>
