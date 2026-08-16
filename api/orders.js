@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { quoteCartShipping } = require('./_lib/shipping');
+const { serverHeaders } = require('./_lib/supabase-server');
 
 const TERMS_VERSION = '2026-08-16';
 
@@ -56,11 +57,7 @@ async function consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly }) {
   const kind = quoteOnly ? 'quote' : 'order';
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_api_rate_limit`, {
     method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: serverHeaders({ 'Content-Type': 'application/json' }, serviceKey),
     body: JSON.stringify({
       p_key: requestFingerprint(req, kind),
       p_limit: quoteOnly ? 60 : 15,
@@ -74,7 +71,7 @@ async function consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly }) {
 async function readSalesEnabled({ supabaseUrl, serviceKey }) {
   const response = await fetch(
     `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled&limit=1`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    { headers: serverHeaders({}, serviceKey) }
   );
   if (!response.ok) throw new Error(`sales_settings_read_${response.status}`);
   const row = (await response.json())[0] || {};
@@ -91,7 +88,7 @@ async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal
 
   const response = await fetch(
     `${supabaseUrl}/rest/v1/coupons?code=eq.${encodeURIComponent(code)}&select=*&limit=1`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    { headers: serverHeaders({}, serviceKey) }
   );
   if (!response.ok) throw new Error(`coupon_lookup_${response.status}`);
   const coupon = (await response.json())[0];
@@ -190,7 +187,7 @@ async function findExistingRequest({ supabaseUrl, serviceKey, requestId }) {
   if (!requestId) return null;
   const response = await fetch(
     `${supabaseUrl}/rest/v1/orders?client_request_id=eq.${encodeURIComponent(requestId)}&select=*&limit=1`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    { headers: serverHeaders({}, serviceKey) }
   );
   if (!response.ok) throw new Error(`idempotency_lookup_${response.status}`);
   return (await response.json())[0] || null;
@@ -266,18 +263,19 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
     }
 
+    const quoteOnly = body.quoteOnly === true;
     const salesEnabled = await readSalesEnabled({ supabaseUrl, serviceKey });
-    if (body.quoteOnly !== true && !salesEnabled) {
+    if (!quoteOnly && !salesEnabled) {
       return res.status(503).json({ ok: false, error: 'sales_disabled' });
     }
 
-    const allowed = await consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly: body.quoteOnly === true });
+    const allowed = await consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly });
     if (!allowed) {
-      res.setHeader('Retry-After', body.quoteOnly === true ? '600' : '3600');
+      res.setHeader('Retry-After', quoteOnly ? '600' : '3600');
       return res.status(429).json({ ok: false, error: 'too_many_requests' });
     }
 
-    if (body.quoteOnly !== true && requestId) {
+    if (!quoteOnly && requestId) {
       const existing = await findExistingRequest({ supabaseUrl, serviceKey, requestId });
       if (existing) {
         const existingPhone = String(existing.customer?.phone || '').replace(/\D/g, '');
@@ -290,12 +288,7 @@ module.exports = async function handler(req, res) {
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
       `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,max_order_quantity,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
-      {
-        headers: {
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`
-        }
-      }
+      { headers: serverHeaders({}, serviceKey) }
     );
 
     if (!productResponse.ok) {
@@ -310,7 +303,21 @@ module.exports = async function handler(req, res) {
     const normalized = [];
     for (const item of requested) {
       const product = byId.get(item.id);
-      if (!product || product.active !== true || product.supplier_in_stock === false || product.supplier_shipping_available === false) {
+      if (!product || product.active !== true) {
+        return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
+      }
+
+      if (!quoteOnly && (
+        product.fulfillment_ready !== true ||
+        product.supplier_in_stock !== true ||
+        product.supplier_shipping_available !== true ||
+        !product.supplier_product_id ||
+        !product.supplier_sku_id
+      )) {
+        return res.status(409).json({ ok: false, error: 'product_not_purchase_ready', productId: item.id });
+      }
+
+      if (quoteOnly && (product.supplier_in_stock === false || product.supplier_shipping_available === false)) {
         return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
       }
 
@@ -386,7 +393,7 @@ module.exports = async function handler(req, res) {
       coupon: couponResult.coupon
     };
 
-    if (body.quoteOnly === true) {
+    if (quoteOnly) {
       return res.status(200).json({
         ok: true,
         quoteOnly: true,
@@ -398,7 +405,14 @@ module.exports = async function handler(req, res) {
         shippingCurrency: 'ILS',
         shippingLines: customerShippingLines(shippingQuote.lines),
         total: shippingQuote.status === 'quoted' ? finalTotal : null,
-        canFinalize: salesEnabled && shippingQuote.status === 'quoted'
+        canFinalize: salesEnabled && normalized.every((item) => item.fulfillmentReady) && shippingQuote.status === 'quoted'
+      });
+    }
+
+    if (shippingQuote.status !== 'quoted') {
+      return res.status(409).json({
+        ok: false,
+        error: shippingQuote.waitingForAliExpressPermission ? 'supplier_permission_pending' : 'shipping_unavailable'
       });
     }
 
@@ -429,12 +443,10 @@ module.exports = async function handler(req, res) {
 
     const dbResponse = await fetch(`${supabaseUrl}/rest/v1/orders`, {
       method: 'POST',
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
+      headers: serverHeaders({
         'Content-Type': 'application/json',
         Prefer: 'return=minimal'
-      },
+      }, serviceKey),
       body: JSON.stringify(order)
     });
 
@@ -461,8 +473,8 @@ module.exports = async function handler(req, res) {
       fulfillmentStatus: order.fulfillment_status,
       ...priceSummary,
       shippingStatus: customerShippingStatus(shippingQuote.status),
-      shippingPending: shippingPending(shippingQuote),
-      shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
+      shippingPending: false,
+      shippingCost,
       shippingCurrency: 'ILS',
       shippingLines: customerShippingLines(shippingQuote.lines),
       total: finalTotal,
