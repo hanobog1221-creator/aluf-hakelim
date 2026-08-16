@@ -1,6 +1,6 @@
 const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken } = require('../_lib/aliexpress');
 const { requireAdmin, config, dbHeaders } = require('../_lib/admin');
-const { quoteAliExpressFreight } = require('../_lib/shipping');
+const { quoteAliExpressFreight, convertToIls } = require('../_lib/shipping');
 
 const PRODUCT_PATH = '/ds/product/get';
 
@@ -113,6 +113,15 @@ async function updateProduct(product, snapshot) {
     ? selected.inStock
     : (snapshot.status ? snapshot.status === 'onSelling' && availableSkus.length > 0 : null);
 
+  let supplierPriceIls = null;
+  if (source?.price != null && source?.currency) {
+    try {
+      supplierPriceIls = await convertToIls(source.price, source.currency);
+    } catch {
+      supplierPriceIls = null;
+    }
+  }
+
   let freight = null;
   let shippingError = null;
   try {
@@ -131,6 +140,7 @@ async function updateProduct(product, snapshot) {
     supplier_stock: selected?.stock ?? null,
     supplier_price: source?.price ?? null,
     supplier_currency: source?.currency || null,
+    supplier_price_ils: supplierPriceIls,
     last_sync_at: new Date().toISOString(),
     supplier_sync_error: null,
     shipping_sync_error: shippingError,
@@ -197,6 +207,7 @@ module.exports = async function handler(req, res) {
             ok: true,
             inStock: saved.update.supplier_in_stock,
             price: saved.update.supplier_price,
+            priceIls: saved.update.supplier_price_ils,
             shipping: saved.update.supplier_shipping ?? null,
             shippingAvailable: saved.update.supplier_shipping_available ?? null,
             shippingError: saved.update.shipping_sync_error || null
