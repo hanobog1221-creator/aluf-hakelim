@@ -29,8 +29,22 @@ alter function public.guard_product_fulfillment_readiness() set search_path = pu
 drop index if exists public.business_expenses_source_key_unique_idx;
 drop index if exists public.order_events_order_created_idx;
 
+-- No browser/client role needs direct table access except the two storefront-read tables below.
+do $$
+declare r record;
+begin
+  for r in
+    select tablename
+    from pg_tables
+    where schemaname = 'public'
+      and tablename not in ('products','site_settings')
+  loop
+    execute format('revoke all privileges on table public.%I from anon, authenticated', r.tablename);
+  end loop;
+end $$;
+
 -- Public storefront roles can read only customer-facing product columns.
-revoke select on table public.products from anon, authenticated;
+revoke all privileges on table public.products from anon, authenticated;
 grant select (
   id,
   name,
@@ -55,7 +69,7 @@ grant select (
 ) on table public.products to anon, authenticated;
 
 -- Public storefront roles can read only customer-facing contact settings.
-revoke select on table public.site_settings from anon, authenticated;
+revoke all privileges on table public.site_settings from anon, authenticated;
 grant select (
   id,
   whatsapp_enabled,
