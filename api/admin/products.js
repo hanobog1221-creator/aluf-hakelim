@@ -59,6 +59,7 @@ module.exports = async function handler(req, res) {
           whatsapp_message: cleanText(body.whatsapp_message, 500, false) || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.',
           support_email: cleanText(body.support_email, 160),
           support_hours: cleanText(body.support_hours, 240),
+          minimum_profit_ils: cleanNumber(body.minimum_profit_ils, true),
           updated_at: new Date().toISOString()
         };
 
@@ -84,7 +85,8 @@ module.exports = async function handler(req, res) {
         const settings = (await response.json())[0] || row;
         await audit('store_settings_update', 'site_settings', 'primary', {
           whatsapp_enabled: row.whatsapp_enabled,
-          support_email_set: Boolean(row.support_email)
+          support_email_set: Boolean(row.support_email),
+          minimum_profit_ils: row.minimum_profit_ils
         });
         return res.status(200).json({ ok: true, settings });
       }
