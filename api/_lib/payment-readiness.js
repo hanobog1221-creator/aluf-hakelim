@@ -1,3 +1,5 @@
+const { serverHeaders } = require('./supabase-server');
+
 async function checkOrderPaymentReadiness(orderId) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -8,11 +10,7 @@ async function checkOrderPaymentReadiness(orderId) {
 
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/check_order_payment_readiness`, {
     method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: serverHeaders({ 'Content-Type': 'application/json' }, serviceKey),
     body: JSON.stringify({ p_order_id: id })
   });
 
