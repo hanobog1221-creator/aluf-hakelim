@@ -13,6 +13,36 @@ function normalizeRequestId(value) {
   return /^[A-Za-z0-9_-]{8,100}$/.test(id) ? id : '__INVALID__';
 }
 
+function customerItems(items) {
+  return (Array.isArray(items) ? items : []).map((item) => ({
+    id: String(item.id || ''),
+    name: String(item.name || ''),
+    qty: Number(item.qty || 0),
+    price: Number(item.price || 0),
+    variant: item.variant || null
+  }));
+}
+
+function customerShippingLines(lines) {
+  return (Array.isArray(lines) ? lines : []).map((line) => ({
+    id: String(line.id || ''),
+    qty: Number(line.qty || 0),
+    cost: Number(line.cost || 0),
+    currency: 'ILS',
+    estimatedDeliveryTime: line.estimatedDeliveryTime || null
+  }));
+}
+
+function customerShippingStatus(status) {
+  if (status === 'quoted') return 'quoted';
+  if (status === 'failed') return 'unavailable';
+  return 'pending';
+}
+
+function shippingPending(quote) {
+  return quote?.status !== 'quoted' && Boolean(quote?.waitingForAliExpressPermission);
+}
+
 async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal }) {
   if (!code) return { code: null, discountAmount: 0, coupon: null };
   if (code === '__INVALID__') {
@@ -91,8 +121,8 @@ function responseFromStoredOrder(order, duplicate = true) {
   const discountAmount = Number(order.discount_amount || 0);
   const discountedProductsSubtotal = Number(order.total || 0);
   const shippingCostRaw = Number(order.shipping_cost || 0);
-  const shippingStatus = order.shipping_quote_status || 'failed';
-  const shippingCost = shippingStatus === 'quoted' ? shippingCostRaw : null;
+  const internalShippingStatus = order.shipping_quote_status || 'failed';
+  const shippingCost = internalShippingStatus === 'quoted' ? shippingCostRaw : null;
   const finalTotal = Number((discountedProductsSubtotal + shippingCostRaw).toFixed(2));
   return {
     ok: true,
@@ -107,14 +137,14 @@ function responseFromStoredOrder(order, duplicate = true) {
     discountedProductsSubtotal,
     couponCode: order.coupon_code || null,
     coupon: null,
-    shippingStatus,
+    shippingStatus: customerShippingStatus(internalShippingStatus),
+    shippingPending: shippingPending(order.shipping_quote),
     shippingCost,
     shippingCurrency: 'ILS',
-    shippingLines: order.shipping_quote?.lines || [],
+    shippingLines: customerShippingLines(order.shipping_quote?.lines),
     total: finalTotal,
     currency: order.currency || 'ILS',
-    items: Array.isArray(order.items) ? order.items : [],
-    waitingForAliExpressPermission: Boolean(order.shipping_quote?.waitingForAliExpressPermission)
+    items: customerItems(order.items)
   };
 }
 
@@ -303,13 +333,13 @@ module.exports = async function handler(req, res) {
         ok: true,
         quoteOnly: true,
         ...priceSummary,
-        shippingStatus: shippingQuote.status,
+        shippingStatus: customerShippingStatus(shippingQuote.status),
+        shippingPending: shippingPending(shippingQuote),
         shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
         shippingCurrency: 'ILS',
-        shippingLines: shippingQuote.lines || [],
+        shippingLines: customerShippingLines(shippingQuote.lines),
         total: shippingQuote.status === 'quoted' ? finalTotal : null,
-        canFinalize: shippingQuote.status === 'quoted',
-        waitingForAliExpressPermission: Boolean(shippingQuote.waitingForAliExpressPermission)
+        canFinalize: shippingQuote.status === 'quoted'
       });
     }
 
@@ -369,14 +399,14 @@ module.exports = async function handler(req, res) {
       paymentStatus: order.payment_status,
       fulfillmentStatus: order.fulfillment_status,
       ...priceSummary,
-      shippingStatus: shippingQuote.status,
+      shippingStatus: customerShippingStatus(shippingQuote.status),
+      shippingPending: shippingPending(shippingQuote),
       shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
       shippingCurrency: 'ILS',
-      shippingLines: shippingQuote.lines || [],
+      shippingLines: customerShippingLines(shippingQuote.lines),
       total: finalTotal,
       currency: order.currency,
-      items: normalized,
-      waitingForAliExpressPermission: Boolean(shippingQuote.waitingForAliExpressPermission)
+      items: customerItems(normalized)
     });
   } catch (error) {
     console.error('Order API error:', error);
