@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /admin-tools
+Disallow: /api/
+
+Sitemap: https://aluf-hakelim-v2-ready.vercel.app/sitemap.xml
