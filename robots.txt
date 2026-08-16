@@ -2,6 +2,7 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /admin-tools
+Disallow: /accounting
 Disallow: /launch-checklist
 Disallow: /track
 Disallow: /api/
