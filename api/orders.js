@@ -1,5 +1,7 @@
 const { quoteCartShipping } = require('./_lib/shipping');
 
+const TERMS_VERSION = '2026-08-16';
+
 function normalizeCouponCode(value) {
   const code = String(value || '').trim().toUpperCase();
   if (!code) return null;
@@ -169,6 +171,10 @@ module.exports = async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const requestedItems = Array.isArray(body.items) ? body.items : [];
+
+    if (body.termsAccepted !== true) {
+      return res.status(400).json({ ok: false, error: 'terms_required' });
+    }
 
     if (!requestedItems.length || requestedItems.length > 30) {
       return res.status(400).json({ ok: false, error: 'empty_or_oversized_cart' });
@@ -362,6 +368,8 @@ module.exports = async function handler(req, res) {
       shipping_quoted_at: shippingQuote.quotedAt || null,
       items: normalized,
       customer,
+      terms_accepted_at: now,
+      terms_version: TERMS_VERSION,
       created_at: now,
       updated_at: now
     };
