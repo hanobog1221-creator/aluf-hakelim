@@ -10,6 +10,7 @@
     .ahCheckoutGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ahField{display:flex;flex-direction:column;gap:6px}.ahField.full{grid-column:1/-1}
     .ahField label{font-size:13px;font-weight:800}.ahField input,.ahField textarea{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:12px;font:inherit;background:#fff}.ahField textarea{min-height:78px;resize:vertical}
     .ahCouponWrap{display:flex;gap:8px}.ahCouponWrap input{text-transform:uppercase}.ahCouponHint{font-size:12px;color:#68717c}
+    .ahTerms{display:flex;align-items:flex-start;gap:9px;margin:14px 0 4px;padding:11px 12px;border:1px solid #e0e4e8;border-radius:10px;background:#fafbfc;font-size:13px;line-height:1.55}.ahTerms input{width:18px;height:18px;margin-top:1px;flex:0 0 auto}.ahTerms a{font-weight:900;color:#111923;text-underline-offset:2px}
     .ahCheckoutSummary{margin:18px 0;border-top:1px solid #e5e7eb;padding-top:14px}.ahCheckoutSummaryRow{display:flex;justify-content:space-between;gap:12px;padding:5px 0}.ahCheckoutSummaryRow.total{font-size:19px;font-weight:950}.ahShippingPending{color:#68717c}.ahShippingFree{color:#208b4b;font-weight:900}.ahDiscount{color:#197342;font-weight:900}
     .ahCheckoutSubmit{width:100%;height:50px;border:0;border-radius:11px;background:#ffc928;color:#15100a;font-weight:950}.ahCheckoutSubmit:disabled{opacity:.55;cursor:not-allowed}
     .ahCheckoutError{display:none;color:#b42318;background:#fff0ee;border:1px solid #ffc9c2;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:13px}.ahCheckoutError.show{display:block}
@@ -91,6 +92,7 @@
           <div class="ahField full"><label for="ahCoupon">קוד קופון</label><div class="ahCouponWrap"><input id="ahCoupon" name="couponCode" maxlength="40" autocomplete="off" placeholder="יש לך קוד? הכנס כאן"></div><span class="ahCouponHint">הקופון נבדק ומעודכן אוטומטית בסכום ההזמנה.</span></div>
           <div class="ahField full" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
         </div>
+        <label class="ahTerms"><input id="ahTerms" name="termsAccepted" type="checkbox" required><span>קראתי ואני מאשר את <a href="/policies" target="_blank" rel="noopener noreferrer">מדיניות המשלוחים, הביטולים, הפרטיות ותנאי השימוש</a>.</span></label>
         <div class="ahCheckoutSummary">
           <div class="ahCheckoutSummaryRow"><span>מוצרים</span><span>${entries.reduce((s,[,q])=>s+Number(q),0)}</span></div>
           <div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(total)}</span></div>
@@ -168,6 +170,7 @@
     if (result.error === 'coupon_not_started') return 'הקופון עדיין לא פעיל.';
     if (result.error === 'coupon_limit_reached') return 'הקופון הגיע למספר המימושים המקסימלי.';
     if (result.error === 'coupon_min_order') return `הקופון תקף בהזמנה של ${money(result.minOrder || 0)} ומעלה.`;
+    if (result.error === 'terms_required') return 'יש לאשר את מדיניות החנות ותנאי השימוש כדי להמשיך.';
     return null;
   }
 
@@ -181,6 +184,7 @@
         customer,
         couponCode: couponCode(),
         clientRequestId: currentAttemptId,
+        termsAccepted: Boolean(document.getElementById('ahTerms')?.checked),
         quoteOnly
       })
     });
@@ -219,6 +223,7 @@
     const customer = collectCustomer(form);
     const validationError = validateCustomer(customer);
     if (validationError) { showError(validationError); return; }
+    if (!document.getElementById('ahTerms')?.checked) { showError('יש לאשר את מדיניות החנות ותנאי השימוש כדי להמשיך.'); return; }
 
     const entries = currentCartEntries();
     if (!entries.length) { showError('הסל ריק.'); return; }
