@@ -91,4 +91,80 @@ function safePreview(request) {
   };
 }
 
-module.exports = { buildPlaceOrderRequest, safePreview };
+function arrayify(value) {
+  if (value === null || value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function normalizeOrderIds(value) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) && Object.prototype.hasOwnProperty.call(value, 'number')
+    ? value.number
+    : value;
+  return [...new Set(arrayify(raw)
+    .map((id) => String(id || '').trim())
+    .filter((id) => /^\d{5,30}$/.test(id)))];
+}
+
+function parsePlaceOrderResponse(json) {
+  const root = json?.aliexpress_trade_buy_placeorder_response || json?.aliexpressTradeBuyPlaceorderResponse || null;
+  const result = root?.result || null;
+  const apiError = json?.error_response || json?.errorResponse || null;
+
+  if (result) {
+    const orderIds = normalizeOrderIds(result.order_list ?? result.orderList);
+    const success = result.is_success === true || String(result.is_success).toLowerCase() === 'true';
+    const errorCode = clean(result.error_code ?? result.errorCode, 120);
+    const errorMessage = clean(result.error_msg ?? result.errorMsg, 500);
+
+    if (success && orderIds.length) {
+      return { outcome: 'created', orderIds, errorCode, errorMessage, shouldReconcile: false };
+    }
+    if (errorCode === 'REPEATED_ORDER_ERROR') {
+      return { outcome: 'ambiguous', orderIds, errorCode, errorMessage, shouldReconcile: true };
+    }
+    if (success && !orderIds.length) {
+      return {
+        outcome: 'ambiguous',
+        orderIds: [],
+        errorCode: errorCode || 'success_without_order_ids',
+        errorMessage,
+        shouldReconcile: true
+      };
+    }
+    return {
+      outcome: 'failed',
+      orderIds,
+      errorCode: errorCode || 'place_order_failed',
+      errorMessage,
+      shouldReconcile: false
+    };
+  }
+
+  if (apiError) {
+    const errorCode = clean(apiError.sub_code ?? apiError.subCode ?? apiError.code, 120) || 'api_error';
+    const errorMessage = clean(apiError.sub_msg ?? apiError.subMsg ?? apiError.msg, 500);
+    const repeated = errorCode === 'REPEATED_ORDER_ERROR' || errorMessage === 'REPEATED_ORDER_ERROR';
+    return {
+      outcome: repeated ? 'ambiguous' : 'failed',
+      orderIds: [],
+      errorCode,
+      errorMessage,
+      shouldReconcile: repeated
+    };
+  }
+
+  return {
+    outcome: 'ambiguous',
+    orderIds: [],
+    errorCode: 'unexpected_place_order_response',
+    errorMessage: null,
+    shouldReconcile: true
+  };
+}
+
+module.exports = {
+  buildPlaceOrderRequest,
+  safePreview,
+  parsePlaceOrderResponse,
+  normalizeOrderIds
+};
