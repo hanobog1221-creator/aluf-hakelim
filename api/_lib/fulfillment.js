@@ -27,7 +27,7 @@ async function loadCurrentSupplierState(order) {
     ids.length
       ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_product_id,supplier_sku_id,fulfillment_ready,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
       : Promise.resolve({ ok: true, json: async () => [] }),
-    fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=minimum_profit_ils&limit=1`, { headers })
+    fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils&limit=1`, { headers })
   ]);
 
   if (!productsResponse.ok) throw new Error(`supplier_state_read_${productsResponse.status}`);
@@ -51,6 +51,9 @@ function hasSupplierOrder(order) {
 }
 
 function validateFulfillmentOrder(order, supplierState = null) {
+  if (supplierState?.settings && supplierState.settings.sales_enabled !== true) {
+    return { ok: false, reason: 'sales_disabled' };
+  }
   if (order.payment_status !== 'paid') return { ok: false, reason: 'payment_not_confirmed' };
   if (order.shipping_quote_status !== 'quoted') return { ok: false, reason: 'shipping_not_quoted' };
   if (hasSupplierOrder(order)) return { ok: false, reason: 'supplier_order_already_exists' };
