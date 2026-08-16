@@ -1,5 +1,85 @@
 const { quoteCartShipping } = require('./_lib/shipping');
 
+function normalizeCouponCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  if (!code) return null;
+  if (!/^[A-Z0-9_-]{2,40}$/.test(code)) return '__INVALID__';
+  return code;
+}
+
+async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal }) {
+  if (!code) return { code: null, discountAmount: 0, coupon: null };
+  if (code === '__INVALID__') {
+    const error = new Error('invalid_coupon');
+    error.code = 'invalid_coupon';
+    throw error;
+  }
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/coupons?code=eq.${encodeURIComponent(code)}&select=*&limit=1`,
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+  );
+  if (!response.ok) throw new Error(`coupon_lookup_${response.status}`);
+  const coupon = (await response.json())[0];
+  if (!coupon || coupon.active !== true) {
+    const error = new Error('coupon_not_found');
+    error.code = 'coupon_not_found';
+    throw error;
+  }
+
+  const now = Date.now();
+  if (coupon.starts_at && Date.parse(coupon.starts_at) > now) {
+    const error = new Error('coupon_not_started');
+    error.code = 'coupon_not_started';
+    throw error;
+  }
+  if (coupon.ends_at && Date.parse(coupon.ends_at) < now) {
+    const error = new Error('coupon_expired');
+    error.code = 'coupon_expired';
+    throw error;
+  }
+  if (coupon.usage_limit != null && Number(coupon.used_count || 0) >= Number(coupon.usage_limit)) {
+    const error = new Error('coupon_limit_reached');
+    error.code = 'coupon_limit_reached';
+    throw error;
+  }
+
+  const minOrder = Number(coupon.min_order || 0);
+  if (productsSubtotal < minOrder) {
+    const error = new Error('coupon_min_order');
+    error.code = 'coupon_min_order';
+    error.minOrder = minOrder;
+    throw error;
+  }
+
+  const value = Number(coupon.discount_value || 0);
+  let discountAmount = 0;
+  if (coupon.discount_type === 'percent') {
+    discountAmount = productsSubtotal * Math.min(100, Math.max(0, value)) / 100;
+  } else if (coupon.discount_type === 'fixed') {
+    discountAmount = value;
+  } else {
+    throw new Error('coupon_type_invalid');
+  }
+
+  if (coupon.max_discount != null) {
+    discountAmount = Math.min(discountAmount, Math.max(0, Number(coupon.max_discount)));
+  }
+  discountAmount = Number(Math.min(productsSubtotal, Math.max(0, discountAmount)).toFixed(2));
+
+  return {
+    code,
+    discountAmount,
+    coupon: {
+      code,
+      discountType: coupon.discount_type,
+      discountValue: value,
+      minOrder,
+      maxDiscount: coupon.max_discount == null ? null : Number(coupon.max_discount)
+    }
+  };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -114,6 +194,22 @@ module.exports = async function handler(req, res) {
     }
 
     const productsSubtotal = Number(normalized.reduce((sum, item) => sum + item.price * item.qty, 0).toFixed(2));
+    const couponCode = normalizeCouponCode(body.couponCode);
+    let couponResult;
+    try {
+      couponResult = await calculateCoupon({ supabaseUrl, serviceKey, code: couponCode, productsSubtotal });
+    } catch (error) {
+      const code = String(error.code || error.message || error);
+      return res.status(400).json({
+        ok: false,
+        error: code,
+        minOrder: error.minOrder == null ? null : Number(error.minOrder)
+      });
+    }
+
+    const discountAmount = Number(couponResult.discountAmount || 0);
+    const discountedProductsSubtotal = Number(Math.max(0, productsSubtotal - discountAmount).toFixed(2));
+
     let shippingQuote;
     try {
       shippingQuote = await quoteCartShipping(normalized, customer.countryCode);
@@ -132,13 +228,21 @@ module.exports = async function handler(req, res) {
     }
 
     const shippingCost = shippingQuote.status === 'quoted' ? Number(shippingQuote.total || 0) : 0;
-    const finalTotal = Number((productsSubtotal + shippingCost).toFixed(2));
+    const finalTotal = Number((discountedProductsSubtotal + shippingCost).toFixed(2));
+
+    const priceSummary = {
+      productsSubtotal,
+      discountAmount,
+      discountedProductsSubtotal,
+      couponCode: couponResult.code,
+      coupon: couponResult.coupon
+    };
 
     if (body.quoteOnly === true) {
       return res.status(200).json({
         ok: true,
         quoteOnly: true,
-        productsSubtotal,
+        ...priceSummary,
         shippingStatus: shippingQuote.status,
         shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
         shippingCurrency: 'ILS',
@@ -157,7 +261,10 @@ module.exports = async function handler(req, res) {
       payment_status: 'unpaid',
       fulfillment_status: 'not_started',
       currency: 'ILS',
-      total: productsSubtotal,
+      products_subtotal: productsSubtotal,
+      discount_amount: discountAmount,
+      coupon_code: couponResult.code,
+      total: discountedProductsSubtotal,
       shipping_cost: shippingCost,
       shipping_quote_status: shippingQuote.status,
       shipping_quote: shippingQuote,
@@ -192,7 +299,7 @@ module.exports = async function handler(req, res) {
       status: order.status,
       paymentStatus: order.payment_status,
       fulfillmentStatus: order.fulfillment_status,
-      productsSubtotal,
+      ...priceSummary,
       shippingStatus: shippingQuote.status,
       shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
       shippingCurrency: 'ILS',
