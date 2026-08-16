@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
 
     const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at,last_sync_at&active=eq.true&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,supplier_in_stock,supplier_shipping,supplier_shipping_available,shipping_currency,shipping_last_checked_at&active=eq.true&order=sort_order.asc`,
         { headers }
       ),
       fetch(
@@ -47,8 +47,7 @@ module.exports = async function handler(req, res) {
       shipping: row.supplier_shipping == null ? null : Number(row.supplier_shipping),
       shippingAvailable: row.supplier_shipping_available,
       shippingCurrency: row.shipping_currency || null,
-      shippingCheckedAt: row.shipping_last_checked_at || null,
-      supplierSyncedAt: row.last_sync_at || null
+      shippingCheckedAt: row.shipping_last_checked_at || null
     }));
 
     let store = {
