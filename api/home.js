@@ -11,6 +11,10 @@ module.exports = async function handler(req, res) {
       .replaceAll('יש משלוח לישראל?', 'יש משלוחים לכל הארץ?')
       .replace('משלוחים לכל הארץ · שירות בעברית · מחירים ברורים בש״ח', 'משלוחים לכל הארץ · International Shipping · שירות בעברית · מחירים ברורים בש״ח');
 
+    if (!html.includes('/catalog-loader.js')) {
+      html = html.replace('</body>', '<script src="/catalog-loader.js"></script></body>');
+    }
+
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     return res.status(200).send(html);
