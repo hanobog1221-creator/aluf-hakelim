@@ -1,5 +1,3 @@
-const { getSupplierMapping } = require('./_lib/suppliers');
-
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
@@ -10,51 +8,100 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const items = Array.isArray(body.items) ? body.items : [];
+    const requestedItems = Array.isArray(body.items) ? body.items : [];
 
-    if (!items.length) {
+    if (!requestedItems.length) {
       return res.status(400).json({ ok: false, error: 'empty_cart' });
     }
 
-    const normalized = items.map((item) => {
-      const id = String(item.id || '');
-      const supplier = getSupplierMapping(id);
-      return {
-        id,
-        name: String(item.name || ''),
-        qty: Math.max(1, Math.floor(Number(item.qty || 1))),
-        price: Number(item.price || 0),
-        variant: supplier ? supplier.variantLabel : (item.variant ? String(item.variant) : null),
-        supplierUrl: supplier ? supplier.sourceUrl : null,
-        supplierProductId: supplier ? supplier.productId : null,
-        supplierSkuId: supplier ? supplier.skuId : null,
-        fulfillmentReady: Boolean(supplier && supplier.readyForFulfillment)
-      };
-    }).filter((item) => item.id && item.name && Number.isFinite(item.price) && item.price >= 0);
+    const requested = requestedItems
+      .map((item) => ({
+        id: String(item.id || ''),
+        qty: Math.max(1, Math.floor(Number(item.qty || 1)))
+      }))
+      .filter((item) => /^[A-Za-z0-9_-]+$/.test(item.id) && Number.isFinite(item.qty));
 
-    if (!normalized.length) {
+    if (!requested.length) {
       return res.status(400).json({ ok: false, error: 'invalid_items' });
+    }
+
+    const supabaseUrl = (process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co').replace(/\/$/, '');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!serviceKey) {
+      console.error('SUPABASE_SERVICE_ROLE_KEY is missing');
+      return res.status(500).json({ ok: false, error: 'server_not_configured' });
+    }
+
+    const uniqueIds = [...new Set(requested.map((item) => item.id))];
+    const idFilter = uniqueIds.join(',');
+    const productResponse = await fetch(
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready&id=in.(${encodeURIComponent(idFilter)})`,
+      {
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`
+        }
+      }
+    );
+
+    if (!productResponse.ok) {
+      const details = await productResponse.text();
+      console.error('Supabase product lookup failed:', productResponse.status, details);
+      return res.status(500).json({ ok: false, error: 'catalog_lookup_failed' });
+    }
+
+    const products = await productResponse.json();
+    const byId = new Map(products.map((product) => [String(product.id), product]));
+
+    const normalized = [];
+    for (const item of requested) {
+      const product = byId.get(item.id);
+      if (!product || product.active !== true) {
+        return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
+      }
+
+      const price = Number(product.selling_price);
+      if (!Number.isFinite(price) || price < 0) {
+        return res.status(500).json({ ok: false, error: 'invalid_catalog_price', productId: item.id });
+      }
+
+      normalized.push({
+        id: String(product.id),
+        name: String(product.name),
+        qty: item.qty,
+        price,
+        variant: product.variant_label || null,
+        supplier: product.supplier || null,
+        supplierUrl: product.supplier_url || null,
+        supplierProductId: product.supplier_product_id || null,
+        supplierSkuId: product.supplier_sku_id || null,
+        fulfillmentReady: Boolean(product.fulfillment_ready)
+      });
     }
 
     const total = normalized.reduce((sum, item) => sum + item.price * item.qty, 0);
     const orderId = `AH-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const now = new Date().toISOString();
     const order = {
       order_id: orderId,
       status: 'draft',
+      payment_status: 'unpaid',
+      fulfillment_status: 'not_started',
       currency: 'ILS',
       total: Number(total.toFixed(2)),
+      shipping_cost: 0,
       items: normalized,
       customer: body.customer && typeof body.customer === 'object' ? body.customer : {},
-      created_at: new Date().toISOString()
+      created_at: now,
+      updated_at: now
     };
 
-    const supabaseUrl = process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co';
-    const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_u8IwJRz4KndmAk13fGZM5A_csTsqjsk';
-
-    const dbResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/orders`, {
+    const dbResponse = await fetch(`${supabaseUrl}/rest/v1/orders`, {
       method: 'POST',
       headers: {
-        apikey: publishableKey,
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
         'Content-Type': 'application/json',
         Prefer: 'return=minimal'
       },
@@ -70,9 +117,10 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       persisted: true,
-      storageConfigured: true,
       orderId,
       status: order.status,
+      paymentStatus: order.payment_status,
+      fulfillmentStatus: order.fulfillment_status,
       total: order.total,
       currency: order.currency,
       items: normalized
