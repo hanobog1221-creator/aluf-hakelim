@@ -98,6 +98,13 @@ function cleanImageUrl(value) {
   return text;
 }
 
+function cleanCurrency(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const code = String(value).trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) throw new Error('invalid_currency');
+  return code;
+}
+
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
@@ -314,6 +321,19 @@ module.exports = async function handler(req, res) {
       if ('supplier_product_id' in body) update.supplier_product_id = cleanSupplierProductId(body.supplier_product_id);
       if ('supplier_sku_id' in body) update.supplier_sku_id = cleanText(body.supplier_sku_id, 100);
       if ('variant_label' in body) update.variant_label = cleanText(body.variant_label, 200);
+      if ('supplier_price' in body) update.supplier_price = cleanNumber(body.supplier_price, true);
+      if ('supplier_currency' in body) update.supplier_currency = cleanCurrency(body.supplier_currency);
+      if ('supplier_price_ils' in body) update.supplier_price_ils = cleanNumber(body.supplier_price_ils, true);
+      if ('supplier_shipping' in body) {
+        update.supplier_shipping = cleanNumber(body.supplier_shipping, true);
+        if (update.supplier_shipping !== null) update.shipping_currency = 'ILS';
+      }
+      if ('supplier_shipping_available' in body) {
+        update.supplier_shipping_available = body.supplier_shipping_available === null ? null : Boolean(body.supplier_shipping_available);
+      }
+      if ('supplier_in_stock' in body) {
+        update.supplier_in_stock = body.supplier_in_stock === null ? null : Boolean(body.supplier_in_stock);
+      }
       if ('minimum_profit' in body) update.minimum_profit = cleanNumber(body.minimum_profit, true);
       if ('auto_fulfill_max_cost' in body) update.auto_fulfill_max_cost = cleanNumber(body.auto_fulfill_max_cost, true);
       if ('max_order_quantity' in body) update.max_order_quantity = cleanQuantityLimit(body.max_order_quantity, existing.max_order_quantity || 20);
@@ -324,10 +344,18 @@ module.exports = async function handler(req, res) {
       }
       if ('categories' in body) update.categories = cleanCategories(body.categories);
 
+      const publicCaptureAt = 'public_capture_at' in body ? cleanDate(body.public_capture_at) : null;
       const supplierChanged = ['supplier_url','supplier_product_id','supplier_sku_id','variant_label'].some((key) => key in update && update[key] !== existing[key]);
       if (supplierChanged) {
         update.fulfillment_ready = false;
-        update.last_sync_at = null;
+        if (!publicCaptureAt) update.last_sync_at = null;
+      }
+      if (publicCaptureAt) {
+        const hasPublicPrice = ['supplier_price','supplier_currency','supplier_price_ils'].some((key) => key in update);
+        const hasPublicShipping = ['supplier_shipping','supplier_shipping_available'].some((key) => key in update);
+        if (hasPublicPrice) update.last_sync_at = publicCaptureAt;
+        if (hasPublicShipping) update.shipping_last_checked_at = publicCaptureAt;
+        update.fulfillment_ready = false;
       }
       update.updated_at = new Date().toISOString();
 
@@ -341,7 +369,10 @@ module.exports = async function handler(req, res) {
         throw new Error(`product_update_${response.status}_${details.slice(0, 200)}`);
       }
       const product = (await response.json())[0] || null;
-      await audit('product_update', 'product', id, { fields: Object.keys(update) });
+      await audit(body.source === 'aliexpress_public_page' ? 'supplier_public_page_import' : 'product_update', 'product', id, {
+        fields: Object.keys(update),
+        source: body.source === 'aliexpress_public_page' ? 'aliexpress_public_page' : null
+      });
       return res.status(200).json({ ok: true, product });
     }
 
@@ -358,6 +389,7 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_quantity_limit')) return res.status(400).json({ ok: false, error: 'invalid_quantity_limit' });
     if (message.includes('invalid_payment_quote_ttl')) return res.status(400).json({ ok: false, error: 'invalid_payment_quote_ttl' });
     if (message.includes('invalid_number')) return res.status(400).json({ ok: false, error: 'invalid_number' });
+    if (message.includes('invalid_currency')) return res.status(400).json({ ok: false, error: 'invalid_currency' });
     if (message.includes('invalid_supplier_product_id')) return res.status(400).json({ ok: false, error: 'invalid_supplier_product_id' });
     if (message.includes('invalid_supplier_url')) return res.status(400).json({ ok: false, error: 'invalid_supplier_url' });
     if (message.includes('invalid_image_url')) return res.status(400).json({ ok: false, error: 'invalid_image_url' });
