@@ -76,7 +76,7 @@
     currentAttemptId = makeAttemptId();
     const total = cartTotal(entries);
     bodyBox.innerHTML = `
-      <div class="ahCheckoutNote"><b>המערכת עדיין בהכנה.</b> כרגע לא מתבצע חיוב ולא נשלחת הזמנה ל‑AliExpress.</div>
+      <div class="ahCheckoutNote"><b>החנות נמצאת בהרצה.</b> בשלב זה לא מתבצע חיוב.</div>
       <form id="ahCheckoutForm" novalidate>
         <div class="ahCheckoutGrid">
           <div class="ahField full"><label for="ahFullName">שם מלא *</label><input id="ahFullName" name="fullName" autocomplete="name" maxlength="80" required></div>
@@ -88,7 +88,7 @@
           <div class="ahField"><label for="ahApartment">דירה</label><input id="ahApartment" name="apartment" maxlength="20"></div>
           <div class="ahField"><label for="ahPostal">מיקוד</label><input id="ahPostal" name="postalCode" inputmode="numeric" maxlength="12" autocomplete="postal-code"></div>
           <div class="ahField full"><label for="ahNotes">הערות למשלוח</label><textarea id="ahNotes" name="notes" maxlength="300"></textarea></div>
-          <div class="ahField full"><label for="ahCoupon">קוד קופון</label><div class="ahCouponWrap"><input id="ahCoupon" name="couponCode" maxlength="40" autocomplete="off" placeholder="יש לך קוד? הכנס כאן"></div><span class="ahCouponHint">הקופון נבדק בשרת — אי אפשר לשנות את ההנחה מהדפדפן.</span></div>
+          <div class="ahField full"><label for="ahCoupon">קוד קופון</label><div class="ahCouponWrap"><input id="ahCoupon" name="couponCode" maxlength="40" autocomplete="off" placeholder="יש לך קוד? הכנס כאן"></div><span class="ahCouponHint">הקופון נבדק ומעודכן אוטומטית בסכום ההזמנה.</span></div>
           <div class="ahField full" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
         </div>
         <div class="ahCheckoutSummary">
@@ -97,10 +97,10 @@
           <div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחת קופון</span><span id="ahDiscount" class="ahDiscount">-₪0.00</span></div>
           <div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahShippingPending">יחושב לפי הכתובת</span></div>
           <div class="ahCheckoutSummaryRow total"><span>סה״כ</span><span id="ahGrandTotal">${money(total)}</span></div>
-          <div class="ahCheckoutSummaryRow"><small id="ahShippingStatus">לפני תשלום המערכת תבדוק את הקופון ואת עלות המשלוח.</small></div>
+          <div class="ahCheckoutSummaryRow"><small id="ahShippingStatus">עלות המשלוח תתעדכן לפי פרטי הכתובת.</small></div>
         </div>
         <div class="ahCheckoutError" id="ahCheckoutError"></div>
-        <button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת קופון, משלוח והמשך</button>
+        <button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button>
       </form>`;
 
     const form = document.getElementById('ahCheckoutForm');
@@ -109,7 +109,7 @@
       const submit = document.getElementById('ahCheckoutSubmit');
       if (!submit || submit.dataset.stage === 'quote') return;
       submit.dataset.stage = 'quote';
-      submit.textContent = 'בדיקת קופון, משלוח והמשך';
+      submit.textContent = 'בדיקת פרטים והמשך';
       const shipping = document.getElementById('ahShippingCost');
       const grand = document.getElementById('ahGrandTotal');
       const status = document.getElementById('ahShippingStatus');
@@ -240,18 +240,18 @@
             shipping.textContent = Number(quote.shippingCost || 0) <= 0 ? 'חינם' : money(quote.shippingCost);
             shipping.className = Number(quote.shippingCost || 0) <= 0 ? 'ahShippingFree' : '';
           }
-          if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר ועלות המשלוח נבדקה.` : 'עלות המשלוח נבדקה מול AliExpress.';
+          if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר ועלות המשלוח עודכנה.` : 'עלות המשלוח עודכנה לפי הכתובת.';
           submit.dataset.stage = 'finalize';
           submit.textContent = 'אישור ושמירת הזמנה';
           submit.disabled = false;
           return;
         }
 
-        if (quote.waitingForAliExpressPermission) {
-          if (shipping) { shipping.textContent = 'ממתין לחיבור AliExpress'; shipping.className = 'ahShippingPending'; }
-          if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר. המשלוח ממתין לחיבור AliExpress.` : 'ההרשאה של AliExpress עדיין לא נפתחה. לא יתבצע חיוב.';
+        if (quote.shippingPending) {
+          if (shipping) { shipping.textContent = 'בבדיקה'; shipping.className = 'ahShippingPending'; }
+          if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר. עלות המשלוח עדיין בבדיקה.` : 'עלות המשלוח עדיין בבדיקה. לא יתבצע חיוב.';
           submit.dataset.stage = 'finalize-pending';
-          submit.textContent = 'שמור טיוטה';
+          submit.textContent = 'שמור הזמנה';
           submit.disabled = false;
           return;
         }
@@ -263,7 +263,7 @@
       const result = await postOrderPayload(entries, customer, false);
       const shippingLine = result.shippingStatus === 'quoted'
         ? `<p>משלוח: <b>${Number(result.shippingCost || 0) <= 0 ? 'חינם' : money(result.shippingCost)}</b></p>`
-        : '<p style="color:#68717c">עלות המשלוח עדיין ממתינה לחיבור AliExpress ולא בוצע חיוב.</p>';
+        : '<p style="color:#68717c">עלות המשלוח עדיין בבדיקה ולא בוצע חיוב.</p>';
       const discountLine = Number(result.discountAmount || 0) > 0
         ? `<p>קופון ${String(result.couponCode || '')}: <b class="ahDiscount">-${money(result.discountAmount)}</b></p>`
         : '';
@@ -271,13 +271,13 @@
       bodyBox.innerHTML = `
         <div class="ahCheckoutSuccess">
           <div style="font-size:46px">✓</div>
-          <h2>הטיוטה נשמרה</h2>
+          <h2>פרטי ההזמנה נשמרו</h2>
           <p>מספר ההזמנה שלך:</p>
           <div class="ahOrderId">${String(result.orderId || '')}</div>
           ${discountLine}
           ${shippingLine}
           <p><b>סה״כ כרגע: ${money(result.total)}</b></p>
-          <p style="color:#68717c;line-height:1.6">לא בוצע חיוב ולא נשלחה הזמנה לספק. כשנחבר את הסליקה, התשלום יוכל להמשיך רק אחרי בדיקת מחיר המשלוח.</p>
+          <p style="color:#68717c;line-height:1.6">לא בוצע חיוב. כאשר התשלום יהיה פעיל, ההזמנה תמשיך רק לאחר אישור הסכום הסופי.</p>
           <button class="ahCheckoutSubmit" type="button" id="ahCheckoutDone">סגור</button>
         </div>`;
       currentAttemptId = null;
@@ -285,8 +285,8 @@
     } catch (error) {
       showError(error.message || 'אירעה שגיאה.');
       submit.disabled = false;
-      if (submit.dataset.stage === 'quote') submit.textContent = 'בדיקת קופון, משלוח והמשך';
-      else if (submit.dataset.stage === 'finalize-pending') submit.textContent = 'שמור טיוטה';
+      if (submit.dataset.stage === 'quote') submit.textContent = 'בדיקת פרטים והמשך';
+      else if (submit.dataset.stage === 'finalize-pending') submit.textContent = 'שמור הזמנה';
       else submit.textContent = 'אישור ושמירת הזמנה';
     }
   }
