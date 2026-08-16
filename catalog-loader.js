@@ -20,6 +20,8 @@
       .ahWaFloat{position:fixed;left:18px;bottom:18px;z-index:145;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#073b1a;padding:12px 16px;font-weight:950;box-shadow:0 10px 28px #0003;text-decoration:none}
       .ahWaFloat span{font-size:19px}.ahWaProduct{display:block;margin-top:10px;text-align:center;border:1px solid #20b858;border-radius:10px;padding:11px 13px;font-weight:900;color:#126832;background:#effdf4;text-decoration:none}
       .ahTrackFooter{color:#fff;font-weight:850;text-decoration:underline;text-underline-offset:3px}
+      .ahCardActions{position:absolute;top:9px;left:9px;z-index:4;display:flex;gap:6px}.ahMiniBtn{width:35px;height:35px;border:1px solid #d8dde2;border-radius:999px;background:#fffffff2;box-shadow:0 3px 12px #0002;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}.ahMiniBtn.saved{background:#fff1f1;border-color:#f1b8bd}
+      .ahModalActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.ahActionBtn{border:1px solid #d7dde3;border-radius:10px;background:#fff;padding:11px 12px;font-weight:900;cursor:pointer}.ahActionBtn.saved{background:#fff1f1;border-color:#f1b8bd;color:#9d1e2a}
       @media(max-width:620px){.ahWaFloat{left:10px;bottom:10px;padding:11px 13px}.ahWaFloat b{display:none}}
     `;
     document.head.appendChild(style);
@@ -46,6 +48,45 @@
       if (!whatsappNumber) return null;
       const text = [defaultWhatsappMessage, extra].filter(Boolean).join('\n');
       return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(text)}`;
+    }
+
+    function loadFavorites() {
+      try {
+        const raw = JSON.parse(localStorage.getItem('alufFavorites') || '[]');
+        return new Set(Array.isArray(raw) ? raw.map(String) : []);
+      } catch {
+        return new Set();
+      }
+    }
+
+    const favorites = loadFavorites();
+    function saveFavorites() {
+      localStorage.setItem('alufFavorites', JSON.stringify([...favorites]));
+    }
+    function toggleFavorite(id) {
+      id = String(id);
+      if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
+      saveFavorites();
+      decorateProductCards(document.querySelector('.cat.active')?.dataset?.filter || 'all');
+      return favorites.has(id);
+    }
+    function productUrl(product) {
+      const url = new URL(window.location.origin + '/');
+      url.searchParams.set('product', product.id);
+      return url.toString();
+    }
+    async function shareProduct(product) {
+      const url = productUrl(product);
+      const text = `${product.name} — אלוף הכלים`;
+      if (navigator.share) {
+        try { await navigator.share({ title: product.name, text, url }); return; } catch {}
+      }
+      try {
+        await navigator.clipboard.writeText(url);
+        alert('הקישור למוצר הועתק');
+      } catch {
+        window.prompt('העתק את הקישור למוצר:', url);
+      }
     }
 
     if (whatsappNumber && !document.getElementById('ahWaFloat')) {
@@ -76,17 +117,40 @@
       cards.forEach((card, index) => {
         const product = visible[index];
         if (!product) return;
+        card.style.position = 'relative';
         const priceRow = card.querySelector('.priceRow');
-        if (!priceRow) return;
-        let line = card.querySelector('.ahShippingLine');
-        if (!line) {
-          line = document.createElement('div');
-          line.className = 'ahShippingLine';
-          priceRow.parentNode.insertBefore(line, priceRow);
+        if (priceRow) {
+          let line = card.querySelector('.ahShippingLine');
+          if (!line) {
+            line = document.createElement('div');
+            line.className = 'ahShippingLine';
+            priceRow.parentNode.insertBefore(line, priceRow);
+          }
+          const amount = product.shipping == null ? null : Number(product.shipping);
+          line.classList.toggle('free', Number.isFinite(amount) && amount <= 0);
+          line.textContent = '🚚 ' + shippingText(product);
         }
-        const amount = product.shipping == null ? null : Number(product.shipping);
-        line.classList.toggle('free', Number.isFinite(amount) && amount <= 0);
-        line.textContent = '🚚 ' + shippingText(product);
+
+        let actions = card.querySelector('.ahCardActions');
+        if (!actions) {
+          actions = document.createElement('div');
+          actions.className = 'ahCardActions';
+          card.appendChild(actions);
+        }
+        actions.innerHTML = '';
+        const fav = document.createElement('button');
+        fav.type = 'button';
+        fav.className = 'ahMiniBtn' + (favorites.has(String(product.id)) ? ' saved' : '');
+        fav.textContent = favorites.has(String(product.id)) ? '♥' : '♡';
+        fav.title = favorites.has(String(product.id)) ? 'הסר ממועדפים' : 'שמור למועדפים';
+        fav.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(product.id); });
+        const share = document.createElement('button');
+        share.type = 'button';
+        share.className = 'ahMiniBtn';
+        share.textContent = '↗';
+        share.title = 'שתף מוצר';
+        share.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); shareProduct(product); });
+        actions.append(fav, share);
       });
     }
 
@@ -128,6 +192,27 @@
           if (addButton) addButton.insertAdjacentElement('afterend', wa);
           else modalInfo.appendChild(wa);
         }
+
+        const oldActions = modalInfo.querySelector('.ahModalActions');
+        if (oldActions) oldActions.remove();
+        const actions = document.createElement('div');
+        actions.className = 'ahModalActions';
+        const fav = document.createElement('button');
+        fav.type = 'button';
+        fav.className = 'ahActionBtn' + (favorites.has(String(product.id)) ? ' saved' : '');
+        fav.textContent = favorites.has(String(product.id)) ? '♥ שמור במועדפים' : '♡ שמור במועדפים';
+        fav.addEventListener('click', () => {
+          const saved = toggleFavorite(product.id);
+          fav.classList.toggle('saved', saved);
+          fav.textContent = saved ? '♥ שמור במועדפים' : '♡ שמור במועדפים';
+        });
+        const share = document.createElement('button');
+        share.type = 'button';
+        share.className = 'ahActionBtn';
+        share.textContent = '↗ שתף מוצר';
+        share.addEventListener('click', () => shareProduct(product));
+        actions.append(fav, share);
+        modalInfo.appendChild(actions);
       };
       window.__ahShippingModalPatched = true;
     }
@@ -154,6 +239,11 @@
     const filter = activeCategory && activeCategory.dataset ? (activeCategory.dataset.filter || 'all') : 'all';
     if (typeof renderProducts === 'function') renderProducts(filter);
     if (typeof renderCart === 'function') renderCart();
+
+    const requestedProduct = new URLSearchParams(window.location.search).get('product');
+    if (requestedProduct && products.some((p) => String(p.id) === String(requestedProduct)) && typeof window.openProduct === 'function') {
+      setTimeout(() => window.openProduct(requestedProduct), 80);
+    }
   } catch (error) {
     console.warn('Managed catalog unavailable; using storefront fallback.');
   }
