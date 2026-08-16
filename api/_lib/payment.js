@@ -1,4 +1,5 @@
 const { checkOrderPaymentReadiness } = require('./payment-readiness');
+const { serverHeaders } = require('./supabase-server');
 
 function serverConfig() {
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
@@ -11,7 +12,7 @@ async function loadPaymentCustomer(orderId) {
   const { supabaseUrl, serviceKey } = serverConfig();
   const response = await fetch(
     `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=customer&limit=1`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    { headers: serverHeaders({}, serviceKey) }
   );
   if (!response.ok) throw new Error(`payment_customer_read_${response.status}`);
   const order = (await response.json())[0];
@@ -35,11 +36,7 @@ async function confirmVerifiedPayment({ provider, providerEventId, orderId, amou
 
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/confirm_order_payment`, {
     method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: serverHeaders({ 'Content-Type': 'application/json' }, serviceKey),
     body: JSON.stringify({
       p_provider: String(provider || ''),
       p_provider_event_id: String(providerEventId || ''),
