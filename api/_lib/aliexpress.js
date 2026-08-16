@@ -3,7 +3,7 @@ const { serverHeaders } = require('./supabase-server');
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const API_BASE = 'https://api-sg.aliexpress.com/rest';
-const TOP_API_BASE = 'https://api.taobao.com/router/rest';
+const TOP_API_BASE = 'https://gw.api.taobao.com/router/rest';
 const REFRESH_PATH = '/auth/token/refresh';
 const REFRESH_EARLY_MS = 30 * 60 * 1000;
 const STORE_URL = 'https://aluf-hakelim-v2-ready.vercel.app/';
