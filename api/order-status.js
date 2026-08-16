@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { serverHeaders } = require('./_lib/supabase-server');
 
 function requestFingerprint(req) {
   const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
@@ -9,11 +10,7 @@ function requestFingerprint(req) {
 async function consumeLookupRateLimit(req, supabaseUrl, serviceKey) {
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/consume_api_rate_limit`, {
     method: 'POST',
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: serverHeaders({ 'Content-Type': 'application/json' }, serviceKey),
     body: JSON.stringify({
       p_key: requestFingerprint(req),
       p_limit: 30,
@@ -56,7 +53,7 @@ module.exports = async function handler(req, res) {
 
     const response = await fetch(
       `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,shipping_quote_status,items,customer,tracking_number,customer_note,created_at,updated_at&limit=1`,
-      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+      { headers: serverHeaders({}, serviceKey) }
     );
 
     if (!response.ok) {
