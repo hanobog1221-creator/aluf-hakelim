@@ -27,7 +27,7 @@
     document.head.appendChild(style);
 
     function shippingText(product) {
-      if (product.shippingAvailable === false) return 'אין משלוח לישראל';
+      if (product.shippingAvailable === false) return 'אין אפשרות משלוח כרגע';
       const amount = product.shipping == null ? null : Number(product.shipping);
       if (Number.isFinite(amount) && amount <= 0) return 'משלוח חינם';
       if (Number.isFinite(amount) && amount > 0) return `משלוח ${typeof money === 'function' ? money(amount) : '₪' + amount.toFixed(2)}`;
@@ -87,6 +87,12 @@
       } catch {
         window.prompt('העתק את הקישור למוצר:', url);
       }
+    }
+
+    function maxQtyFor(id) {
+      const product = products.find((p) => String(p.id) === String(id));
+      const value = Number(product?.maxQty || 20);
+      return Number.isInteger(value) ? Math.max(1, Math.min(100, value)) : 20;
     }
 
     if (whatsappNumber && !document.getElementById('ahWaFloat')) {
@@ -227,12 +233,43 @@
     if (typeof cart !== 'undefined' && cart && typeof cart === 'object') {
       let changed = false;
       for (const id of Object.keys(cart)) {
-        if (!products.some((product) => product.id === id)) {
+        if (!products.some((product) => String(product.id) === String(id))) {
           delete cart[id];
+          changed = true;
+          continue;
+        }
+        const maxQty = maxQtyFor(id);
+        const current = Number(cart[id] || 0);
+        if (current > maxQty) {
+          cart[id] = maxQty;
           changed = true;
         }
       }
       if (changed) localStorage.setItem('alufCart', JSON.stringify(cart));
+    }
+
+    if (!window.__ahQtyPatched && typeof window.addToCart === 'function' && typeof window.changeQty === 'function') {
+      const originalAddToCart = window.addToCart;
+      const originalChangeQty = window.changeQty;
+      window.addToCart = function limitedAddToCart(id) {
+        const maxQty = maxQtyFor(id);
+        const current = Number((typeof cart !== 'undefined' && cart?.[id]) || 0);
+        if (current >= maxQty) {
+          if (typeof showToast === 'function') showToast(`ניתן להזמין עד ${maxQty} יחידות מהמוצר הזה`);
+          return;
+        }
+        originalAddToCart(id);
+      };
+      window.changeQty = function limitedChangeQty(id, delta) {
+        const maxQty = maxQtyFor(id);
+        const current = Number((typeof cart !== 'undefined' && cart?.[id]) || 0);
+        if (Number(delta) > 0 && current >= maxQty) {
+          if (typeof showToast === 'function') showToast(`ניתן להזמין עד ${maxQty} יחידות מהמוצר הזה`);
+          return;
+        }
+        originalChangeQty(id, delta);
+      };
+      window.__ahQtyPatched = true;
     }
 
     const activeCategory = document.querySelector('.cat.active');
