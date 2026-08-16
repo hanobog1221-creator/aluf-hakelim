@@ -1,5 +1,9 @@
+const { requireAdmin } = require('../_lib/admin');
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ ok:false, error:'method_not_allowed' });
+  if (!await requireAdmin(req, res)) return;
+
   const url = String(req.query.url || '');
   if (!/^https:\/\/a\.aliexpress\.com\//i.test(url)) return res.status(400).json({ ok:false, error:'invalid_aliexpress_short_url' });
   try {
