@@ -98,8 +98,10 @@
           <div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(total)}</span></div>
           <div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחת קופון</span><span id="ahDiscount" class="ahDiscount">-₪0.00</span></div>
           <div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahShippingPending">יחושב לפי הכתובת</span></div>
+          <div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא משוערים</span><span id="ahImportTax">₪0.00</span></div>
           <div class="ahCheckoutSummaryRow total"><span>סה״כ</span><span id="ahGrandTotal">${money(total)}</span></div>
           <div class="ahCheckoutSummaryRow"><small id="ahShippingStatus">עלות המשלוח תתעדכן לפי פרטי הכתובת.</small></div>
+          <div class="ahCheckoutSummaryRow" id="ahImportNotice" style="display:none"><small></small></div>
         </div>
         <div class="ahCheckoutError" id="ahCheckoutError"></div>
         <button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button>
@@ -208,6 +210,9 @@
     const discountRow = document.getElementById('ahDiscountRow');
     const discount = document.getElementById('ahDiscount');
     const grand = document.getElementById('ahGrandTotal');
+    const importTaxRow = document.getElementById('ahImportTaxRow');
+    const importTax = document.getElementById('ahImportTax');
+    const importNotice = document.querySelector('#ahImportNotice small');
     if (productsSubtotal) productsSubtotal.textContent = money(result.productsSubtotal || 0);
     if (Number(result.discountAmount || 0) > 0) {
       if (discountRow) discountRow.style.display = 'flex';
@@ -216,7 +221,15 @@
       discountRow.style.display = 'none';
     }
     const fallbackTotal = Number(result.discountedProductsSubtotal ?? result.productsSubtotal ?? 0);
-    if (grand) grand.textContent = money(result.total == null ? fallbackTotal : result.total);
+    const estimatedTax = Number(result.estimatedImportTax || 0);
+    if (importTaxRow) importTaxRow.style.display = estimatedTax > 0 ? 'flex' : 'none';
+    if (importTax) importTax.textContent = money(estimatedTax);
+    if (importNotice) {
+      importNotice.parentElement.style.display = result.importPlan?.complianceNotice ? 'flex' : 'none';
+      importNotice.textContent = result.importPlan?.complianceNotice || '';
+    }
+    const displayedTotal = result.estimatedTotalWithImportTax ?? result.total ?? fallbackTotal;
+    if (grand) grand.textContent = money(displayedTotal);
   }
 
   async function submitCheckout(event) {
@@ -293,6 +306,9 @@
       const discountLine = Number(result.discountAmount || 0) > 0
         ? `<p>קופון ${String(result.couponCode || '')}: <b class="ahDiscount">-${money(result.discountAmount)}</b></p>`
         : '';
+      const importTaxLine = Number(result.estimatedImportTax || 0) > 0
+        ? `<p>מסי יבוא משוערים: <b>${money(result.estimatedImportTax)}</b></p><p style="color:#68717c">זהו אומדן בלבד; החיוב הסופי נקבע בידי הרשויות.</p>`
+        : '';
 
       bodyBox.innerHTML = `
         <div class="ahCheckoutSuccess">
@@ -302,7 +318,8 @@
           <div class="ahOrderId">${String(result.orderId || '')}</div>
           ${discountLine}
           ${shippingLine}
-          <p><b>סה״כ כרגע: ${money(result.total)}</b></p>
+          ${importTaxLine}
+          <p><b>סה״כ משוער עד הבית: ${money(result.estimatedTotalWithImportTax ?? result.total)}</b></p>
           <p style="color:#68717c;line-height:1.6">לא בוצע חיוב. כאשר התשלום יהיה פעיל, ההזמנה תמשיך רק לאחר אישור הסכום הסופי.</p>
           <button class="ahCheckoutSubmit" type="button" id="ahCheckoutDone">סגור</button>
         </div>`;
@@ -324,3 +341,4 @@
 
   window.checkoutNotice = renderForm;
 })();
+
