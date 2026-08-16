@@ -11,6 +11,10 @@
     { "source": "/policies", "destination": "/policies.html", "permanent": false },
     { "source": "/launch-checklist", "destination": "/launch-checklist.html", "permanent": false }
   ],
+  "rewrites": [
+    { "source": "/api/aliexpress/order-preflight", "destination": "/api/aliexpress/product-v2?action=order-preflight" },
+    { "source": "/api/aliexpress/order-attempts", "destination": "/api/aliexpress/product-v2?action=attempts" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
