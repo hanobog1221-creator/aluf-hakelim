@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
     const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_u8IwJRz4KndmAk13fGZM5A_csTsqjsk';
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order&active=eq.true&order=sort_order.asc`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,supplier_in_stock,supplier_shipping,shipping_currency,last_sync_at&active=eq.true&order=sort_order.asc`,
       { headers: { apikey: publishableKey } }
     );
 
@@ -36,7 +36,10 @@ module.exports = async function handler(req, res) {
       badgeClass: row.badge_class || '',
       desc: row.description || '',
       specs: Array.isArray(row.specs) ? row.specs : [],
-      available: row.active === true
+      available: row.active === true && row.supplier_in_stock !== false,
+      shipping: row.supplier_shipping == null ? null : Number(row.supplier_shipping),
+      shippingCurrency: row.shipping_currency || null,
+      supplierSyncedAt: row.last_sync_at || null
     }));
 
     return res.status(200).json({ ok: true, products });
