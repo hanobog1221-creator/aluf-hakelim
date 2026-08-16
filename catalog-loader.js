@@ -113,7 +113,7 @@
       const notice = document.createElement('div');
       notice.id = 'ahSalesNotice';
       notice.className = 'ahSalesNotice';
-      notice.textContent = 'החנות פתוחה לצפייה. המכירות ייפתחו לאחר השלמת בדיקות הספק והתשלום.';
+      notice.textContent = 'החנות פתוחה לצפייה. המכירות ייפתחו לאחר השלמת בדיקות הזמינות והתשלום.';
       const firstMain = document.querySelector('main') || document.querySelector('.wrap') || document.body.firstElementChild;
       if (firstMain?.parentNode) firstMain.parentNode.insertBefore(notice, firstMain);
       else document.body.prepend(notice);
