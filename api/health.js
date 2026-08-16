@@ -1,3 +1,5 @@
+const { serverHeaders } = require('./_lib/supabase-server');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -16,13 +18,11 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const headers = { apikey: serverKey, Authorization: `Bearer ${serverKey}` };
+  const headers = serverHeaders({}, serverKey);
   try {
     const [catalog, settings, privileged] = await Promise.all([
       fetch(`${supabaseUrl}/rest/v1/products?select=id&limit=1`, { headers }),
       fetch(`${supabaseUrl}/rest/v1/site_settings?select=id,sales_enabled&limit=1`, { headers }),
-      // No credential or row content is ever returned. This verifies that the backend key
-      // can access a table intentionally unavailable to public roles.
       fetch(`${supabaseUrl}/rest/v1/admin_credentials?select=username&limit=1`, { headers })
     ]);
 
