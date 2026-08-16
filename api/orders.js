@@ -71,6 +71,16 @@ async function consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly }) {
   return (await response.json()) === true;
 }
 
+async function readSalesEnabled({ supabaseUrl, serviceKey }) {
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled&limit=1`,
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+  );
+  if (!response.ok) throw new Error(`sales_settings_read_${response.status}`);
+  const row = (await response.json())[0] || {};
+  return row.sales_enabled === true;
+}
+
 async function calculateCoupon({ supabaseUrl, serviceKey, code, productsSubtotal }) {
   if (!code) return { code: null, discountAmount: 0, coupon: null };
   if (code === '__INVALID__') {
@@ -256,6 +266,11 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ ok: false, error: 'server_not_configured' });
     }
 
+    const salesEnabled = await readSalesEnabled({ supabaseUrl, serviceKey });
+    if (body.quoteOnly !== true && !salesEnabled) {
+      return res.status(503).json({ ok: false, error: 'sales_disabled' });
+    }
+
     const allowed = await consumeRateLimit({ req, supabaseUrl, serviceKey, quoteOnly: body.quoteOnly === true });
     if (!allowed) {
       res.setHeader('Retry-After', body.quoteOnly === true ? '600' : '3600');
@@ -375,6 +390,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         quoteOnly: true,
+        salesEnabled,
         ...priceSummary,
         shippingStatus: customerShippingStatus(shippingQuote.status),
         shippingPending: shippingPending(shippingQuote),
@@ -382,7 +398,7 @@ module.exports = async function handler(req, res) {
         shippingCurrency: 'ILS',
         shippingLines: customerShippingLines(shippingQuote.lines),
         total: shippingQuote.status === 'quoted' ? finalTotal : null,
-        canFinalize: shippingQuote.status === 'quoted'
+        canFinalize: salesEnabled && shippingQuote.status === 'quoted'
       });
     }
 
