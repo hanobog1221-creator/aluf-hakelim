@@ -8,11 +8,13 @@ module.exports = async function handler(req, res) {
 
     html = html
       .replaceAll('משלוח לישראל', 'משלוחים לכל הארץ')
-      .replaceAll('יש משלוח לישראל?', 'יש משלוחים לכל הארץ?')
-      .replace('משלוחים לכל הארץ · שירות בעברית · מחירים ברורים בש״ח', 'משלוחים לכל הארץ · International Shipping · שירות בעברית · מחירים ברורים בש״ח');
+      .replaceAll('יש משלוח לישראל?', 'יש משלוחים לכל הארץ?');
 
     if (!html.includes('/catalog-loader.js')) {
       html = html.replace('</body>', '<script src="/catalog-loader.js"></script></body>');
+    }
+    if (!html.includes('/checkout.js')) {
+      html = html.replace('</body>', '<script src="/checkout.js"></script></body>');
     }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
