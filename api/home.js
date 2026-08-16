@@ -42,6 +42,9 @@ module.exports = async function handler(req, res) {
     if (!html.includes('/store-tools.js')) {
       html = html.replace('</body>', '<script src="/store-tools.js"></script></body>');
     }
+    if (!html.includes('/public-info.js')) {
+      html = html.replace('</body>', '<script src="/public-info.js"></script></body>');
+    }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
