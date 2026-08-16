@@ -1,0 +1,1 @@
+Prelaunch hardening deployment marker: expenses, accounting summary, quantity limits, admin links, supplier sync history.
