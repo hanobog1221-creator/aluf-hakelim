@@ -1,4 +1,4 @@
-const { SESSION_COOKIE, parseCookies, deleteSession, audit } = require('../_lib/admin');
+const { SESSION_COOKIE, parseCookies, deleteSession, audit, requireSameOrigin } = require('../_lib/admin');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -8,6 +8,7 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
+  if (!requireSameOrigin(req, res)) return;
 
   try {
     const token = parseCookies(req)[SESSION_COOKIE];
