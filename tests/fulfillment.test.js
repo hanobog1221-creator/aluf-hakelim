@@ -53,15 +53,21 @@ function baseProduct(overrides = {}) {
   };
 }
 
-function state(product = baseProduct(), settings = { minimum_profit_ils: 10 }) {
+function state(product = baseProduct(), settings = { sales_enabled: true, minimum_profit_ils: 10 }) {
   return {
     products: new Map([[String(product.id), product]]),
-    settings
+    settings: { sales_enabled: true, minimum_profit_ils: 10, ...settings }
   };
 }
 
-test('allows a fully ready paid order', () => {
+test('allows a fully ready paid order when sales are enabled', () => {
   assert.deepEqual(validateFulfillmentOrder(baseOrder(), state()), { ok: true });
+});
+
+test('global sales switch blocks fulfillment even for an already-paid order', () => {
+  const result = validateFulfillmentOrder(baseOrder(), state(baseProduct(), { sales_enabled: false }));
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'sales_disabled');
 });
 
 test('blocks unknown supplier stock', () => {
