@@ -83,6 +83,7 @@ ${image ? `<meta property="og:image" content="${escapeAttr(image)}">` : ''}
 ${image ? `<meta name="twitter:image" content="${escapeAttr(image)}">` : ''}
 <script type="application/ld+json">${safeJson(structured)}</script>`;
       html = html.replace(/<title>.*?<\/title>/i, `<title>${escapeAttr(title)}</title>`);
+      html = html.replace(/<meta\s+name=["']description["'][^>]*>\s*/i, '');
       html = html.replace('</head>', `${seo}\n</head>`);
     }
 
