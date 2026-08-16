@@ -3,7 +3,7 @@ const { quoteCartShipping } = require('./_lib/shipping');
 const { serverHeaders } = require('./_lib/supabase-server');
 const { buildImportCompliancePlan } = require('./_lib/import-compliance');
 
-const TERMS_VERSION = '2026-08-16';
+const TERMS_VERSION = '2026-08-17-import-compliance';
 
 function normalizeCouponCode(value) {
   const code = String(value || '').trim().toUpperCase();
@@ -46,6 +46,18 @@ function customerShippingStatus(status) {
 
 function shippingPending(quote) {
   return quote?.status !== 'quoted' && Boolean(quote?.waitingForAliExpressPermission);
+}
+
+function customerImportPlan(plan) {
+  if (!plan) return null;
+  const shipmentCount = Array.isArray(plan.groups) ? plan.groups.length : 0;
+  return {
+    shipmentCount,
+    hasVerifiedSupplierSplit: shipmentCount > 1,
+    estimatedImportTax: Number(plan.estimatedTaxIls || 0),
+    taxEstimateOnly: plan.taxEstimateOnly === true,
+    complianceNotice: plan.complianceNotice || null
+  };
 }
 
 function requestFingerprint(req, kind) {
@@ -178,7 +190,7 @@ function responseFromStoredOrder(order, duplicate = true) {
     shippingCost,
     shippingCurrency: 'ILS',
     shippingLines: customerShippingLines(order.shipping_quote?.lines),
-    importPlan: order.import_compliance_plan || null,
+    importPlan: customerImportPlan(order.import_compliance_plan),
     estimatedImportTax: Number(order.estimated_import_tax || 0),
     estimatedTotalWithImportTax: Number((finalTotal + Number(order.estimated_import_tax || 0)).toFixed(2)),
     total: finalTotal,
@@ -379,6 +391,10 @@ module.exports = async function handler(req, res) {
     normalized = plannedImport.assignedItems;
     const { assignedItems: _assignedItems, ...importPlan } = plannedImport;
 
+    if (!quoteOnly && importPlan.estimatedTaxIls > 0 && body.importChargesAccepted !== true) {
+      return res.status(400).json({ ok: false, error: 'import_charges_consent_required' });
+    }
+
     let shippingQuote;
     try {
       shippingQuote = await quoteCartShipping(normalized, customer.countryCode);
@@ -418,7 +434,7 @@ module.exports = async function handler(req, res) {
         shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
         shippingCurrency: 'ILS',
         shippingLines: customerShippingLines(shippingQuote.lines),
-        importPlan,
+        importPlan: customerImportPlan(importPlan),
         estimatedImportTax: importPlan.estimatedTaxIls,
         estimatedTotalWithImportTax: shippingQuote.status === 'quoted'
           ? Number((finalTotal + importPlan.estimatedTaxIls).toFixed(2))
@@ -454,6 +470,7 @@ module.exports = async function handler(req, res) {
       shipping_quoted_at: shippingQuote.quotedAt || null,
       import_compliance_plan: importPlan,
       estimated_import_tax: importPlan.estimatedTaxIls,
+      import_charges_accepted_at: importPlan.estimatedTaxIls > 0 ? now : null,
       items: normalized,
       customer,
       terms_accepted_at: now,
@@ -498,7 +515,7 @@ module.exports = async function handler(req, res) {
       shippingCost,
       shippingCurrency: 'ILS',
       shippingLines: customerShippingLines(shippingQuote.lines),
-      importPlan,
+      importPlan: customerImportPlan(importPlan),
       estimatedImportTax: importPlan.estimatedTaxIls,
       estimatedTotalWithImportTax: Number((finalTotal + importPlan.estimatedTaxIls).toFixed(2)),
       total: finalTotal,
