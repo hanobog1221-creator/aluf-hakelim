@@ -16,20 +16,26 @@ function signAliExpress(params, appSecret, apiPath) {
   return crypto.createHmac('sha256', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
 }
 
+function validSignedState(value, secret) {
+  const state = String(value || '');
+  const parts = state.split('.');
+  if (parts.length !== 2 || !/^[a-f0-9]{48}$/i.test(parts[0]) || !/^[a-f0-9]{64}$/i.test(parts[1])) return false;
+  const expected = crypto.createHmac('sha256', secret).update(parts[0], 'utf8').digest('hex');
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(parts[1].toLowerCase(), 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 module.exports = async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).send('Method Not Allowed');
   }
 
-  const { code, state, error, error_description } = req.query || {};
-  if (error) return res.status(400).send(`AliExpress authorization failed: ${String(error_description || error)}`);
+  const { code, state, error } = req.query || {};
+  if (error) return res.status(400).send('AliExpress authorization failed.');
   if (!code) return res.status(400).send('Missing authorization code.');
-
-  const expectedState = getCookie(req, 'ae_oauth_state');
-  if (!expectedState || !state || state !== expectedState) {
-    return res.status(400).send('Invalid OAuth state. Please start the connection again.');
-  }
 
   const appSecret = process.env.ALIEXPRESS_APP_SECRET;
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -37,6 +43,11 @@ module.exports = async function handler(req, res) {
 
   if (!appSecret) return res.status(500).send('ALIEXPRESS_APP_SECRET is not configured.');
   if (!supabaseUrl || !serviceKey) return res.status(500).send('Supabase server credentials are not configured.');
+
+  const expectedState = getCookie(req, 'ae_oauth_state');
+  if (!expectedState || !state || String(state) !== expectedState || !validSignedState(state, appSecret)) {
+    return res.status(400).send('Invalid OAuth state. Please start the connection again from the admin panel.');
+  }
 
   const params = {
     app_key: APP_KEY,
@@ -76,7 +87,7 @@ module.exports = async function handler(req, res) {
     user_id: token.user_id ? String(token.user_id) : (token.seller_id ? String(token.seller_id) : null),
     user_nick: token.user_nick ? String(token.user_nick) : (token.account ? String(token.account) : null),
     raw: token,
-    updated_at: new Date().toISOString()
+    updated_at: new Date(now).toISOString()
   };
 
   const dbResponse = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/aliexpress_tokens?on_conflict=account_key`, {
