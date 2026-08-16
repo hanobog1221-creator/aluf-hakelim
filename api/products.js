@@ -12,12 +12,8 @@ module.exports = async function handler(req, res) {
     const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_u8IwJRz4KndmAk13fGZM5A_csTsqjsk';
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,image_url,active&active=eq.true&order=created_at.asc`,
-      {
-        headers: {
-          apikey: publishableKey
-        }
-      }
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order&active=eq.true&order=sort_order.asc`,
+      { headers: { apikey: publishableKey } }
     );
 
     if (!response.ok) {
@@ -31,8 +27,15 @@ module.exports = async function handler(req, res) {
       id: String(row.id),
       name: String(row.name),
       price: Number(row.selling_price),
+      old: row.old_price == null ? null : Number(row.old_price),
       currency: row.currency || 'ILS',
-      image: row.image_url || null,
+      img: row.image_url || null,
+      cat: Array.isArray(row.categories) ? row.categories : [],
+      kind: row.kind || '',
+      badge: row.badge || '',
+      badgeClass: row.badge_class || '',
+      desc: row.description || '',
+      specs: Array.isArray(row.specs) ? row.specs : [],
       available: row.active === true
     }));
 
