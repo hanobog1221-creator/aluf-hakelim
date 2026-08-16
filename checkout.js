@@ -98,18 +98,21 @@
           <div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(total)}</span></div>
           <div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחת קופון</span><span id="ahDiscount" class="ahDiscount">-₪0.00</span></div>
           <div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahShippingPending">יחושב לפי הכתובת</span></div>
-          <div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא משוערים</span><span id="ahImportTax">₪0.00</span></div>
-          <div class="ahCheckoutSummaryRow total"><span>סה״כ</span><span id="ahGrandTotal">${money(total)}</span></div>
+          <div class="ahCheckoutSummaryRow" id="ahShipmentPlanRow" style="display:none"><span>משלוחים צפויים</span><span id="ahShipmentPlan">1</span></div>
+          <div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא אפשריים — לא נגבים באתר</span><span id="ahImportTax">₪0.00</span></div>
+          <div class="ahCheckoutSummaryRow total"><span id="ahGrandTotalLabel">סה״כ לתשלום באתר</span><span id="ahGrandTotal">${money(total)}</span></div>
           <div class="ahCheckoutSummaryRow"><small id="ahShippingStatus">עלות המשלוח תתעדכן לפי פרטי הכתובת.</small></div>
           <div class="ahCheckoutSummaryRow" id="ahImportNotice" style="display:none"><small></small></div>
         </div>
+        <label class="ahTerms" id="ahImportConsentWrap" style="display:none"><input id="ahImportConsent" name="importChargesAccepted" type="checkbox"><span>הבנתי שייתכן חיוב מסי יבוא או דמי שחרור בידי הרשויות או חברת השילוח, ושמדובר באומדן שאינו נגבה באתר.</span></label>
         <div class="ahCheckoutError" id="ahCheckoutError"></div>
         <button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button>
       </form>`;
 
     const form = document.getElementById('ahCheckoutForm');
     form.addEventListener('submit', submitCheckout);
-    form.addEventListener('input', () => {
+    form.addEventListener('input', (event) => {
+      if (event.target?.id === 'ahTerms' || event.target?.id === 'ahImportConsent') return;
       const submit = document.getElementById('ahCheckoutSubmit');
       if (!submit || submit.dataset.stage === 'quote') return;
       submit.dataset.stage = 'quote';
@@ -174,6 +177,7 @@
     if (result.error === 'coupon_limit_reached') return 'הקופון הגיע למספר המימושים המקסימלי.';
     if (result.error === 'coupon_min_order') return `הקופון תקף בהזמנה של ${money(result.minOrder || 0)} ומעלה.`;
     if (result.error === 'terms_required') return 'יש לאשר את מדיניות החנות ותנאי השימוש כדי להמשיך.';
+    if (result.error === 'import_charges_consent_required') return 'כדי להמשיך יש לאשר שהבנת את אומדן מסי היבוא האפשריים.';
     return null;
   }
 
@@ -188,6 +192,7 @@
         couponCode: couponCode(),
         clientRequestId: currentAttemptId,
         termsAccepted: Boolean(document.getElementById('ahTerms')?.checked),
+        importChargesAccepted: Boolean(document.getElementById('ahImportConsent')?.checked),
         quoteOnly
       })
     });
@@ -213,6 +218,10 @@
     const importTaxRow = document.getElementById('ahImportTaxRow');
     const importTax = document.getElementById('ahImportTax');
     const importNotice = document.querySelector('#ahImportNotice small');
+    const shipmentPlanRow = document.getElementById('ahShipmentPlanRow');
+    const shipmentPlan = document.getElementById('ahShipmentPlan');
+    const importConsentWrap = document.getElementById('ahImportConsentWrap');
+    const grandLabel = document.getElementById('ahGrandTotalLabel');
     if (productsSubtotal) productsSubtotal.textContent = money(result.productsSubtotal || 0);
     if (Number(result.discountAmount || 0) > 0) {
       if (discountRow) discountRow.style.display = 'flex';
@@ -222,12 +231,17 @@
     }
     const fallbackTotal = Number(result.discountedProductsSubtotal ?? result.productsSubtotal ?? 0);
     const estimatedTax = Number(result.estimatedImportTax || 0);
+    const shipmentCount = Number(result.importPlan?.shipmentCount || 1);
+    if (shipmentPlanRow) shipmentPlanRow.style.display = shipmentCount > 1 ? 'flex' : 'none';
+    if (shipmentPlan) shipmentPlan.textContent = `${shipmentCount} חבילות נפרדות מספקים שונים`;
     if (importTaxRow) importTaxRow.style.display = estimatedTax > 0 ? 'flex' : 'none';
+    if (importConsentWrap) importConsentWrap.style.display = estimatedTax > 0 ? 'flex' : 'none';
     if (importTax) importTax.textContent = money(estimatedTax);
     if (importNotice) {
       importNotice.parentElement.style.display = result.importPlan?.complianceNotice ? 'flex' : 'none';
       importNotice.textContent = result.importPlan?.complianceNotice || '';
     }
+    if (grandLabel) grandLabel.textContent = estimatedTax > 0 ? 'עלות כוללת משוערת' : 'סה״כ לתשלום באתר';
     const displayedTotal = result.estimatedTotalWithImportTax ?? result.total ?? fallbackTotal;
     if (grand) grand.textContent = money(displayedTotal);
   }
@@ -240,6 +254,9 @@
     const validationError = validateCustomer(customer);
     if (validationError) { showError(validationError); return; }
     if (!document.getElementById('ahTerms')?.checked) { showError('יש לאשר את מדיניות החנות ותנאי השימוש כדי להמשיך.'); return; }
+    if (submit.dataset.stage !== 'quote' && document.getElementById('ahImportConsentWrap')?.style.display !== 'none' && !document.getElementById('ahImportConsent')?.checked) {
+      showError('כדי להמשיך יש לאשר שהבנת את אומדן מסי היבוא האפשריים.'); return;
+    }
 
     const entries = currentCartEntries();
     if (!entries.length) { showError('הסל ריק.'); return; }
@@ -307,7 +324,7 @@
         ? `<p>קופון ${String(result.couponCode || '')}: <b class="ahDiscount">-${money(result.discountAmount)}</b></p>`
         : '';
       const importTaxLine = Number(result.estimatedImportTax || 0) > 0
-        ? `<p>מסי יבוא משוערים: <b>${money(result.estimatedImportTax)}</b></p><p style="color:#68717c">זהו אומדן בלבד; החיוב הסופי נקבע בידי הרשויות.</p>`
+        ? `<p>מסי יבוא אפשריים שאינם נגבים באתר: <b>${money(result.estimatedImportTax)}</b></p><p style="color:#68717c">זהו אומדן בלבד; הרשויות או חברת השילוח עשויות לקבוע ולגבות סכום שונה.</p>`
         : '';
 
       bodyBox.innerHTML = `
