@@ -1,22 +1,19 @@
 const crypto = require('crypto');
+const { serverConfig, serverHeaders } = require('./supabase-server');
 
 const SESSION_COOKIE = 'ah_admin_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function config() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) throw new Error('admin_server_config_missing');
-  return { supabaseUrl: supabaseUrl.replace(/\/$/, ''), serviceKey };
+  try {
+    return serverConfig();
+  } catch {
+    throw new Error('admin_server_config_missing');
+  }
 }
 
 function dbHeaders(extra = {}) {
-  const { serviceKey } = config();
-  return {
-    apikey: serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-    ...extra
-  };
+  return serverHeaders(extra);
 }
 
 function parseCookies(req) {
