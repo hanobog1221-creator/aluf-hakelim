@@ -67,7 +67,7 @@ module.exports = async function handler(req, res) {
           url: canonical,
           priceCurrency: 'ILS',
           price: Number(selectedProduct.price || 0).toFixed(2),
-          availability: selectedProduct.available === false ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock'
+          availability: selectedProduct.purchaseReady === true ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
         }
       } : {
         '@context': 'https://schema.org',
