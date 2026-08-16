@@ -14,6 +14,18 @@ function signAliExpress(params, appSecret, apiPath) {
   return crypto.createHmac('sha256', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
 }
 
+function safeTokenMetadata(token) {
+  return {
+    code: token?.code ?? null,
+    request_id: token?.request_id ?? null,
+    expires_in: token?.expires_in ?? null,
+    refresh_expires_in: token?.refresh_expires_in ?? token?.re_expires_in ?? null,
+    token_type: token?.token_type ?? null,
+    user_id: token?.user_id ?? token?.seller_id ?? null,
+    user_nick: token?.user_nick ?? token?.account ?? null
+  };
+}
+
 function getServerConfig() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -57,7 +69,7 @@ async function saveTokenRow(existing, token) {
     refresh_expires_at: refreshExpiresAt,
     user_id: token.user_id ? String(token.user_id) : (token.seller_id ? String(token.seller_id) : existing.user_id || null),
     user_nick: token.user_nick ? String(token.user_nick) : (token.account ? String(token.account) : existing.user_nick || null),
-    raw: token,
+    raw: safeTokenMetadata(token),
     updated_at: new Date(now).toISOString()
   };
 
