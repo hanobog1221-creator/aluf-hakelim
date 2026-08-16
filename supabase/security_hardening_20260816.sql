@@ -25,6 +25,31 @@ revoke execute on function public.guard_product_fulfillment_readiness() from pub
 alter function public.touch_return_request_updated_at() set search_path = public, pg_temp;
 alter function public.guard_product_fulfillment_readiness() set search_path = public, pg_temp;
 
+-- Prevent a reconnect flow from silently replacing the linked AliExpress account identity.
+create or replace function public.guard_aliexpress_token_identity()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    if old.account_key <> new.account_key then
+      raise exception 'aliexpress_account_key_change_blocked';
+    end if;
+    if old.user_id is not null and new.user_id is distinct from old.user_id then
+      raise exception 'aliexpress_account_identity_change_blocked';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.guard_aliexpress_token_identity() from public, anon, authenticated;
+drop trigger if exists aliexpress_token_identity_guard on public.aliexpress_tokens;
+create trigger aliexpress_token_identity_guard
+before update on public.aliexpress_tokens
+for each row execute function public.guard_aliexpress_token_identity();
+
 -- Remove duplicate indexes only; other currently-unused indexes are intentionally retained.
 drop index if exists public.business_expenses_source_key_unique_idx;
 drop index if exists public.order_events_order_created_idx;
