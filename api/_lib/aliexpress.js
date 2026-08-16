@@ -3,6 +3,7 @@ const { serverHeaders } = require('./supabase-server');
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const API_BASE = 'https://api-sg.aliexpress.com/rest';
+const TOP_API_BASE = 'https://api.taobao.com/router/rest';
 const REFRESH_PATH = '/auth/token/refresh';
 const REFRESH_EARLY_MS = 30 * 60 * 1000;
 
@@ -15,10 +16,62 @@ function signAliExpress(params, appSecret, apiPath) {
   return crypto.createHmac('sha256', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
 }
 
-async function callTopApi() {
-  const error = new Error('top_api_deprecated_for_open_platform');
-  error.code = 'top_api_deprecated_for_open_platform';
-  throw error;
+function formatTopTimestamp(date = new Date()) {
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`;
+}
+
+function signTop(params, appSecret) {
+  const payload = Object.keys(params)
+    .filter((key) => key !== 'sign' && params[key] !== undefined && params[key] !== null)
+    .sort()
+    .map((key) => key + String(params[key]))
+    .join('');
+  return crypto.createHmac('md5', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
+}
+
+function safeTopError(json, status) {
+  const error = json?.error_response || null;
+  const code = error?.sub_code || error?.code || `top_http_${status}`;
+  const message = error?.sub_msg || error?.msg || code;
+  const err = new Error(String(code));
+  err.code = String(code);
+  err.details = String(message).slice(0, 500);
+  return err;
+}
+
+async function callTopApi(method, businessParams = {}, options = {}) {
+  const { appSecret } = getServerConfig();
+  const session = options.session === false ? null : await getValidAccessToken();
+  const params = {
+    method: String(method),
+    app_key: APP_KEY,
+    format: 'json',
+    sign_method: 'hmac',
+    timestamp: formatTopTimestamp(),
+    v: '2.0'
+  };
+  if (session) params.session = session;
+  for (const [key, value] of Object.entries(businessParams || {})) {
+    if (value === undefined || value === null) continue;
+    params[key] = typeof value === 'string' ? value : JSON.stringify(value);
+  }
+  params.sign = signTop(params, appSecret);
+
+  const response = await fetch(TOP_API_BASE, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+      accept: 'application/json'
+    },
+    body: new URLSearchParams(params).toString()
+  });
+  const text = await response.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch {}
+  if (!response.ok || !json || json.error_response) throw safeTopError(json, response.status);
+  return json;
 }
 
 function safeTokenMetadata(token) {
@@ -142,7 +195,9 @@ async function getValidAccessToken() {
 module.exports = {
   APP_KEY,
   API_BASE,
+  TOP_API_BASE,
   signAliExpress,
+  signTop,
   callTopApi,
   readTokenRow,
   refreshAccessToken,
