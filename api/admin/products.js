@@ -98,6 +98,10 @@ function cleanImageUrl(value) {
   return text;
 }
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -126,20 +130,28 @@ module.exports = async function handler(req, res) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
 
       if (body.action === 'settings') {
+        const currentResponse = await fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=*&limit=1`, { headers: dbHeaders() });
+        if (!currentResponse.ok) throw new Error(`settings_read_${currentResponse.status}`);
+        const current = (await currentResponse.json())[0] || {};
+
         const row = {
           id: 'primary',
-          whatsapp_enabled: body.whatsapp_enabled === true,
-          whatsapp_number: cleanWhatsappNumber(body.whatsapp_number),
-          whatsapp_message: cleanText(body.whatsapp_message, 500, false) || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.',
-          support_email: cleanText(body.support_email, 160),
-          support_hours: cleanText(body.support_hours, 240),
-          minimum_profit_ils: cleanNumber(body.minimum_profit_ils, true),
-          payment_quote_ttl_minutes: cleanIntegerRange(body.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl'),
-          business_legal_name: cleanText(body.business_legal_name, 160),
-          business_tax_id: cleanTaxId(body.business_tax_id),
-          business_type: cleanBusinessType(body.business_type),
-          business_address: cleanText(body.business_address, 300),
-          business_phone: cleanText(body.business_phone, 40),
+          whatsapp_enabled: hasOwn(body, 'whatsapp_enabled') ? body.whatsapp_enabled === true : current.whatsapp_enabled === true,
+          whatsapp_number: hasOwn(body, 'whatsapp_number') ? cleanWhatsappNumber(body.whatsapp_number) : (current.whatsapp_number || null),
+          whatsapp_message: hasOwn(body, 'whatsapp_message')
+            ? (cleanText(body.whatsapp_message, 500, false) || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.')
+            : (current.whatsapp_message || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.'),
+          support_email: hasOwn(body, 'support_email') ? cleanText(body.support_email, 160) : (current.support_email || null),
+          support_hours: hasOwn(body, 'support_hours') ? cleanText(body.support_hours, 240) : (current.support_hours || null),
+          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? cleanNumber(body.minimum_profit_ils, true) : (current.minimum_profit_ils ?? null),
+          payment_quote_ttl_minutes: hasOwn(body, 'payment_quote_ttl_minutes')
+            ? cleanIntegerRange(body.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl')
+            : cleanIntegerRange(current.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl'),
+          business_legal_name: hasOwn(body, 'business_legal_name') ? cleanText(body.business_legal_name, 160) : (current.business_legal_name || null),
+          business_tax_id: hasOwn(body, 'business_tax_id') ? cleanTaxId(body.business_tax_id) : (current.business_tax_id || null),
+          business_type: hasOwn(body, 'business_type') ? cleanBusinessType(body.business_type) : (current.business_type || null),
+          business_address: hasOwn(body, 'business_address') ? cleanText(body.business_address, 300) : (current.business_address || null),
+          business_phone: hasOwn(body, 'business_phone') ? cleanText(body.business_phone, 40) : (current.business_phone || null),
           updated_at: new Date().toISOString()
         };
 
@@ -164,6 +176,7 @@ module.exports = async function handler(req, res) {
         }
         const settings = (await response.json())[0] || row;
         await audit('store_settings_update', 'site_settings', 'primary', {
+          fields: Object.keys(body).filter((key) => key !== 'action'),
           whatsapp_enabled: row.whatsapp_enabled,
           support_email_set: Boolean(row.support_email),
           minimum_profit_ils: row.minimum_profit_ils,
