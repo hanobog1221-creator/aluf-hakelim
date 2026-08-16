@@ -10,19 +10,47 @@ module.exports = async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
     const requestedItems = Array.isArray(body.items) ? body.items : [];
 
-    if (!requestedItems.length) {
-      return res.status(400).json({ ok: false, error: 'empty_cart' });
+    if (!requestedItems.length || requestedItems.length > 30) {
+      return res.status(400).json({ ok: false, error: 'empty_or_oversized_cart' });
     }
 
     const requested = requestedItems
       .map((item) => ({
         id: String(item.id || ''),
-        qty: Math.max(1, Math.floor(Number(item.qty || 1)))
+        qty: Math.min(20, Math.max(1, Math.floor(Number(item.qty || 1))))
       }))
       .filter((item) => /^[A-Za-z0-9_-]+$/.test(item.id) && Number.isFinite(item.qty));
 
     if (!requested.length) {
       return res.status(400).json({ ok: false, error: 'invalid_items' });
+    }
+
+    const rawCustomer = body.customer && typeof body.customer === 'object' ? body.customer : {};
+    const clean = (value, max) => String(value || '').trim().slice(0, max);
+    const customer = {
+      fullName: clean(rawCustomer.fullName, 80),
+      phone: clean(rawCustomer.phone, 20),
+      email: clean(rawCustomer.email, 120),
+      city: clean(rawCustomer.city, 80),
+      street: clean(rawCustomer.street, 100),
+      houseNumber: clean(rawCustomer.houseNumber, 20),
+      apartment: clean(rawCustomer.apartment, 20),
+      postalCode: clean(rawCustomer.postalCode, 12),
+      notes: clean(rawCustomer.notes, 300),
+      countryCode: 'IL'
+    };
+
+    const phoneDigits = customer.phone.replace(/\D/g, '');
+    const emailValid = !customer.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email);
+    if (
+      customer.fullName.length < 2 ||
+      customer.city.length < 2 ||
+      customer.street.length < 2 ||
+      !customer.houseNumber ||
+      phoneDigits.length < 8 || phoneDigits.length > 15 ||
+      !emailValid
+    ) {
+      return res.status(400).json({ ok: false, error: 'invalid_customer' });
     }
 
     const supabaseUrl = (process.env.SUPABASE_URL || 'https://sapuzlieyxwlcjdzkzrb.supabase.co').replace(/\/$/, '');
@@ -92,7 +120,7 @@ module.exports = async function handler(req, res) {
       total: Number(total.toFixed(2)),
       shipping_cost: 0,
       items: normalized,
-      customer: body.customer && typeof body.customer === 'object' ? body.customer : {},
+      customer,
       created_at: now,
       updated_at: now
     };
