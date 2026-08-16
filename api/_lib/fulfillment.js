@@ -4,7 +4,7 @@ async function loadOrderForFulfillment(orderId) {
   if (!supabaseUrl || !serviceKey) throw new Error('supabase_server_credentials_missing');
 
   const response = await fetch(
-    `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,items,customer,supplier_order_id,last_error&limit=1`,
+    `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,shipping_quote_status,shipping_quote,shipping_quoted_at,items,customer,supplier_order_id,last_error&limit=1`,
     { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
   );
   if (!response.ok) throw new Error(`order_read_${response.status}`);
@@ -16,6 +16,7 @@ async function loadOrderForFulfillment(orderId) {
 
 function validateFulfillmentOrder(order) {
   if (order.payment_status !== 'paid') return { ok: false, reason: 'payment_not_confirmed' };
+  if (order.shipping_quote_status !== 'quoted') return { ok: false, reason: 'shipping_not_quoted' };
   if (order.supplier_order_id) return { ok: false, reason: 'supplier_order_already_exists' };
   if (!['not_started', 'retry'].includes(order.fulfillment_status)) {
     return { ok: false, reason: 'fulfillment_not_eligible' };
