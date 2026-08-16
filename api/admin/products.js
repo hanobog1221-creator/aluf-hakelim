@@ -212,6 +212,8 @@ module.exports = async function handler(req, res) {
         supplier_product_id: cleanText(body.supplier_product_id, 100),
         supplier_sku_id: cleanText(body.supplier_sku_id, 100),
         variant_label: cleanText(body.variant_label, 200),
+        minimum_profit: cleanNumber(body.minimum_profit, true),
+        auto_fulfill_max_cost: cleanNumber(body.auto_fulfill_max_cost, true),
         fulfillment_ready: false,
         last_sync_at: null,
         updated_at: new Date().toISOString()
@@ -259,6 +261,8 @@ module.exports = async function handler(req, res) {
       if ('supplier_product_id' in body) update.supplier_product_id = cleanText(body.supplier_product_id, 100);
       if ('supplier_sku_id' in body) update.supplier_sku_id = cleanText(body.supplier_sku_id, 100);
       if ('variant_label' in body) update.variant_label = cleanText(body.variant_label, 200);
+      if ('minimum_profit' in body) update.minimum_profit = cleanNumber(body.minimum_profit, true);
+      if ('auto_fulfill_max_cost' in body) update.auto_fulfill_max_cost = cleanNumber(body.auto_fulfill_max_cost, true);
       if ('max_order_quantity' in body) update.max_order_quantity = cleanQuantityLimit(body.max_order_quantity, existing.max_order_quantity || 20);
       if ('sort_order' in body) {
         const sort = Number(body.sort_order);
@@ -299,6 +303,7 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_business_type')) return res.status(400).json({ ok: false, error: 'invalid_business_type' });
     if (message.includes('invalid_tax_id')) return res.status(400).json({ ok: false, error: 'invalid_tax_id' });
     if (message.includes('invalid_quantity_limit')) return res.status(400).json({ ok: false, error: 'invalid_quantity_limit' });
+    if (message.includes('invalid_number')) return res.status(400).json({ ok: false, error: 'invalid_number' });
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
