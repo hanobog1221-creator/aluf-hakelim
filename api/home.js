@@ -8,7 +8,8 @@ module.exports = async function handler(req, res) {
 
     html = html
       .replaceAll('משלוח לישראל', 'משלוחים לכל הארץ')
-      .replaceAll('יש משלוח לישראל?', 'יש משלוחים לכל הארץ?');
+      .replaceAll('יש משלוח לישראל?', 'יש משלוחים לכל הארץ?')
+      .replaceAll('בהמשך נחבר כאן WhatsApp ושירות ישיר להזמנות ושאלות.', 'לשאלות על מוצרים והזמנות אפשר לפנות אלינו ישירות ב-WhatsApp.');
 
     if (!html.includes('rel="canonical"')) {
       const canonical = 'https://aluf-hakelim-v2-ready.vercel.app/';
