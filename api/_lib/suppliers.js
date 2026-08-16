@@ -32,9 +32,9 @@ const SUPPLIERS = {
   washer: {
     storeProductId: 'washer',
     supplier: 'aliexpress',
-    sourceUrl: 'https://a.aliexpress.com/_c39RYxFp',
-    variantLabel: 'Set 1',
-    productId: '1005006994420769',
+    sourceUrl: 'https://a.aliexpress.com/_c3WtbAqT',
+    variantLabel: null,
+    productId: '1005012629074137',
     skuId: null,
     readyForFulfillment: false
   },
