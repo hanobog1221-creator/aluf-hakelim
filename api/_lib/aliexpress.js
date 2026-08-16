@@ -3,11 +3,8 @@ const { serverHeaders } = require('./supabase-server');
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const API_BASE = 'https://api-sg.aliexpress.com/rest';
-const TOP_API_BASE = 'https://eco.taobao.com/router/rest';
 const REFRESH_PATH = '/auth/token/refresh';
 const REFRESH_EARLY_MS = 30 * 60 * 1000;
-const STORE_URL = 'https://aluf-hakelim-v2-ready.vercel.app/';
-let dsStoreReportAttempted = false;
 
 function signAliExpress(params, appSecret, apiPath) {
   const keys = Object.keys(params)
@@ -18,91 +15,10 @@ function signAliExpress(params, appSecret, apiPath) {
   return crypto.createHmac('sha256', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
 }
 
-function formatTopTimestamp(date = new Date()) {
-  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`;
-}
-
-function signTop(params, appSecret) {
-  const payload = Object.keys(params)
-    .filter((key) => key !== 'sign' && params[key] !== undefined && params[key] !== null)
-    .sort()
-    .map((key) => key + String(params[key]))
-    .join('');
-  return crypto.createHmac('md5', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
-}
-
-function safeTopError(json, status) {
-  const error = json?.error_response || null;
-  const code = error?.sub_code || error?.code || `top_http_${status}`;
-  const message = error?.sub_msg || error?.msg || code;
-  const err = new Error(String(code));
-  err.code = String(code);
-  err.details = String(message).slice(0, 500);
-  return err;
-}
-
-async function executeTopApi(method, businessParams = {}, session = null) {
-  const { appSecret } = getServerConfig();
-  const common = {
-    method: String(method),
-    app_key: APP_KEY,
-    format: 'json',
-    sign_method: 'hmac',
-    timestamp: formatTopTimestamp(),
-    v: '2.0'
-  };
-  if (session) common.session = session;
-
-  const params = { ...common };
-  for (const [key, value] of Object.entries(businessParams || {})) {
-    if (value === undefined || value === null) continue;
-    params[key] = typeof value === 'string' ? value : JSON.stringify(value);
-  }
-  params.sign = signTop(params, appSecret);
-
-  const response = await fetch(TOP_API_BASE, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-      accept: 'application/json'
-    },
-    body: new URLSearchParams(params).toString()
-  });
-  const text = await response.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch {}
-  if (!response.ok || !json || json.error_response) {
-    throw safeTopError(json, response.status);
-  }
-  return json;
-}
-
-async function ensureDropshipperReported(session) {
-  if (dsStoreReportAttempted) return;
-  dsStoreReportAttempted = true;
-  try {
-    const json = await executeTopApi('aliexpress.ds.add.info', {
-      param0: { store_url: STORE_URL }
-    }, session);
-    const root = json?.aliexpress_ds_add_info_response || json;
-    console.log('AliExpress DS store report result', JSON.stringify({
-      result: root?.result ?? null,
-      rsp_code: root?.rsp_code ?? null,
-      rsp_msg: root?.rsp_msg ?? null
-    }));
-  } catch (error) {
-    console.warn('AliExpress DS store report failed', String(error.code || error.message || error), String(error.details || '').slice(0, 200));
-  }
-}
-
-async function callTopApi(method, businessParams = {}, options = {}) {
-  const session = options.session === false ? null : await getValidAccessToken();
-  if (session && method !== 'aliexpress.ds.add.info' && options.reportStore !== false) {
-    await ensureDropshipperReported(session);
-  }
-  return executeTopApi(method, businessParams, session);
+async function callTopApi() {
+  const error = new Error('top_api_deprecated_for_open_platform');
+  error.code = 'top_api_deprecated_for_open_platform';
+  throw error;
 }
 
 function safeTokenMetadata(token) {
@@ -226,9 +142,7 @@ async function getValidAccessToken() {
 module.exports = {
   APP_KEY,
   API_BASE,
-  TOP_API_BASE,
   signAliExpress,
-  signTop,
   callTopApi,
   readTokenRow,
   refreshAccessToken,
