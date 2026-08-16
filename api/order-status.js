@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
     }
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,currency,shipping_cost,items,customer,tracking_number,created_at,updated_at&limit=1`,
+      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,items,customer,tracking_number,created_at,updated_at&limit=1`,
       { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
     );
 
@@ -56,6 +56,9 @@ module.exports = async function handler(req, res) {
         status: order.status,
         paymentStatus: order.payment_status,
         fulfillmentStatus: order.fulfillment_status,
+        productsSubtotal: Number(order.products_subtotal ?? order.total ?? 0),
+        discountAmount: Number(order.discount_amount || 0),
+        couponCode: order.coupon_code || null,
         total: Number(order.total || 0),
         currency: order.currency || 'ILS',
         shippingCost: Number(order.shipping_cost || 0),
