@@ -18,13 +18,17 @@
     style.textContent = `
       .ahShippingLine{font-size:13px;font-weight:850;color:#344454;margin:2px 0 8px}.ahShippingLine.free{color:#208b4b}
       .ahWaFloat{position:fixed;left:18px;bottom:18px;z-index:145;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#073b1a;padding:12px 16px;font-weight:950;box-shadow:0 10px 28px #0003;text-decoration:none}
-      .ahWaFloat span{font-size:19px}.ahWaProduct{display:block;margin-top:10px;text-align:center;border:1px solid #20b858;border-radius:10px;padding:11px 13px;font-weight:900;color:#126832;background:#effdf4;text-decoration:none}
+      .ahWaFloat svg{width:24px;height:24px;display:block;flex:0 0 auto}.ahWaProduct{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;text-align:center;border:1px solid #20b858;border-radius:10px;padding:11px 13px;font-weight:900;color:#126832;background:#effdf4;text-decoration:none}.ahWaProduct svg{width:20px;height:20px;flex:0 0 auto}
       .ahTrackFooter{color:#fff;font-weight:850;text-decoration:underline;text-underline-offset:3px}
       .ahCardActions{position:absolute;top:9px;left:9px;z-index:4;display:flex;gap:6px}.ahMiniBtn{width:35px;height:35px;border:1px solid #d8dde2;border-radius:999px;background:#fffffff2;box-shadow:0 3px 12px #0002;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}.ahMiniBtn.saved{background:#fff1f1;border-color:#f1b8bd}
       .ahModalActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.ahActionBtn{border:1px solid #d7dde3;border-radius:10px;background:#fff;padding:11px 12px;font-weight:900;cursor:pointer}.ahActionBtn.saved{background:#fff1f1;border-color:#f1b8bd;color:#9d1e2a}
       @media(max-width:620px){.ahWaFloat{left:10px;bottom:10px;padding:11px 13px}.ahWaFloat b{display:none}}
     `;
     document.head.appendChild(style);
+
+    function whatsappIconSvg() {
+      return '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#ffffff" opacity=".96"/><path fill="#25D366" d="M23.7 20.1c-.4 1.2-2.1 2.2-3.3 2.4-.9.2-2 .3-5.7-1.3-4.8-2.1-7.9-7-8.1-7.3-1.5-2.2-1.5-4.2-.7-5.3.6-.9 1.5-1.3 2.3-1.3h.6c.5 0 .8.1 1.1.8.4.9 1.3 3.1 1.4 3.3.1.2.2.5 0 .8-.1.3-.2.4-.5.7-.2.3-.5.6-.7.8-.2.2-.4.5-.2.9.2.4 1 1.7 2.2 2.7 1.5 1.4 2.8 1.8 3.2 2 .4.2.7.2 1-.1.3-.4 1.2-1.4 1.5-1.9.3-.4.6-.4 1-.3.4.1 2.7 1.3 3.1 1.5.5.2.8.3.9.5.1.2.1.9-.1 1.6Z"/><path fill="#25D366" d="M7.6 25.2 9 21.1a10.8 10.8 0 1 1 4 3.7l-5.4.4Zm5.6-2.7.7.4a8.5 8.5 0 1 0-2.7-2.5l.4.7-.8 2.1 2.4-.7Z"/></svg>';
+    }
 
     function shippingText(product) {
       if (product.shippingAvailable === false) return 'אין אפשרות משלוח כרגע';
@@ -60,9 +64,7 @@
     }
 
     const favorites = loadFavorites();
-    function saveFavorites() {
-      localStorage.setItem('alufFavorites', JSON.stringify([...favorites]));
-    }
+    function saveFavorites() { localStorage.setItem('alufFavorites', JSON.stringify([...favorites])); }
     function toggleFavorite(id) {
       id = String(id);
       if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
@@ -102,7 +104,7 @@
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.href = whatsappUrl('');
-      link.innerHTML = '<span>💬</span><b>WhatsApp</b>';
+      link.innerHTML = whatsappIconSvg() + '<b>WhatsApp</b>';
       link.setAttribute('aria-label', 'צור קשר ב-WhatsApp');
       document.body.appendChild(link);
     }
@@ -193,7 +195,7 @@
           wa.target = '_blank';
           wa.rel = 'noopener noreferrer';
           wa.href = whatsappUrl(`יש לי שאלה לגבי המוצר: ${product.name}`);
-          wa.textContent = 'שאלה על המוצר ב-WhatsApp';
+          wa.innerHTML = whatsappIconSvg() + '<span>שאלה על המוצר ב-WhatsApp</span>';
           const addButton = modalInfo.querySelector('.add');
           if (addButton) addButton.insertAdjacentElement('afterend', wa);
           else modalInfo.appendChild(wa);
