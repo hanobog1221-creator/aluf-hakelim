@@ -6,7 +6,7 @@
     .orderTools .btn{height:42px;padding:0 13px}.orderToolsInfo{grid-column:1/-1;color:#6f7b87;font-size:12px}
     .orderQuickActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.orderQuickActions button,.orderQuickActions a{border:1px solid #d7dde3;background:#fff;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:900;text-decoration:none;color:#171717;cursor:pointer}.orderQuickActions .waCustomer{background:#effdf4;border-color:#a9e6be;color:#126832}
     .orderNotes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.orderNotes textarea{width:100%;min-height:72px;border:1px solid #cfd5dc;border-radius:10px;padding:10px;font:inherit;resize:vertical}.orderNotes label{font-size:12px;font-weight:900;display:block;margin-bottom:5px}.orderNotes small{display:block;color:#6f7b87;margin-top:4px;line-height:1.4}
-    .productToolbarActions{display:flex;gap:7px;flex-wrap:wrap}
+    .productToolbarActions{display:flex;gap:7px;flex-wrap:wrap}.ahAdminLinks{display:flex;gap:7px;flex-wrap:wrap}.ahQtyField{margin-top:9px;max-width:230px}.ahQtyField label{font-size:12px;font-weight:900;display:block;margin-bottom:5px}.ahQtyField input{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:10px;background:#fff}
     @media(max-width:850px){.orderTools{grid-template-columns:1fr 1fr}.orderTools input{grid-column:1/-1}.orderTools .btn{width:100%}.orderNotes{grid-template-columns:1fr}}
     @media(max-width:520px){.orderTools{grid-template-columns:1fr}.orderTools input{grid-column:auto}}
   `;
@@ -88,13 +88,14 @@
   }
 
   function exportProducts() {
-    const header = ['מזהה','שם','מחיר מכירה','פעיל','Product ID','SKU ID','וריאנט','עלות ספק','משלוח ספק','מוכן לאוטומציה'];
+    const header = ['מזהה','שם','מחיר מכירה','מקסימום יחידות להזמנה','פעיל','Product ID','SKU ID','וריאנט','עלות ספק','משלוח ספק','מוכן לאוטומציה'];
     const lines = [header.map(csvCell).join(',')];
     for (const p of state.products) {
       lines.push([
         p.id,
         p.name,
         p.selling_price,
+        p.max_order_quantity || 20,
         p.active ? 'כן' : 'לא',
         p.supplier_product_id || '',
         p.supplier_sku_id || '',
@@ -177,14 +178,38 @@
     if (info) info.textContent = `${allowed.size} מתוך ${state.orders.length} הזמנות`;
   }
 
+  function decorateProductCards() {
+    const cards = Array.from(document.querySelectorAll('#productsList [data-product]'));
+    for (const card of cards) {
+      const id = String(card.dataset.product || '');
+      const product = state.products.find((p) => String(p.id) === id);
+      if (!product || card.querySelector('[data-k="max_order_quantity"]')) continue;
+      const body = card.querySelector('.cardBody');
+      const row = body?.querySelector('.row');
+      if (!body || !row) continue;
+      const field = document.createElement('div');
+      field.className = 'ahQtyField';
+      field.innerHTML = `<label>מקסימום יחידות להזמנה אחת</label><input data-k="max_order_quantity" type="number" min="1" max="100" step="1" value="${Number(product.max_order_quantity || 20)}">`;
+      body.insertBefore(field, row);
+    }
+  }
+
   function ensureTopLinks() {
     const topActions = document.querySelector('.topActions');
-    if (!topActions || document.getElementById('launchChecklistLink')) return;
-    const link = document.createElement('a');
-    link.id = 'launchChecklistLink';
-    link.href = '/launch-checklist';
-    link.textContent = 'מוכנות להשקה';
-    topActions.insertBefore(link, topActions.firstChild);
+    if (!topActions) return;
+    const links = [
+      ['accountingLink','/accounting','חשבונות'],
+      ['expensesLink','/expenses','הוצאות'],
+      ['launchChecklistLink','/launch-checklist','מוכנות להשקה']
+    ];
+    for (const [id, href, label] of links) {
+      if (document.getElementById(id)) continue;
+      const link = document.createElement('a');
+      link.id = id;
+      link.href = href;
+      link.textContent = label;
+      topActions.insertBefore(link, topActions.firstChild);
+    }
   }
 
   function ensureProductTools() {
@@ -223,6 +248,12 @@
     tools.querySelector('#exportOrders').addEventListener('click', exportOrders);
   }
 
+  const originalRenderProducts = renderProducts;
+  renderProducts = function enhancedRenderProducts() {
+    originalRenderProducts();
+    decorateProductCards();
+  };
+
   const originalRenderOrders = renderOrders;
   renderOrders = function enhancedRenderOrders() {
     originalRenderOrders();
@@ -232,6 +263,7 @@
 
   ensureTopLinks();
   ensureProductTools();
+  decorateProductCards();
   ensureTools();
   decorateOrderCards();
 })();
