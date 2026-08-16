@@ -23,7 +23,7 @@ async function loadCurrentSupplierState(order) {
 
   const [productsResponse, settingsResponse] = await Promise.all([
     ids.length
-      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,supplier,supplier_product_id,supplier_sku_id,fulfillment_ready,supplier_price_ils,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
+      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_product_id,supplier_sku_id,fulfillment_ready,supplier_price_ils,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
       : Promise.resolve({ ok: true, json: async () => [] }),
     fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=minimum_profit_ils&limit=1`, { headers })
   ]);
@@ -59,13 +59,15 @@ function validateFulfillmentOrder(order, supplierState = null) {
       return { ok: false, reason: 'supplier_sku_not_verified', productId: item.id };
     }
     const qty = Number(item.qty || 0);
-    if (!Number.isInteger(qty) || qty < 1 || qty > 20) {
+    if (!Number.isInteger(qty) || qty < 1 || qty > 100) {
       return { ok: false, reason: 'invalid_quantity', productId: item.id };
     }
 
     if (currentProducts) {
       const current = currentProducts.get(String(item.id));
       if (!current || current.active !== true) return { ok: false, reason: 'product_inactive', productId: item.id };
+      const maxQty = Math.max(1, Math.min(100, Number(current.max_order_quantity || 20)));
+      if (qty > maxQty) return { ok: false, reason: 'quantity_limit_changed', productId: item.id, maxQty };
       if (current.supplier !== 'aliexpress') return { ok: false, reason: 'supplier_changed', productId: item.id };
       if (!current.fulfillment_ready || !current.supplier_product_id || !current.supplier_sku_id) {
         return { ok: false, reason: 'current_supplier_mapping_not_ready', productId: item.id };
