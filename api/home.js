@@ -1,10 +1,19 @@
+const CANONICAL_ORIGIN = 'https://aluf-hakelim-v2-ready.vercel.app';
+
+function internalOrigin(req) {
+  const vercelUrl = String(process.env.VERCEL_URL || '').trim();
+  if (vercelUrl && /^[a-z0-9.-]+\.vercel\.app$/i.test(vercelUrl)) return `https://${vercelUrl}`;
+  const host = String(req.headers.host || '').trim();
+  if (/^[a-z0-9.-]+(?::\d+)?$/i.test(host)) return `https://${host}`;
+  return CANONICAL_ORIGIN;
+}
+
 module.exports = async function handler(req, res) {
   try {
-    const protocol = (req.headers['x-forwarded-proto'] || 'https').split(',')[0];
-    const host = req.headers.host;
-    const origin = `${protocol}://${host}`;
-    const pageUrl = `${origin}/index.html`;
+    const serverOrigin = internalOrigin(req);
+    const pageUrl = `${serverOrigin}/index.html`;
     const response = await fetch(pageUrl, { headers: { 'cache-control': 'no-cache' } });
+    if (!response.ok) throw new Error(`storefront_template_${response.status}`);
     let html = await response.text();
 
     html = html
@@ -23,7 +32,7 @@ module.exports = async function handler(req, res) {
     let selectedProduct = null;
     if (/^[A-Za-z0-9_-]{1,80}$/.test(requestedProductId)) {
       try {
-        const productsResponse = await fetch(`${origin}/api/products`, { headers: { accept: 'application/json' }, cache: 'no-store' });
+        const productsResponse = await fetch(`${serverOrigin}/api/products`, { headers: { accept: 'application/json' }, cache: 'no-store' });
         if (productsResponse.ok) {
           const data = await productsResponse.json();
           selectedProduct = Array.isArray(data?.products)
@@ -35,8 +44,8 @@ module.exports = async function handler(req, res) {
 
     if (!html.includes('rel="canonical"')) {
       const canonical = selectedProduct
-        ? `https://aluf-hakelim-v2-ready.vercel.app/?product=${encodeURIComponent(selectedProduct.id)}`
-        : 'https://aluf-hakelim-v2-ready.vercel.app/';
+        ? `${CANONICAL_ORIGIN}/?product=${encodeURIComponent(selectedProduct.id)}`
+        : `${CANONICAL_ORIGIN}/`;
       const title = selectedProduct
         ? `${selectedProduct.name} | אלוף הכלים`
         : 'אלוף הכלים | כלי עבודה ואביזרי רכב';
@@ -44,7 +53,7 @@ module.exports = async function handler(req, res) {
         ? String(selectedProduct.desc).slice(0, 220)
         : 'אלוף הכלים — כלי עבודה, אביזרי רכב ומוצרים שימושיים להזמנה אונליין.';
       const image = selectedProduct?.img
-        ? (String(selectedProduct.img).startsWith('http') ? selectedProduct.img : `${origin}${selectedProduct.img}`)
+        ? (String(selectedProduct.img).startsWith('http') ? selectedProduct.img : `${CANONICAL_ORIGIN}${selectedProduct.img}`)
         : null;
       const structured = selectedProduct ? {
         '@context': 'https://schema.org',
@@ -104,6 +113,7 @@ ${image ? `<meta name="twitter:image" content="${escapeAttr(image)}">` : ''}
     res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     return res.status(200).send(html);
   } catch (error) {
+    console.error('home render failed', error);
     return res.status(500).send('Site temporarily unavailable');
   }
 };
