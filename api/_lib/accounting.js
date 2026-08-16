@@ -27,16 +27,14 @@ function summarizeAccounting(orders, expensesSummary = {}) {
     discounts: 0,
     shipping: 0,
     grossRevenue: 0,
-    refunds: 0,
+    refunds: roundMoney(expensesSummary.refunds || 0),
     netRevenue: 0,
     revenue: 0,
     documentsIssued: 0,
     documentsMissing: 0,
     recordedExpenses: roundMoney(expensesSummary.total || 0),
-    refundExpensesRecorded: roundMoney(expensesSummary.refunds || 0),
     operatingExpenses: 0,
-    estimatedNetBeforeTax: 0,
-    refundSyncDifference: 0
+    estimatedNetBeforeTax: 0
   };
 
   for (const order of Array.isArray(orders) ? orders : []) {
@@ -45,21 +43,21 @@ function summarizeAccounting(orders, expensesSummary = {}) {
     summary.discounts += Number(order.discount_amount || 0);
     summary.shipping += Number(order.shipping_cost || 0);
     summary.grossRevenue += paidTotal(order);
-    summary.refunds += completedRefundAmount(order);
     if (order.fiscal_document_status === 'issued') summary.documentsIssued += 1;
     else summary.documentsMissing += 1;
   }
 
-  for (const key of ['productsSubtotal','discounts','shipping','grossRevenue','refunds']) {
+  for (const key of ['productsSubtotal','discounts','shipping','grossRevenue']) {
     summary[key] = roundMoney(summary[key]);
   }
 
+  // Refunds come from business_expenses, whose expense_date is the actual refund date.
+  // This keeps a January refund out of the previous December's report even if the sale was in December.
   summary.netRevenue = roundMoney(summary.grossRevenue - summary.refunds);
-  // Backward-compatible alias for older admin UIs: revenue now means net revenue after completed refunds.
+  // Backward-compatible alias for older admin UIs: revenue means net revenue after refunds in this report period.
   summary.revenue = summary.netRevenue;
-  summary.operatingExpenses = roundMoney(Math.max(0, summary.recordedExpenses - summary.refundExpensesRecorded));
+  summary.operatingExpenses = roundMoney(Math.max(0, summary.recordedExpenses - summary.refunds));
   summary.estimatedNetBeforeTax = roundMoney(summary.netRevenue - summary.operatingExpenses);
-  summary.refundSyncDifference = roundMoney(summary.refunds - summary.refundExpensesRecorded);
   return summary;
 }
 
