@@ -1,4 +1,5 @@
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
+const { summarizeAccounting } = require('../_lib/accounting');
 
 const ORDER_STATUSES = new Set(['draft','payment_pending','paid','processing','ordered','shipped','completed','cancelled','error']);
 const FULFILLMENT_STATUSES = new Set(['not_started','waiting','ready','ordering','ordered','shipped','delivered','failed','cancelled']);
@@ -98,7 +99,8 @@ module.exports = async function handler(req, res) {
           return res.status(200).json({ ok: true, expenses: true, year, items: expenses, summary: expensesSummary });
         }
 
-        const response = await fetch(`${supabaseUrl}/rest/v1/orders?payment_status=eq.paid&select=*&order=created_at.asc&limit=5000`, {
+        // A refunded order was still originally paid, so accounting is based on paid_at rather than current payment_status.
+        const response = await fetch(`${supabaseUrl}/rest/v1/orders?paid_at=not.is.null&select=*&order=created_at.asc&limit=5000`, {
           headers: dbHeaders()
         });
         if (!response.ok) throw new Error(`accounting_orders_read_${response.status}`);
@@ -109,24 +111,7 @@ module.exports = async function handler(req, res) {
           const d = new Date(date);
           return Number.isFinite(d.getTime()) && d.getUTCFullYear() === year;
         });
-        const summary = orders.reduce((acc, order) => {
-          const productsSubtotal = Number(order.products_subtotal || 0);
-          const discount = Number(order.discount_amount || 0);
-          const productsAfterDiscount = Number(order.total || 0);
-          const shipping = Number(order.shipping_cost || 0);
-          const paidTotal = Number((productsAfterDiscount + shipping).toFixed(2));
-          acc.orders += 1;
-          acc.productsSubtotal += productsSubtotal;
-          acc.discounts += discount;
-          acc.shipping += shipping;
-          acc.revenue += paidTotal;
-          if (order.fiscal_document_status === 'issued') acc.documentsIssued += 1;
-          else acc.documentsMissing += 1;
-          return acc;
-        }, { orders: 0, productsSubtotal: 0, discounts: 0, shipping: 0, revenue: 0, documentsIssued: 0, documentsMissing: 0 });
-        for (const key of ['productsSubtotal','discounts','shipping','revenue']) summary[key] = Number(summary[key].toFixed(2));
-        summary.recordedExpenses = expensesSummary.total;
-        summary.estimatedNetBeforeTax = Number((summary.revenue - expensesSummary.total).toFixed(2));
+        const summary = summarizeAccounting(orders, expensesSummary);
         return res.status(200).json({ ok: true, accounting: true, year, orders, summary, expenses, expensesSummary });
       }
 
