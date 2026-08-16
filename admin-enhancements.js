@@ -6,6 +6,7 @@
     .orderTools .btn{height:42px;padding:0 13px}.orderToolsInfo{grid-column:1/-1;color:#6f7b87;font-size:12px}
     .orderQuickActions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.orderQuickActions button,.orderQuickActions a{border:1px solid #d7dde3;background:#fff;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:900;text-decoration:none;color:#171717;cursor:pointer}.orderQuickActions .waCustomer{background:#effdf4;border-color:#a9e6be;color:#126832}
     .orderNotes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.orderNotes textarea{width:100%;min-height:72px;border:1px solid #cfd5dc;border-radius:10px;padding:10px;font:inherit;resize:vertical}.orderNotes label{font-size:12px;font-weight:900;display:block;margin-bottom:5px}.orderNotes small{display:block;color:#6f7b87;margin-top:4px;line-height:1.4}
+    .productToolbarActions{display:flex;gap:7px;flex-wrap:wrap}
     @media(max-width:850px){.orderTools{grid-template-columns:1fr 1fr}.orderTools input{grid-column:1/-1}.orderTools .btn{width:100%}.orderNotes{grid-template-columns:1fr}}
     @media(max-width:520px){.orderTools{grid-template-columns:1fr}.orderTools input{grid-column:auto}}
   `;
@@ -50,6 +51,18 @@
     return '"' + String(value ?? '').replace(/"/g, '""') + '"';
   }
 
+  function downloadCsv(filename, rows) {
+    const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function exportOrders() {
     const rows = visibleOrders();
     const header = ['מספר הזמנה','תאריך','לקוח','טלפון','עיר','כתובת','סכום','סטטוס תשלום','סטטוס הזמנה','מספר מעקב','קופון'];
@@ -71,15 +84,27 @@
         o.coupon_code || ''
       ].map(csvCell).join(','));
     }
-    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `aluf-hakelim-orders-${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(`aluf-hakelim-orders-${new Date().toISOString().slice(0,10)}.csv`, lines);
+  }
+
+  function exportProducts() {
+    const header = ['מזהה','שם','מחיר מכירה','פעיל','Product ID','SKU ID','וריאנט','עלות ספק','משלוח ספק','מוכן לאוטומציה'];
+    const lines = [header.map(csvCell).join(',')];
+    for (const p of state.products) {
+      lines.push([
+        p.id,
+        p.name,
+        p.selling_price,
+        p.active ? 'כן' : 'לא',
+        p.supplier_product_id || '',
+        p.supplier_sku_id || '',
+        p.variant_label || '',
+        p.supplier_price_ils ?? p.supplier_price ?? '',
+        p.supplier_shipping ?? '',
+        p.fulfillment_ready ? 'כן' : 'לא'
+      ].map(csvCell).join(','));
+    }
+    downloadCsv(`aluf-hakelim-products-${new Date().toISOString().slice(0,10)}.csv`, lines);
   }
 
   async function copyText(value, button) {
@@ -152,6 +177,32 @@
     if (info) info.textContent = `${allowed.size} מתוך ${state.orders.length} הזמנות`;
   }
 
+  function ensureTopLinks() {
+    const topActions = document.querySelector('.topActions');
+    if (!topActions || document.getElementById('launchChecklistLink')) return;
+    const link = document.createElement('a');
+    link.id = 'launchChecklistLink';
+    link.href = '/launch-checklist';
+    link.textContent = 'מוכנות להשקה';
+    topActions.insertBefore(link, topActions.firstChild);
+  }
+
+  function ensureProductTools() {
+    const toolbar = document.querySelector('#productsTab .toolbar');
+    const newButton = document.getElementById('newProductBtn');
+    if (!toolbar || !newButton || document.getElementById('exportProducts')) return;
+    const actions = document.createElement('div');
+    actions.className = 'productToolbarActions';
+    const exportButton = document.createElement('button');
+    exportButton.id = 'exportProducts';
+    exportButton.className = 'btn small dark';
+    exportButton.type = 'button';
+    exportButton.textContent = 'ייצוא מוצרים';
+    exportButton.addEventListener('click', exportProducts);
+    newButton.parentNode.insertBefore(actions, newButton);
+    actions.append(newButton, exportButton);
+  }
+
   function ensureTools() {
     const ordersTab = document.getElementById('ordersTab');
     const toolbar = ordersTab?.querySelector('.toolbar');
@@ -179,6 +230,8 @@
     decorateOrderCards();
   };
 
+  ensureTopLinks();
+  ensureProductTools();
   ensureTools();
   decorateOrderCards();
 })();
