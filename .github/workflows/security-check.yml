@@ -1,0 +1,56 @@
+name: Security Hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reject tracked secret files
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad="$(git ls-files | grep -E '(^|/)(\.env($|\.)|.*\.(pem|key|p12|pfx)$)' | grep -v -E '(^|/)\.env\.example$' || true)"
+          if [ -n "$bad" ]; then
+            echo "Tracked secret-like files found:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: Scan for common committed secret patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(git ls-files '*.js' '*.json' '*.html' '*.yml' '*.yaml' '*.sql' '*.txt' '.env.example')"
+          [ -n "$files" ] || exit 0
+
+          # Supabase/JWT-like tokens. Long JWTs start with eyJ and contain dot-separated segments.
+          if grep -nHE 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}' $files; then
+            echo 'Possible committed JWT found.'
+            exit 1
+          fi
+
+          # Common secret prefixes. Keep the pattern strict enough to avoid normal prose/code names.
+          if grep -nHE '(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})' $files; then
+            echo 'Possible committed API token found.'
+            exit 1
+          fi
+
+          # Catch accidental literal assignment to the most sensitive server variables.
+          if grep -nHE '(SUPABASE_SERVICE_ROLE_KEY|ALIEXPRESS_APP_SECRET|CRON_SECRET)[[:space:]]*=[[:space:]]*["'"'][^"'"']{8,}["'"']' $files; then
+            echo 'Possible literal server secret assignment found.'
+            exit 1
+          fi
+
+          echo 'No obvious committed secrets found.'
