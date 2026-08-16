@@ -22,6 +22,18 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Check Vercel Hobby function budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(find api -type f -name '*.js' -not -path 'api/_lib/*' | wc -l | tr -d ' ')
+          echo "Serverless API routes: $count / 12"
+          if [ "$count" -gt 12 ]; then
+            echo "Too many Vercel Serverless Functions for the Hobby deployment. Consolidate routes before merging."
+            exit 1
+          fi
+          echo "Free function slots: $((12-count))"
+
       - name: Check JavaScript syntax
         shell: bash
         run: |
@@ -35,7 +47,6 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const path = require('path');
           for (const name of fs.readdirSync('.').filter((n) => n.endsWith('.html'))) {
             const html = fs.readFileSync(name, 'utf8');
             const re = /<script([^>]*)>([\s\S]*?)<\/script>/gi;
