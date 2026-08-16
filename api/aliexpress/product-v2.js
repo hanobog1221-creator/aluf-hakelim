@@ -5,7 +5,8 @@ const { quoteAliExpressFreight, convertToIls } = require('../_lib/shipping');
 const PRODUCT_PATH = '/ds/product/get';
 
 function isCron(req) {
-  return String(req.headers['user-agent'] || '').includes('vercel-cron/1.0');
+  const secret = process.env.CRON_SECRET;
+  return Boolean(secret) && String(req.headers.authorization || '') === `Bearer ${secret}`;
 }
 
 function toArray(value) {
@@ -233,7 +234,6 @@ module.exports = async function handler(req, res) {
     const syncAll = cron || String(req.query.sync || '') === 'all';
 
     if (syncAll) {
-      if (!cron) return res.status(403).json({ ok: false, error: 'cron_only' });
       const db = await fetch(`${supabaseUrl}/rest/v1/products?select=*&active=eq.true&supplier=eq.aliexpress&supplier_product_id=not.is.null&order=sort_order.asc&limit=25`, { headers: dbHeaders() });
       if (!db.ok) throw new Error(`products_read_${db.status}`);
       const products = await db.json();
