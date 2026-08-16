@@ -88,6 +88,43 @@ function cleanSupplierUrl(value) {
   return text;
 }
 
+function cleanSupplierId(value) {
+  const id = cleanText(value, 160);
+  if (!id) return null;
+  if (!/^[A-Za-z0-9:_-]{2,160}$/.test(id)) throw new Error('invalid_supplier_id');
+  return id;
+}
+
+function cleanAlternativeSuppliers(value) {
+  if (!Array.isArray(value) || value.length > 20) throw new Error('invalid_alternative_suppliers');
+  const seen = new Set();
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== 'object') throw new Error('invalid_alternative_suppliers');
+    const supplierId = cleanSupplierId(candidate.supplier_id);
+    if (!supplierId || seen.has(supplierId)) throw new Error('invalid_alternative_suppliers');
+    seen.add(supplierId);
+    const row = {
+      supplier_id: supplierId,
+      supplier: 'aliexpress',
+      supplier_url: cleanSupplierUrl(candidate.supplier_url),
+      supplier_product_id: cleanSupplierProductId(candidate.supplier_product_id),
+      supplier_sku_id: cleanText(candidate.supplier_sku_id, 100),
+      variant_label: cleanText(candidate.variant_label, 200),
+      verified: candidate.verified === true,
+      in_stock: candidate.in_stock === null ? null : Boolean(candidate.in_stock),
+      shipping_available: candidate.shipping_available === null ? null : Boolean(candidate.shipping_available),
+      supplier_price_ils: cleanNumber(candidate.supplier_price_ils, true),
+      supplier_shipping: cleanNumber(candidate.supplier_shipping, true),
+      last_sync_at: cleanDate(candidate.last_sync_at),
+      shipping_last_checked_at: cleanDate(candidate.shipping_last_checked_at)
+    };
+    if (row.verified && (!row.supplier_product_id || !row.supplier_sku_id || !row.last_sync_at || !row.shipping_last_checked_at)) {
+      throw new Error('unverifiable_alternative_supplier');
+    }
+    return row;
+  });
+}
+
 function cleanImageUrl(value) {
   const text = cleanText(value, 2000);
   if (!text) return null;
@@ -268,10 +305,12 @@ module.exports = async function handler(req, res) {
         sort_order: Number.isInteger(Number(body.sort_order)) ? Number(body.sort_order) : 0,
         max_order_quantity: cleanQuantityLimit(body.max_order_quantity, 20),
         supplier: 'aliexpress',
+        supplier_id: cleanSupplierId(body.supplier_id),
         supplier_url: cleanSupplierUrl(body.supplier_url),
         supplier_product_id: cleanSupplierProductId(body.supplier_product_id),
         supplier_sku_id: cleanText(body.supplier_sku_id, 100),
         variant_label: cleanText(body.variant_label, 200),
+        alternative_suppliers: cleanAlternativeSuppliers(Array.isArray(body.alternative_suppliers) ? body.alternative_suppliers : []),
         minimum_profit: cleanNumber(body.minimum_profit, true),
         auto_fulfill_max_cost: cleanNumber(body.auto_fulfill_max_cost, true),
         fulfillment_ready: false,
@@ -318,9 +357,11 @@ module.exports = async function handler(req, res) {
       if ('badge' in body) update.badge = cleanText(body.badge, 100);
       if ('kind' in body) update.kind = cleanText(body.kind, 200);
       if ('supplier_url' in body) update.supplier_url = cleanSupplierUrl(body.supplier_url);
+      if ('supplier_id' in body) update.supplier_id = cleanSupplierId(body.supplier_id);
       if ('supplier_product_id' in body) update.supplier_product_id = cleanSupplierProductId(body.supplier_product_id);
       if ('supplier_sku_id' in body) update.supplier_sku_id = cleanText(body.supplier_sku_id, 100);
       if ('variant_label' in body) update.variant_label = cleanText(body.variant_label, 200);
+      if ('alternative_suppliers' in body) update.alternative_suppliers = cleanAlternativeSuppliers(body.alternative_suppliers);
       if ('supplier_price' in body) update.supplier_price = cleanNumber(body.supplier_price, true);
       if ('supplier_currency' in body) update.supplier_currency = cleanCurrency(body.supplier_currency);
       if ('supplier_price_ils' in body) update.supplier_price_ils = cleanNumber(body.supplier_price_ils, true);
@@ -345,7 +386,7 @@ module.exports = async function handler(req, res) {
       if ('categories' in body) update.categories = cleanCategories(body.categories);
 
       const publicCaptureAt = 'public_capture_at' in body ? cleanDate(body.public_capture_at) : null;
-      const supplierChanged = ['supplier_url','supplier_product_id','supplier_sku_id','variant_label'].some((key) => key in update && update[key] !== existing[key]);
+      const supplierChanged = ['supplier_id','supplier_url','supplier_product_id','supplier_sku_id','variant_label','alternative_suppliers'].some((key) => key in update && JSON.stringify(update[key]) !== JSON.stringify(existing[key]));
       if (supplierChanged) {
         update.fulfillment_ready = false;
         if (!publicCaptureAt) update.last_sync_at = null;
@@ -387,6 +428,9 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_business_type')) return res.status(400).json({ ok: false, error: 'invalid_business_type' });
     if (message.includes('invalid_tax_id')) return res.status(400).json({ ok: false, error: 'invalid_tax_id' });
     if (message.includes('invalid_quantity_limit')) return res.status(400).json({ ok: false, error: 'invalid_quantity_limit' });
+    if (message.includes('invalid_supplier_id')) return res.status(400).json({ ok: false, error: 'invalid_supplier_id' });
+    if (message.includes('invalid_alternative_suppliers')) return res.status(400).json({ ok: false, error: 'invalid_alternative_suppliers' });
+    if (message.includes('unverifiable_alternative_supplier')) return res.status(400).json({ ok: false, error: 'unverifiable_alternative_supplier' });
     if (message.includes('invalid_payment_quote_ttl')) return res.status(400).json({ ok: false, error: 'invalid_payment_quote_ttl' });
     if (message.includes('invalid_number')) return res.status(400).json({ ok: false, error: 'invalid_number' });
     if (message.includes('invalid_currency')) return res.status(400).json({ ok: false, error: 'invalid_currency' });
@@ -396,3 +440,4 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
+
