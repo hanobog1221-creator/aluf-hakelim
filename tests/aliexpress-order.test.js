@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildPlaceOrderRequest,
+  buildPlaceOrderRequests,
   safePreview,
   parsePlaceOrderResponse,
   normalizeOrderIds
@@ -42,6 +43,20 @@ test('buildPlaceOrderRequest normalizes Israeli phone and supplier item', () => 
   assert.equal(request.product_items[0].product_id, 1005010616492119);
   assert.equal(request.product_items[0].sku_attr, '14:70221');
   assert.equal(request.product_items[0].product_count, 2);
+});
+
+test('builds one real supplier request per supplier identity', () => {
+  const order = sampleOrder();
+  order.items[0].supplierId = 'store-a';
+  order.items.push({
+    id: 'socket', qty: 1, supplierId: 'store-b',
+    supplierProductId: '1005012906553288', supplierSkuId: '14:123'
+  });
+  order.shipping_quote.lines.push({ id: 'socket', serviceName: 'AliExpress Standard Shipping' });
+  const groups = buildPlaceOrderRequests(order);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((group) => group.supplierId), ['store-a', 'store-b']);
+  assert.equal(groups.every((group) => group.request.product_items.length === 1), true);
 });
 
 test('buildPlaceOrderRequest requires an exact shipping service', () => {
@@ -120,3 +135,4 @@ test('normalizeOrderIds deduplicates and rejects invalid IDs', () => {
     ['100001', '200002']
   );
 });
+

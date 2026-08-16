@@ -1,8 +1,9 @@
 const crypto = require('crypto');
 const { quoteCartShipping } = require('./_lib/shipping');
 const { serverHeaders } = require('./_lib/supabase-server');
+const { buildImportCompliancePlan } = require('./_lib/import-compliance');
 
-const TERMS_VERSION = '2026-08-16';
+const TERMS_VERSION = '2026-08-17-import-compliance';
 
 function normalizeCouponCode(value) {
   const code = String(value || '').trim().toUpperCase();
@@ -45,6 +46,18 @@ function customerShippingStatus(status) {
 
 function shippingPending(quote) {
   return quote?.status !== 'quoted' && Boolean(quote?.waitingForAliExpressPermission);
+}
+
+function customerImportPlan(plan) {
+  if (!plan) return null;
+  const shipmentCount = Array.isArray(plan.groups) ? plan.groups.length : 0;
+  return {
+    shipmentCount,
+    hasVerifiedSupplierSplit: shipmentCount > 1,
+    estimatedImportTax: Number(plan.estimatedTaxIls || 0),
+    taxEstimateOnly: plan.taxEstimateOnly === true,
+    complianceNotice: plan.complianceNotice || null
+  };
 }
 
 function requestFingerprint(req, kind) {
@@ -177,6 +190,9 @@ function responseFromStoredOrder(order, duplicate = true) {
     shippingCost,
     shippingCurrency: 'ILS',
     shippingLines: customerShippingLines(order.shipping_quote?.lines),
+    importPlan: customerImportPlan(order.import_compliance_plan),
+    estimatedImportTax: Number(order.estimated_import_tax || 0),
+    estimatedTotalWithImportTax: Number((finalTotal + Number(order.estimated_import_tax || 0)).toFixed(2)),
     total: finalTotal,
     currency: order.currency || 'ILS',
     items: customerItems(order.items)
@@ -287,7 +303,7 @@ module.exports = async function handler(req, res) {
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,max_order_quantity,supplier,supplier_url,supplier_product_id,supplier_sku_id,variant_label,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,max_order_quantity,supplier,supplier_id,supplier_url,supplier_product_id,supplier_sku_id,variant_label,alternative_suppliers,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
       { headers: serverHeaders({}, serviceKey) }
     );
 
@@ -300,7 +316,7 @@ module.exports = async function handler(req, res) {
     const products = await productResponse.json();
     const byId = new Map(products.map((product) => [String(product.id), product]));
 
-    const normalized = [];
+    let normalized = [];
     for (const item of requested) {
       const product = byId.get(item.id);
       if (!product || product.active !== true) {
@@ -338,13 +354,15 @@ module.exports = async function handler(req, res) {
         price,
         variant: product.variant_label || null,
         supplier: product.supplier || null,
+        supplierId: product.supplier_id || null,
         supplierUrl: product.supplier_url || null,
         supplierProductId: product.supplier_product_id || null,
         supplierSkuId: product.supplier_sku_id || null,
         supplierShipFromCountry: product.supplier_ship_from_country || 'CN',
         fulfillmentReady: Boolean(product.fulfillment_ready),
         supplierStockKnown: product.supplier_in_stock !== null,
-        supplierSyncedAt: product.last_sync_at || null
+        supplierSyncedAt: product.last_sync_at || null,
+        alternativeSuppliers: Array.isArray(product.alternative_suppliers) ? product.alternative_suppliers : []
       });
     }
 
@@ -364,6 +382,18 @@ module.exports = async function handler(req, res) {
 
     const discountAmount = Number(couponResult.discountAmount || 0);
     const discountedProductsSubtotal = Number(Math.max(0, productsSubtotal - discountAmount).toFixed(2));
+
+    const plannedImport = buildImportCompliancePlan(normalized, {
+      thresholdUsd: Number(process.env.PERSONAL_IMPORT_THRESHOLD_USD || 75),
+      usdIlsRate: Number(process.env.IMPORT_USD_ILS_RATE || 3.7),
+      vatRate: Number(process.env.IMPORT_VAT_RATE || 0.18)
+    });
+    normalized = plannedImport.assignedItems;
+    const { assignedItems: _assignedItems, ...importPlan } = plannedImport;
+
+    if (!quoteOnly && importPlan.estimatedTaxIls > 0 && body.importChargesAccepted !== true) {
+      return res.status(400).json({ ok: false, error: 'import_charges_consent_required' });
+    }
 
     let shippingQuote;
     try {
@@ -404,6 +434,11 @@ module.exports = async function handler(req, res) {
         shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
         shippingCurrency: 'ILS',
         shippingLines: customerShippingLines(shippingQuote.lines),
+        importPlan: customerImportPlan(importPlan),
+        estimatedImportTax: importPlan.estimatedTaxIls,
+        estimatedTotalWithImportTax: shippingQuote.status === 'quoted'
+          ? Number((finalTotal + importPlan.estimatedTaxIls).toFixed(2))
+          : null,
         total: shippingQuote.status === 'quoted' ? finalTotal : null,
         canFinalize: salesEnabled && normalized.every((item) => item.fulfillmentReady) && shippingQuote.status === 'quoted'
       });
@@ -433,6 +468,9 @@ module.exports = async function handler(req, res) {
       shipping_quote_status: shippingQuote.status,
       shipping_quote: shippingQuote,
       shipping_quoted_at: shippingQuote.quotedAt || null,
+      import_compliance_plan: importPlan,
+      estimated_import_tax: importPlan.estimatedTaxIls,
+      import_charges_accepted_at: importPlan.estimatedTaxIls > 0 ? now : null,
       items: normalized,
       customer,
       terms_accepted_at: now,
@@ -477,6 +515,9 @@ module.exports = async function handler(req, res) {
       shippingCost,
       shippingCurrency: 'ILS',
       shippingLines: customerShippingLines(shippingQuote.lines),
+      importPlan: customerImportPlan(importPlan),
+      estimatedImportTax: importPlan.estimatedTaxIls,
+      estimatedTotalWithImportTax: Number((finalTotal + importPlan.estimatedTaxIls).toFixed(2)),
       total: finalTotal,
       currency: order.currency,
       items: customerItems(normalized)
@@ -486,3 +527,4 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ ok: false, error: 'bad_request' });
   }
 };
+

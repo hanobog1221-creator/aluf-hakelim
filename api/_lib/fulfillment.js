@@ -27,7 +27,7 @@ async function loadCurrentSupplierState(order) {
 
   const [productsResponse, settingsResponse] = await Promise.all([
     ids.length
-      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_product_id,supplier_sku_id,fulfillment_ready,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
+      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_id,supplier_product_id,supplier_sku_id,alternative_suppliers,fulfillment_ready,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
       : Promise.resolve({ ok: true, json: async () => [] }),
     fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils&limit=1`, { headers })
   ]);
@@ -50,6 +50,20 @@ function stateIsFresh(value) {
 function hasSupplierOrder(order) {
   if (order.supplier_order_id) return true;
   return Array.isArray(order.supplier_order_ids) && order.supplier_order_ids.length > 0;
+}
+
+function currentSupplierMapping(product, item) {
+  if (
+    (!item.supplierId || String(product.supplier_id || '') === String(item.supplierId || '')) &&
+    String(product.supplier_product_id || '') === String(item.supplierProductId || '') &&
+    String(product.supplier_sku_id || '') === String(item.supplierSkuId || '')
+  ) return product;
+  return (Array.isArray(product.alternative_suppliers) ? product.alternative_suppliers : []).find((candidate) =>
+    candidate.verified === true &&
+    String(candidate.supplier_id || candidate.supplierId || '') === String(item.supplierId || '') &&
+    String(candidate.supplier_product_id || candidate.supplierProductId || '') === String(item.supplierProductId || '') &&
+    String(candidate.supplier_sku_id || candidate.supplierSkuId || '') === String(item.supplierSkuId || '')
+  ) || null;
 }
 
 function validateFulfillmentOrder(order, supplierState = null) {
@@ -85,29 +99,34 @@ function validateFulfillmentOrder(order, supplierState = null) {
       if (!current || current.active !== true) return { ok: false, reason: 'product_inactive', productId: item.id };
       const maxQty = Math.max(1, Math.min(20, Number(current.max_order_quantity || 20)));
       if (qty > maxQty) return { ok: false, reason: 'quantity_limit_changed', productId: item.id, maxQty };
-      if (current.supplier !== 'aliexpress') return { ok: false, reason: 'supplier_changed', productId: item.id };
-      if (!current.fulfillment_ready || !current.supplier_product_id || !current.supplier_sku_id) {
+      const mapping = currentSupplierMapping(current, item);
+      if (!mapping) return { ok: false, reason: 'supplier_mapping_changed', productId: item.id };
+      if ((mapping.supplier || current.supplier) !== 'aliexpress') return { ok: false, reason: 'supplier_changed', productId: item.id };
+      if (mapping === current && (!current.fulfillment_ready || !current.supplier_product_id || !current.supplier_sku_id)) {
         return { ok: false, reason: 'current_supplier_mapping_not_ready', productId: item.id };
       }
-      if (String(current.supplier_product_id) !== String(item.supplierProductId) || String(current.supplier_sku_id) !== String(item.supplierSkuId)) {
-        return { ok: false, reason: 'supplier_mapping_changed', productId: item.id };
+
+      const inStock = mapping === current ? current.supplier_in_stock : mapping.in_stock;
+      const shippingAvailable = mapping === current ? current.supplier_shipping_available : mapping.shipping_available;
+      if (inStock !== true) {
+        return { ok: false, reason: inStock === false ? 'supplier_out_of_stock' : 'supplier_stock_unknown', productId: item.id };
+      }
+      if (shippingAvailable !== true) {
+        return { ok: false, reason: shippingAvailable === false ? 'supplier_shipping_unavailable' : 'supplier_shipping_unknown', productId: item.id };
+      }
+      const lastSyncAt = mapping === current ? current.last_sync_at : (mapping.last_sync_at || mapping.lastSyncAt);
+      const shippingLastCheckedAt = mapping === current ? current.shipping_last_checked_at : (mapping.shipping_last_checked_at || mapping.shippingLastCheckedAt);
+      if (!stateIsFresh(lastSyncAt)) {
+        return { ok: false, reason: 'supplier_product_sync_stale', productId: item.id, lastSyncAt: lastSyncAt || null };
+      }
+      if (!stateIsFresh(shippingLastCheckedAt)) {
+        return { ok: false, reason: 'supplier_shipping_sync_stale', productId: item.id, shippingLastCheckedAt: shippingLastCheckedAt || null };
       }
 
-      if (current.supplier_in_stock !== true) {
-        return { ok: false, reason: current.supplier_in_stock === false ? 'supplier_out_of_stock' : 'supplier_stock_unknown', productId: item.id };
-      }
-      if (current.supplier_shipping_available !== true) {
-        return { ok: false, reason: current.supplier_shipping_available === false ? 'supplier_shipping_unavailable' : 'supplier_shipping_unknown', productId: item.id };
-      }
-      if (!stateIsFresh(current.last_sync_at)) {
-        return { ok: false, reason: 'supplier_product_sync_stale', productId: item.id, lastSyncAt: current.last_sync_at || null };
-      }
-      if (!stateIsFresh(current.shipping_last_checked_at)) {
-        return { ok: false, reason: 'supplier_shipping_sync_stale', productId: item.id, shippingLastCheckedAt: current.shipping_last_checked_at || null };
-      }
-
-      const supplierPrice = current.supplier_price_ils == null ? null : Number(current.supplier_price_ils);
-      const supplierShipping = current.supplier_shipping == null ? null : Number(current.supplier_shipping);
+      const supplierPriceRaw = mapping === current ? current.supplier_price_ils : (mapping.supplier_price_ils ?? mapping.supplierPriceIls);
+      const supplierShippingRaw = mapping === current ? current.supplier_shipping : (mapping.supplier_shipping ?? mapping.supplierShipping);
+      const supplierPrice = supplierPriceRaw == null ? null : Number(supplierPriceRaw);
+      const supplierShipping = supplierShippingRaw == null ? null : Number(supplierShippingRaw);
       const salePrice = Number(item.price);
       if (!Number.isFinite(supplierPrice)) return { ok: false, reason: 'supplier_price_unknown', productId: item.id };
       if (!Number.isFinite(salePrice)) return { ok: false, reason: 'sale_price_invalid', productId: item.id };
@@ -169,3 +188,4 @@ module.exports = {
   validateFulfillmentOrder,
   getFulfillmentCandidate
 };
+
