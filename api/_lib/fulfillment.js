@@ -1,3 +1,5 @@
+const { serverHeaders } = require('./supabase-server');
+
 const MAX_SUPPLIER_STATE_AGE_MS = 8 * 60 * 60 * 1000;
 
 async function loadOrderForFulfillment(orderId) {
@@ -7,7 +9,7 @@ async function loadOrderForFulfillment(orderId) {
 
   const response = await fetch(
     `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(String(orderId || ''))}&select=order_id,status,payment_status,fulfillment_status,currency,total,shipping_cost,shipping_quote_status,shipping_quote,shipping_quoted_at,items,customer,supplier_order_id,supplier_order_ids,last_error,updated_at&limit=1`,
-    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    { headers: serverHeaders({}, serviceKey) }
   );
   if (!response.ok) throw new Error(`order_read_${response.status}`);
   const rows = await response.json();
@@ -20,7 +22,7 @@ async function loadCurrentSupplierState(order) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) throw new Error('supabase_server_credentials_missing');
-  const headers = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+  const headers = serverHeaders({}, serviceKey);
   const ids = [...new Set((Array.isArray(order.items) ? order.items : []).map((item) => String(item.id || '')).filter(Boolean))];
 
   const [productsResponse, settingsResponse] = await Promise.all([
