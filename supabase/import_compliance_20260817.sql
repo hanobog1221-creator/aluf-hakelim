@@ -11,7 +11,8 @@ alter table public.products
 
 alter table public.orders
   add column if not exists import_compliance_plan jsonb,
-  add column if not exists estimated_import_tax numeric(12,2) not null default 0;
+  add column if not exists estimated_import_tax numeric(12,2) not null default 0,
+  add column if not exists import_charges_accepted_at timestamptz;
 
 alter table public.orders
   drop constraint if exists orders_estimated_import_tax_nonnegative;
