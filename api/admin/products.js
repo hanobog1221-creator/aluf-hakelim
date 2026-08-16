@@ -40,6 +40,21 @@ function cleanDate(value) {
   return date.toISOString();
 }
 
+function cleanBusinessType(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const type = String(value).trim();
+  if (!['exempt','authorized','company','other'].includes(type)) throw new Error('invalid_business_type');
+  return type;
+}
+
+function cleanTaxId(value) {
+  const text = cleanText(value, 30);
+  if (!text) return null;
+  const compact = text.replace(/[\s-]/g, '');
+  if (!/^[A-Za-z0-9]{5,20}$/.test(compact)) throw new Error('invalid_tax_id');
+  return text;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -76,6 +91,11 @@ module.exports = async function handler(req, res) {
           support_email: cleanText(body.support_email, 160),
           support_hours: cleanText(body.support_hours, 240),
           minimum_profit_ils: cleanNumber(body.minimum_profit_ils, true),
+          business_legal_name: cleanText(body.business_legal_name, 160),
+          business_tax_id: cleanTaxId(body.business_tax_id),
+          business_type: cleanBusinessType(body.business_type),
+          business_address: cleanText(body.business_address, 300),
+          business_phone: cleanText(body.business_phone, 40),
           updated_at: new Date().toISOString()
         };
 
@@ -102,7 +122,8 @@ module.exports = async function handler(req, res) {
         await audit('store_settings_update', 'site_settings', 'primary', {
           whatsapp_enabled: row.whatsapp_enabled,
           support_email_set: Boolean(row.support_email),
-          minimum_profit_ils: row.minimum_profit_ils
+          minimum_profit_ils: row.minimum_profit_ils,
+          business_details_set: Boolean(row.business_legal_name && row.business_tax_id && row.business_type)
         });
         return res.status(200).json({ ok: true, settings });
       }
@@ -266,6 +287,8 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_whatsapp_number')) return res.status(400).json({ ok: false, error: 'invalid_whatsapp_number' });
     if (message.includes('invalid_coupon_code')) return res.status(400).json({ ok: false, error: 'invalid_coupon_code' });
     if (message.includes('invalid_date')) return res.status(400).json({ ok: false, error: 'invalid_date' });
+    if (message.includes('invalid_business_type')) return res.status(400).json({ ok: false, error: 'invalid_business_type' });
+    if (message.includes('invalid_tax_id')) return res.status(400).json({ ok: false, error: 'invalid_tax_id' });
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
