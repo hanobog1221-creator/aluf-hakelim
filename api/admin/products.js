@@ -19,6 +19,14 @@ function cleanCategories(value) {
   return value.map((v) => String(v).trim()).filter(Boolean).slice(0, 10);
 }
 
+function cleanWhatsappNumber(value) {
+  const text = cleanText(value, 30);
+  if (!text) return null;
+  const digits = text.replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) throw new Error('invalid_whatsapp_number');
+  return text;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -29,16 +37,58 @@ module.exports = async function handler(req, res) {
     const { supabaseUrl } = config();
 
     if (req.method === 'GET') {
-      const response = await fetch(`${supabaseUrl}/rest/v1/products?select=*&order=sort_order.asc,created_at.asc`, {
-        headers: dbHeaders()
-      });
-      if (!response.ok) throw new Error(`products_read_${response.status}`);
-      const products = await response.json();
-      return res.status(200).json({ ok: true, products });
+      const [productsResponse, settingsResponse] = await Promise.all([
+        fetch(`${supabaseUrl}/rest/v1/products?select=*&order=sort_order.asc,created_at.asc`, { headers: dbHeaders() }),
+        fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=*&limit=1`, { headers: dbHeaders() })
+      ]);
+      if (!productsResponse.ok) throw new Error(`products_read_${productsResponse.status}`);
+      if (!settingsResponse.ok) throw new Error(`settings_read_${settingsResponse.status}`);
+      const products = await productsResponse.json();
+      const settings = (await settingsResponse.json())[0] || null;
+      return res.status(200).json({ ok: true, products, settings });
     }
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+
+      if (body.action === 'settings') {
+        const row = {
+          id: 'primary',
+          whatsapp_enabled: body.whatsapp_enabled === true,
+          whatsapp_number: cleanWhatsappNumber(body.whatsapp_number),
+          whatsapp_message: cleanText(body.whatsapp_message, 500, false) || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.',
+          support_email: cleanText(body.support_email, 160),
+          support_hours: cleanText(body.support_hours, 240),
+          updated_at: new Date().toISOString()
+        };
+
+        if (row.support_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.support_email)) {
+          return res.status(400).json({ ok: false, error: 'invalid_support_email' });
+        }
+        if (row.whatsapp_enabled && !row.whatsapp_number) {
+          return res.status(400).json({ ok: false, error: 'whatsapp_number_required' });
+        }
+
+        const response = await fetch(`${supabaseUrl}/rest/v1/site_settings?on_conflict=id`, {
+          method: 'POST',
+          headers: dbHeaders({
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=merge-duplicates,return=representation'
+          }),
+          body: JSON.stringify(row)
+        });
+        if (!response.ok) {
+          const details = await response.text();
+          throw new Error(`settings_save_${response.status}_${details.slice(0, 200)}`);
+        }
+        const settings = (await response.json())[0] || row;
+        await audit('store_settings_update', 'site_settings', 'primary', {
+          whatsapp_enabled: row.whatsapp_enabled,
+          support_email_set: Boolean(row.support_email)
+        });
+        return res.status(200).json({ ok: true, settings });
+      }
+
       const id = String(body.id || '').trim();
       const name = cleanText(body.name, 120, false);
       if (!/^[A-Za-z0-9_-]{2,80}$/.test(id)) return res.status(400).json({ ok: false, error: 'invalid_product_id' });
@@ -143,6 +193,9 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   } catch (error) {
     console.error('admin products error', error);
+    if (String(error.message || error).includes('invalid_whatsapp_number')) {
+      return res.status(400).json({ ok: false, error: 'invalid_whatsapp_number' });
+    }
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
