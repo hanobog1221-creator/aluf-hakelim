@@ -60,3 +60,15 @@ for each row execute function public.touch_supplier_order_attempt_updated_at();
 
 alter table public.products drop constraint if exists products_max_order_quantity_check;
 alter table public.products add constraint products_max_order_quantity_check check (max_order_quantity between 1 and 20);
+
+alter table public.products drop constraint if exists products_supplier_product_id_format;
+alter table public.products add constraint products_supplier_product_id_format
+check (supplier_product_id is null or supplier_product_id ~ '^\d{8,20}$');
+
+alter table public.products drop constraint if exists products_supplier_url_format;
+alter table public.products add constraint products_supplier_url_format
+check (supplier_url is null or supplier_url ~* '^https://([a-z0-9-]+\.)*aliexpress\.com/');
+
+alter table public.products drop constraint if exists products_image_url_format;
+alter table public.products add constraint products_image_url_format
+check (image_url is null or image_url ~* '^(https://|/)');
