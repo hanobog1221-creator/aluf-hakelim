@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>קליטת CJ | אלוף הכלים</title>
+<style>
+:root{--dark:#0b1118;--yellow:#ffc928;--line:#dfe4e9;--muted:#687581;--ok:#197342;--bad:#a51e28;--warn:#8b6500}*{box-sizing:border-box}body{margin:0;font-family:Arial,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#eef1f4;color:#171717}.top{background:var(--dark);color:#fff}.topin{max-width:980px;margin:auto;padding:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}.brand{font-size:21px;font-weight:950}.brand span{color:var(--yellow)}.links{display:flex;gap:8px;flex-wrap:wrap}.links a{color:#fff;text-decoration:none;border:1px solid #3a4755;border-radius:9px;padding:8px 10px;font-weight:850}.wrap{max-width:980px;margin:20px auto;padding:0 14px}.panel,.job{background:#fff;border:1px solid var(--line);border-radius:15px;padding:16px;margin-bottom:12px}.panel h1{margin:0 0 6px}.muted{color:var(--muted);font-size:13px;line-height:1.55}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.btn{border:0;border-radius:10px;background:var(--yellow);padding:11px 14px;font-weight:950;cursor:pointer}.btn.light{background:#fff;border:1px solid #d7dde3}.btn:disabled{opacity:.5}.summary{font-weight:900;margin-top:10px}.jobhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.job h2{font-size:16px;margin:0 0 4px}.pill{display:inline-flex;border-radius:999px;padding:5px 8px;font-size:11px;font-weight:900;background:#eef1f4}.pill.ok{background:#e5f7ed;color:var(--ok)}.pill.bad{background:#ffe8e9;color:var(--bad)}.pill.warn{background:#fff4cf;color:var(--warn)}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.box{background:#f7f9fb;border-radius:10px;padding:10px;min-width:0}.box b{display:block;font-size:11px;color:#66717c;margin-bottom:4px}.box span{font-size:13px;font-weight:850;word-break:break-word}.notice{margin-top:10px;border-radius:10px;padding:10px;background:#fff4f4;border:1px solid #ffd0d2;color:#8c1822;font-size:12px}.progress{margin-top:12px;font-weight:850}.empty{text-align:center;color:#7b8791;padding:28px}@media(max-width:720px){.grid{grid-template-columns:1fr}.jobhead{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="top"><div class="topin"><div class="brand">אלוף <span>הכלים</span> · CJ</div><div class="links"><a href="/admin">ניהול</a><a href="/admin-cj.html">חיבור CJ</a></div></div></div>
+<main class="wrap">
+<section class="panel">
+<h1>קליטת מוצרים דרך CJ</h1>
+<div class="muted">המסלול הזה לא סורק את AliExpress מהשרת. הוא משתמש בשם, תמונה, Product ID, SKU והווריאנט שכבר שמורים במאגר ושולח אותם ישירות ל-CJ Sourcing.</div>
+<div class="actions"><button id="retryAll" class="btn">בדוק מחדש את כל המוצרים</button><button id="refresh" class="btn light">רענן</button></div>
+<div id="progress" class="progress"></div><div id="summary" class="summary"></div>
+</section>
+<section id="jobs"><div class="panel empty">טוען…</div></section>
+</main>
+<script>
+const jobsEl=document.getElementById('jobs'),summaryEl=document.getElementById('summary'),progressEl=document.getElementById('progress'),retryAllBtn=document.getElementById('retryAll');
+let jobs=[];
+const labels={queued:'ממתין',processing:'מעבד',needs_variant:'נדרש וריאנט',needs_provider_connection:'נדרש חיבור CJ',awaiting_supplier_quote:'ממתין ל-CJ',needs_supplier_mapping:'נדרשת התאמה',published:'פורסם',failed:'נכשל'};
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function cls(s){return s==='failed'?'bad':s==='published'?'ok':'warn'}
+function dt(v){try{return v?new Date(v).toLocaleString('he-IL'):'—'}catch{return '—'}}
+async function api(url,options={}){const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const d=await r.json().catch(()=>({}));if(r.status===401){location.href='/admin';throw new Error('unauthorized')}if(!r.ok||!d.ok)throw new Error(d.error||'request_failed');return d}
+function render(){summaryEl.textContent=`סה״כ ${jobs.length} · נכשלים ${jobs.filter(j=>j.status==='failed').length} · ממתינים ל-CJ ${jobs.filter(j=>j.status==='awaiting_supplier_quote').length} · ממופים ${jobs.filter(j=>j.provider_product_id&&j.provider_variant_id).length}`;jobsEl.innerHTML=jobs.length?jobs.map(j=>`<article class="job"><div class="jobhead"><div><h2>${esc(j.snapshot?.title||j.store_product_id||j.supplier_product_id)}</h2><div class="muted">AliExpress ${esc(j.supplier_product_id)} · ${esc(j.requested_variant_label||j.requested_sku_id||'ללא וריאנט')}</div></div><span class="pill ${cls(j.status)}">${esc(labels[j.status]||j.status)}</span></div><div class="grid"><div class="box"><b>מצב CJ</b><span>${esc(j.provider_status||'—')}</span></div><div class="box"><b>Sourcing ID</b><span>${esc(j.provider_sourcing_id||'טרם נוצר')}</span></div><div class="box"><b>מיפוי CJ</b><span>${esc(j.provider_variant_sku||j.provider_variant_id||'ממתין')}</span></div><div class="box"><b>ניסיונות</b><span>${esc(j.attempts||0)}</span></div><div class="box"><b>מוצר באתר</b><span>${esc(j.store_product_id||'—')}</span></div><div class="box"><b>עדכון</b><span>${esc(dt(j.updated_at))}</span></div></div>${j.last_error?`<div class="notice">${esc(j.last_error)}</div>`:''}<div class="actions"><button class="btn light" onclick="retryOne('${esc(j.id)}',this)">בדוק שוב</button></div></article>`).join(''):'<div class="panel empty">אין מוצרים בתור.</div>'}
+async function load(){const d=await api('/api/admin/product-intake');jobs=d.jobs||[];render()}
+async function retryOne(id,button){button.disabled=true;try{await api('/api/admin/product-intake',{method:'PATCH',body:JSON.stringify({id,action:'retry'})});await load()}catch(e){progressEl.textContent='שגיאה: '+e.message}finally{button.disabled=false}}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+async function retryAll(){retryAllBtn.disabled=true;progressEl.textContent='מתחיל…';try{await load();const targets=jobs.filter(j=>j.status!=='published');let done=0;for(const job of targets){progressEl.textContent=`מעבד ${done+1} מתוך ${targets.length}…`;try{await api('/api/admin/product-intake',{method:'PATCH',body:JSON.stringify({id:job.id,action:'retry'})})}catch(e){console.error(e)}done++;await sleep(1100)}await load();progressEl.textContent=`הבדיקה הסתיימה: ${done} מוצרים עובדו.`}finally{retryAllBtn.disabled=false}}
+document.getElementById('refresh').addEventListener('click',()=>load().catch(e=>progressEl.textContent=e.message));retryAllBtn.addEventListener('click',retryAll);load().catch(e=>progressEl.textContent=e.message);
+</script>
+</body></html>
