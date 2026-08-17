@@ -11,6 +11,7 @@ function boolEnv(name, fallback = false) {
 }
 function sandboxMode() { return boolEnv('CJ_SANDBOX', true); }
 function autoPayEnabled() { return boolEnv('CJ_AUTO_PAY', false); }
+function isForcedSandboxOrder(orderId) { return /^AH-SBX-PAY-[A-Z0-9-]{5,60}$/i.test(String(orderId || '')); }
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function dbGet(path) {
@@ -48,6 +49,7 @@ async function cjRequest(path, { method='GET', body } = {}) {
   if (!r.ok || json?.result === false || json?.success === false || (Number.isFinite(code) && ![0,200].includes(code))) {
     const e = new Error(`cj_api_${json?.code || r.status}_${clean(json?.message || 'failed',180)}`);
     e.cj = json;
+    e.status = r.status;
     throw e;
   }
   return json;
@@ -120,6 +122,16 @@ async function cjOrderDetail(orderId) {
 function paidStatus(status) {
   return ['PENDING','PROCESSING','UNSHIPPED','SHIPPED','DELIVERED'].includes(clean(status,30).toUpperCase());
 }
+async function waitForOrderStatus(orderId, predicate, tries = 10) {
+  let detail = {}, status = '';
+  for (let i=0;i<tries;i++) {
+    if (i) await sleep(1250);
+    detail = await cjOrderDetail(orderId);
+    status = clean(detail.orderStatus || detail.status,30).toUpperCase();
+    if (predicate(status)) return { status, detail };
+  }
+  return { status, detail };
+}
 async function verifyAutoPaid(created) {
   let latest = created.data || {};
   let status = clean(created.orderStatus || latest.orderStatus,30).toUpperCase();
@@ -132,11 +144,35 @@ async function verifyAutoPaid(created) {
   }
   return { paid:false, status:status || null, detail:latest };
 }
+async function simulateForcedSandboxPayment(created) {
+  let detail = await cjOrderDetail(created.id);
+  let status = clean(detail.orderStatus || detail.status || created.orderStatus,30).toUpperCase();
+  if (['CREATED','IN_CART'].includes(status)) {
+    try {
+      await cjRequest('/shopping/order/confirmOrder', { method:'PATCH', body:{ orderId:created.id } });
+    } catch (error) {
+      const message = clean(error.message,260).toLowerCase();
+      if (!message.includes('being confirmed') && !message.includes('try again later')) throw error;
+    }
+    const confirmed = await waitForOrderStatus(created.id, (s) => s === 'UNPAID' || paidStatus(s), 12);
+    status = confirmed.status;
+    detail = confirmed.detail;
+  }
+  if (status === 'UNPAID') {
+    await cjRequest('/shopping/sandbox/simulatePay', { method:'POST', body:{ orderId:created.id } });
+    const paid = await waitForOrderStatus(created.id, (s) => paidStatus(s), 10);
+    status = paid.status;
+    detail = paid.detail;
+  }
+  return { paid:paidStatus(status), status:status || null, detail, simulated:true };
+}
 
 async function preflightCjOrder(orderId, options = {}) {
-  const sandbox = sandboxMode();
+  const forcedSandbox = isForcedSandboxOrder(orderId);
+  const sandbox = forcedSandbox ? true : sandboxMode();
   const autoPay = !sandbox && autoPayEnabled();
-  const allowClosedSandbox = options.allowClosedSandbox === true && sandbox && process.env.VERCEL_ENV !== 'production' && /^AH-SBX-/i.test(String(orderId||''));
+  const previewClosedSandbox = options.allowClosedSandbox === true && sandbox && process.env.VERCEL_ENV !== 'production' && /^AH-SBX-/i.test(String(orderId||''));
+  const allowClosedSandbox = forcedSandbox || previewClosedSandbox;
   const { order, validation, supplierState } = await getFulfillmentCandidate(orderId, { ignoreSalesDisabled:allowClosedSandbox });
   if (!validation.ok) return { ok:false, validation };
   let balanceUsd = null;
@@ -145,7 +181,7 @@ async function preflightCjOrder(orderId, options = {}) {
     if (balanceUsd <= 0) return { ok:false, validation:{ok:false,reason:'cj_balance_empty'}, balanceUsd };
   }
   const requests = buildRequests(order,supplierState,sandbox,autoPay);
-  return { ok:true, order, validation, sandbox, autoPay, balanceUsd, requests, requestFingerprint:fingerprint(requests), allowClosedSandbox };
+  return { ok:true, order, validation, sandbox, autoPay, balanceUsd, requests, requestFingerprint:fingerprint(requests), allowClosedSandbox, forcedSandbox };
 }
 
 async function fulfillCjOrder(orderId, options = {}) {
@@ -154,10 +190,11 @@ async function fulfillCjOrder(orderId, options = {}) {
   const duplicate = await existingAttempt(orderId);
   if (duplicate) return {ok:false,validation:{ok:false,reason:'supplier_attempt_already_exists'},attempt:duplicate};
 
+  const paymentMode = preflight.forcedSandbox ? 'sandbox_simulated' : (preflight.autoPay ? 'balance_auto' : 'create_only');
   const attempt = await dbInsert('supplier_order_attempts', {
     order_id:orderId, request_fingerprint:preflight.requestFingerprint, status:'prepared', provider:'cj',
     provider_sandbox:preflight.sandbox, provider_payment_required:true, provider_payment_completed:false,
-    response:{paymentMode:preflight.autoPay?'balance_auto':'create_only',balanceBeforeUsd:preflight.balanceUsd,requests:preflight.requests.map(x=>({itemId:x.itemId,orderNumber:x.request.orderNumber,payType:x.request.payType,sandbox:preflight.sandbox}))}
+    response:{paymentMode,forcedSandbox:preflight.forcedSandbox===true,balanceBeforeUsd:preflight.balanceUsd,requests:preflight.requests.map(x=>({itemId:x.itemId,orderNumber:x.request.orderNumber,payType:x.request.payType,sandbox:preflight.sandbox}))}
   });
   await dbPatch('supplier_order_attempts',`id=eq.${attempt.id}`,{status:'sending'});
 
@@ -174,16 +211,21 @@ async function fulfillCjOrder(orderId, options = {}) {
   }
 
   let paymentChecks=[];
-  if (preflight.autoPay) {
+  if (preflight.forcedSandbox) {
+    for (const row of created) paymentChecks.push({id:row.id,...await simulateForcedSandboxPayment(row)});
+  } else if (preflight.autoPay) {
     for (const row of created) paymentChecks.push({id:row.id,...await verifyAutoPaid(row)});
   }
-  const supplierPaid = preflight.autoPay && paymentChecks.length === created.length && paymentChecks.every(x=>x.paid);
+  const supplierPaid = (preflight.forcedSandbox || preflight.autoPay)
+    && paymentChecks.length === created.length
+    && paymentChecks.every(x=>x.paid);
   const ids = created.map(x=>x.id);
   const providerCost = created.reduce((sum,x)=>sum+Number(x.data?.orderAmount||0)+Number(x.data?.postageAmount||0),0) || null;
   const attemptStatus = supplierPaid ? 'paid' : 'payment_pending';
   const paymentRequired = !supplierPaid;
   const response = {
-    paymentMode:preflight.autoPay?'balance_auto':'create_only',
+    paymentMode,
+    forcedSandbox:preflight.forcedSandbox===true,
     balanceBeforeUsd:preflight.balanceUsd,
     created:created.map(x=>({id:x.id,shipmentOrderId:x.shipmentOrderId,orderNumber:x.orderNumber,itemId:x.itemId,orderStatus:x.orderStatus,postageAmount:x.data?.postageAmount??null,productAmount:x.data?.productAmount??null,logisticsMiss:x.data?.logisticsMiss??null})),
     paymentChecks
@@ -195,10 +237,10 @@ async function fulfillCjOrder(orderId, options = {}) {
   });
   await dbPatch('orders',`order_id=eq.${encodeURIComponent(orderId)}`,{
     supplier_order_id:ids[0]||null, supplier_order_ids:ids,
-    fulfillment_status:supplierPaid?'ordered':'ordering', last_error:supplierPaid?null:(preflight.autoPay?'cj_payment_not_confirmed':null)
+    fulfillment_status:supplierPaid?'ordered':'ordering', last_error:supplierPaid?null:((preflight.autoPay||preflight.forcedSandbox)?'cj_payment_not_confirmed':null)
   });
   return {
-    ok:true, sandbox:preflight.sandbox, autoPay:preflight.autoPay,
+    ok:true, sandbox:preflight.sandbox, forcedSandbox:preflight.forcedSandbox===true, autoPay:preflight.autoPay,
     chargedSupplier:!preflight.sandbox && supplierPaid,
     paymentRequired, providerPaymentCompleted:supplierPaid,
     balanceBeforeUsd:preflight.balanceUsd,
