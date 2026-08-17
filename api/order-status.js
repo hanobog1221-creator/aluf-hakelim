@@ -46,6 +46,13 @@ function publicTracking(rows, fallbackNumber) {
   return output.slice(0, 50);
 }
 
+function validLookupOrderId(value) {
+  const orderId = String(value || '').trim().toUpperCase();
+  const liveFormat = /^AH-[A-Z0-9]+-[A-Z0-9]{4}$/;
+  const sandboxFormat = /^AH-SBX-[A-Z0-9-]{8,60}$/;
+  return liveFormat.test(orderId) || sandboxFormat.test(orderId);
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -60,7 +67,7 @@ module.exports = async function handler(req, res) {
     const orderId = String(body.orderId || '').trim().toUpperCase();
     const phoneDigits = String(body.phone || '').replace(/\D/g, '');
 
-    if (!/^AH-[A-Z0-9]+-[A-Z0-9]{4}$/.test(orderId) || phoneDigits.length < 8 || phoneDigits.length > 15) {
+    if (!validLookupOrderId(orderId) || phoneDigits.length < 8 || phoneDigits.length > 15) {
       return res.status(400).json({ ok: false, error: 'invalid_lookup' });
     }
 
