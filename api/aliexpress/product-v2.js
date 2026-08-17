@@ -1,13 +1,11 @@
 const crypto = require('crypto');
-const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken } = require('../_lib/aliexpress');
+const { callTopApi } = require('../_lib/aliexpress');
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { quoteAliExpressFreight, convertToIls, quoteCartShipping } = require('../_lib/shipping');
 const { getFulfillmentCandidate } = require('../_lib/fulfillment');
 const { buildPlaceOrderRequests, safePreview } = require('../_lib/aliexpress-order');
 
-// AliExpress support explicitly instructed us to use this endpoint for DS product lookup.
-// Do not fall back to /ds/products/simplequery or aliexpress.offer.ds.product.simplequery.
-const PRODUCT_PATH = '/ds/product/get';
+const PRODUCT_METHOD = 'aliexpress.ds.product.get';
 const VERIFIED_CAPTURE_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
 function isCron(req) {
@@ -76,46 +74,22 @@ function snapshotFromResult(productId, result, source) {
 }
 
 async function callProduct(productId) {
-  const secret = process.env.ALIEXPRESS_APP_SECRET;
-  if (!secret) throw new Error('aliexpress_app_secret_missing');
-  const accessToken = await getValidAccessToken();
-  const params = {
-    app_key: APP_KEY,
-    access_token: accessToken,
-    timestamp: String(Date.now()),
-    sign_method: 'sha256',
+  const json = await callTopApi(PRODUCT_METHOD, {
     product_id: String(productId),
     ship_to_country: 'IL',
     target_currency: 'USD',
     target_language: 'EN'
-  };
-  params.sign = signAliExpress(params, secret, PRODUCT_PATH);
-
-  const url = `${API_BASE}${PRODUCT_PATH}?${new URLSearchParams(params).toString()}`;
-  const response = await fetch(url, { headers: { accept: 'application/json' } });
-  const text = await response.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch {}
-
-  const errorCode = json?.code || json?.error_response?.sub_code || json?.error_response?.code;
-  if (!response.ok || !json || errorCode) {
-    const err = new Error(String(errorCode || `http_${response.status}`));
-    err.code = String(errorCode || `http_${response.status}`);
-    err.details = text.slice(0, 1200);
-    err.apiPath = PRODUCT_PATH;
-    throw err;
-  }
+  });
 
   const root = json.aliexpress_ds_product_get_response || json;
   const result = root.result || json.result || root;
-  const snapshot = snapshotFromResult(productId, result, 'rest_ds_product_get');
+  const snapshot = snapshotFromResult(productId, result, 'top_ds_product_get');
   if (!snapshot.skus.length && !snapshot.status) {
     const err = new Error('product_get_empty');
     err.code = 'product_get_empty';
-    err.apiPath = PRODUCT_PATH;
+    err.apiMethod = PRODUCT_METHOD;
     throw err;
   }
-  console.log('AliExpress product lookup succeeded', PRODUCT_PATH, String(productId));
   return snapshot;
 }
 
@@ -518,3 +492,6 @@ module.exports = async function handler(req, res) {
   if (!cron && !await requireAdmin(req, res)) return;
   return handleProductSync(req, res, cron);
 };
+
+module.exports._test = { snapshotFromResult };
+
