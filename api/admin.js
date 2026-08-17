@@ -10,6 +10,7 @@ const handlers = {
   'cj-worker-catalog': require('./_lib/admin-routes/cj-worker-catalog'),
   'cj-worker-status': require('./_lib/admin-routes/cj-worker-status'),
   'cj-worker-orders': require('./_lib/admin-routes/cj-worker-orders'),
+  'cj-catalog-search': require('./_lib/admin-routes/cj-catalog-search'),
   'paypal-test': require('./_lib/admin-routes/paypal-test')
 };
 
