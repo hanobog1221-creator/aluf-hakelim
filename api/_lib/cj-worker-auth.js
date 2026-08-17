@@ -22,7 +22,7 @@ async function requireWorker(req, res) {
     res.status(405).json({ ok: false, error: 'method_not_allowed' });
     return false;
   }
-  const supplied = String(req.headers?.['x-cj-worker-token'] || '').trim();
+  const supplied = String(req.query?.token || '').trim();
   const expected = await expectedWorkerToken();
   if (!safeEqual(supplied, expected)) {
     res.status(401).json({ ok: false, error: 'unauthorized' });
