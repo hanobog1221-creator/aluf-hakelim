@@ -1,4 +1,3 @@
-const { requireAdmin } = require('../admin');
 const { ensureAccessToken, CJ_BASE } = require('../cj');
 
 function clean(value, max = 300) { return String(value ?? '').trim().slice(0, max); }
@@ -56,7 +55,8 @@ function safeVariant(row) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
-  if (!await requireAdmin(req, res)) return;
+  res.setHeader('X-Robots-Tag', 'noindex');
+  if (process.env.VERCEL_ENV !== 'preview') return res.status(404).json({ ok: false, error: 'not_found' });
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   try {
     const pid = clean(req.query?.pid, 200);
