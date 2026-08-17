@@ -1,3 +1,5 @@
+const { requireAdmin } = require('./_lib/_lib/admin');
+
 const handlers = {
   'cj-fulfillment': require('./_lib/admin-routes/cj-fulfillment'),
   'cj': require('./_lib/admin-routes/cj'),
@@ -11,8 +13,14 @@ const handlers = {
   'cj-worker-status': require('./_lib/admin-routes/cj-worker-status'),
   'cj-worker-orders': require('./_lib/admin-routes/cj-worker-orders'),
   'paypal-test': require('./_lib/admin-routes/paypal-test'),
+  'paypal-refund': require('./_lib/admin-routes/paypal-refund'),
   'launch-readiness': require('./_lib/admin-routes/launch-readiness')
 };
+
+function parsedBody(req) {
+  try { return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); }
+  catch { return {}; }
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -22,5 +30,16 @@ module.exports = async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(404).json({ ok: false, error: 'admin_route_not_found' });
   }
+
+  if (route === 'orders' && req.method === 'PATCH') {
+    const body = parsedBody(req);
+    const status = String(body.refund_status || '').trim().toLowerCase();
+    if (status === 'partial' || status === 'refunded') {
+      if (!await requireAdmin(req, res)) return;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.status(409).json({ ok: false, error: 'completed_refund_requires_provider_route' });
+    }
+  }
+
   return selected(req, res);
 };
