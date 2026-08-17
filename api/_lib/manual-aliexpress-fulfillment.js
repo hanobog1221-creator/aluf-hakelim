@@ -1,7 +1,11 @@
 const { serverConfig, serverHeaders } = require('./supabase-server');
 
 function clean(value, max = 300) { return String(value ?? '').trim().slice(0, max); }
-function enabled() { return ['1', 'true', 'yes', 'on'].includes(clean(process.env.ALIEXPRESS_MANUAL_FULFILLMENT_ENABLED, 10).toLowerCase()); }
+function enabled() {
+  const value = clean(process.env.ALIEXPRESS_MANUAL_FULFILLMENT_ENABLED, 10).toLowerCase();
+  if (!value) return true;
+  return ['1', 'true', 'yes', 'on'].includes(value);
+}
 
 async function dbRequest(path, options = {}) {
   const { supabaseUrl } = serverConfig();
