@@ -14,9 +14,13 @@ function aliExpressCreateEnabled() {
 }
 
 function aliExpressAutoPayAuthorized() {
-  // Keep this false unless AliExpress explicitly grants an order-payment API
-  // compatible with aliexpress.trade.buy.placeorder for this buyer account.
   return boolEnv('ALIEXPRESS_AUTO_PAY_AUTHORIZED', false);
+}
+
+function aliExpressLiveAutomationReady() {
+  // Place-order support alone is not enough: there is no verified AliExpress
+  // supplier-payment adapter in this application yet.
+  return false;
 }
 
 async function preflightAliExpressOrder(orderId) {
@@ -54,13 +58,16 @@ async function preflightAliExpressOrder(orderId) {
   const fingerprint = crypto.createHash('sha256').update(JSON.stringify(groups.map((g) => g.request)), 'utf8').digest('hex');
   const createEnabled = aliExpressCreateEnabled();
   const autoPayAuthorized = aliExpressAutoPayAuthorized();
+  const reason = !createEnabled
+    ? 'aliexpress_order_creation_disabled'
+    : (!autoPayAuthorized
+      ? 'aliexpress_automatic_payment_authorization_required'
+      : 'aliexpress_payment_adapter_not_implemented');
 
   return {
-    ok: createEnabled && autoPayAuthorized,
-    skipped: !(createEnabled && autoPayAuthorized),
-    reason: !createEnabled
-      ? 'aliexpress_order_creation_disabled'
-      : (!autoPayAuthorized ? 'aliexpress_automatic_payment_authorization_required' : null),
+    ok: false,
+    skipped: true,
+    reason,
     provider: 'aliexpress',
     requestFingerprint: fingerprint,
     chargedShipping,
@@ -74,5 +81,7 @@ async function preflightAliExpressOrder(orderId) {
 module.exports = {
   aliExpressCreateEnabled,
   aliExpressAutoPayAuthorized,
+  aliExpressLiveAutomationReady,
   preflightAliExpressOrder
 };
+
