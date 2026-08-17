@@ -10,7 +10,7 @@
     if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
 
     if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    const visibleProducts = data.products.filter((product) => product.available !== false);
+    const visibleProducts = data.products.filter((product) => product.available !== false && product.purchaseReady === true);
     products.splice(0, products.length, ...visibleProducts);
     const store = data.store || {};
 
@@ -104,7 +104,6 @@
     }
 
     function blockedPurchaseMessage(product) {
-      if (store.salesEnabled !== true) return 'המכירות ייפתחו בקרוב';
       if (!product || product.purchaseReady !== true) return 'המוצר עדיין בבדיקת זמינות ולא ניתן להזמין אותו כרגע';
       return '';
     }
@@ -113,7 +112,7 @@
       const notice = document.createElement('div');
       notice.id = 'ahSalesNotice';
       notice.className = 'ahSalesNotice';
-      notice.textContent = 'החנות פתוחה לצפייה. המכירות ייפתחו לאחר השלמת בדיקות הזמינות והתשלום.';
+      notice.textContent = 'אפשר להוסיף מוצרים זמינים לסל. התשלום ייפתח לאחר חיבור PayPal LIVE.';
       const firstMain = document.querySelector('main') || document.querySelector('.wrap') || document.body.firstElementChild;
       if (firstMain?.parentNode) firstMain.parentNode.insertBefore(notice, firstMain);
       else document.body.prepend(notice);
