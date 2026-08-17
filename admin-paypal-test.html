@@ -6,13 +6,13 @@
   <meta name="robots" content="noindex,nofollow,noarchive">
   <title>בדיקת PayPal Sandbox · אלוף הכלים</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;background:#f4f6f8;color:#17212b;font-family:Arial,sans-serif}.wrap{max-width:780px;margin:32px auto;padding:0 16px}.card{background:#fff;border:1px solid #e2e6ea;border-radius:18px;padding:22px;box-shadow:0 14px 40px #0000000d}h1{margin:0 0 8px;font-size:28px}.note{background:#eaf7ee;border:1px solid #9bd0aa;border-radius:12px;padding:12px 14px;line-height:1.6;margin:16px 0}.warn{background:#fff6d8;border-color:#e6ca66}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-weight:800;font-size:13px}input,textarea{border:1px solid #cdd4da;border-radius:10px;padding:12px;font:inherit}textarea{min-height:70px}.btn{width:100%;border:0;border-radius:11px;padding:14px;background:#ffc928;font-weight:950;font-size:16px;cursor:pointer;margin-top:16px}.btn:disabled{opacity:.55;cursor:not-allowed}.status{margin:14px 0;padding:12px;border-radius:10px;background:#f0f3f5;line-height:1.65}.bad{background:#fff0ee;color:#a52218}.good{background:#eaf7ee;color:#126332}.summary{display:none;margin-top:18px;border-top:1px solid #e3e7ea;padding-top:16px}.row{display:flex;justify-content:space-between;gap:16px;padding:5px 0}.code{direction:ltr;font-family:monospace;background:#111923;color:#fff;padding:7px 10px;border-radius:7px;display:inline-block}.paypal{max-width:460px;margin:18px auto}.small{font-size:12px;color:#65707a;line-height:1.6}a{color:#0d5aa7}@media(max-width:600px){.grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
+    *{box-sizing:border-box}body{margin:0;background:#f4f6f8;color:#17212b;font-family:Arial,sans-serif}.wrap{max-width:780px;margin:32px auto;padding:0 16px}.card{background:#fff;border:1px solid #e2e6ea;border-radius:18px;padding:22px;box-shadow:0 14px 40px #0000000d}h1{margin:0 0 8px;font-size:28px}.note{background:#eaf7ee;border:1px solid #9bd0aa;border-radius:12px;padding:12px 14px;line-height:1.6;margin:16px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-weight:800;font-size:13px}input,textarea{border:1px solid #cdd4da;border-radius:10px;padding:12px;font:inherit}textarea{min-height:70px}.btn{width:100%;border:0;border-radius:11px;padding:14px;background:#ffc928;font-weight:950;font-size:16px;cursor:pointer;margin-top:16px}.btn:disabled{opacity:.55}.status{margin:14px 0;padding:12px;border-radius:10px;background:#f0f3f5;line-height:1.65}.bad{background:#fff0ee;color:#a52218}.good{background:#eaf7ee;color:#126332}.summary{display:none;margin-top:18px;border-top:1px solid #e3e7ea;padding-top:16px}.row{display:flex;justify-content:space-between;gap:16px;padding:5px 0}.code{direction:ltr;font-family:monospace;background:#111923;color:#fff;padding:7px 10px;border-radius:7px;display:inline-block}.small{font-size:12px;color:#65707a;line-height:1.6}a{color:#0d5aa7}@media(max-width:600px){.grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
   </style>
 </head>
 <body>
 <div class="wrap"><div class="card">
   <h1>בדיקת PayPal → CJ Sandbox</h1>
-  <div class="note"><b>בדיקה בטוחה בלבד.</b> החנות נשארת סגורה, PayPal חייב להיות Sandbox ו-CJ מוכרח להיות Sandbox. לאחר אישור PayPal, המערכת יוצרת הזמנת CJ בדיקה ומדמה את תשלום הספק — ללא כסף אמיתי.</div>
+  <div class="note"><b>בדיקה בטוחה בלבד.</b> PayPal ו-CJ נשארים Sandbox, החנות נשארת סגורה, ואין חיוב ספק אמיתי.</div>
   <div id="systemStatus" class="status">בודק את המערכת…</div>
   <form id="testForm" hidden>
     <div class="grid">
@@ -24,9 +24,9 @@
       <div class="field"><label>מספר בית *</label><input name="houseNumber" maxlength="20" required></div>
       <div class="field"><label>דירה</label><input name="apartment" maxlength="20"></div>
       <div class="field"><label>מיקוד</label><input name="postalCode" maxlength="12"></div>
-      <div class="field full"><label>הערה לבדיקה</label><textarea name="notes" maxlength="300" placeholder="אופציונלי"></textarea></div>
+      <div class="field full"><label>הערה לבדיקה</label><textarea name="notes" maxlength="300"></textarea></div>
     </div>
-    <button id="createBtn" class="btn" type="submit">צור הזמנת Sandbox והמשך ל-PayPal</button>
+    <button id="createBtn" class="btn" type="submit">צור בדיקה והמשך ל-PayPal Sandbox</button>
   </form>
   <div id="summary" class="summary">
     <div class="row"><span>הזמנת בדיקה</span><span id="orderId" class="code"></span></div>
@@ -34,40 +34,48 @@
     <div class="row"><span>מחיר</span><b id="productPrice"></b></div>
     <div class="row"><span>משלוח CJ לישראל</span><b id="shipping"></b></div>
     <div class="row"><span>סה״כ PayPal Sandbox</span><b id="total"></b></div>
-    <div id="payStatus" class="status warn">עדיין לא אושר תשלום Sandbox.</div>
-    <div id="paypalButtons" class="paypal"></div>
   </div>
-  <p class="small">אם אינך מחובר לאדמין, <a href="/admin">פתח את מסך האדמין</a> והתחבר ואז חזור לעמוד הזה. האישור בתוך חלון PayPal הוא השלב היחיד שדורש פעולה אנושית.</p>
+  <p class="small">אם אינך מחובר לאדמין, <a href="/admin">התחבר כאן</a> ואז חזור לעמוד הזה.</p>
 </div></div>
 <script>
-let storeOrder=null, paypalPromise=null;
 const $=(id)=>document.getElementById(id);
 const money=(v)=>'₪'+Number(v||0).toFixed(2);
 async function json(url,opts={}){const r=await fetch(url,opts);const d=await r.json().catch(()=>({}));if(!r.ok||d.ok!==true){const e=new Error(String(d.error||'request_failed'));e.status=r.status;throw e;}return d;}
 function setSystem(text,kind=''){const el=$('systemStatus');el.textContent=text;el.className='status '+kind;}
 function customer(form){const d=new FormData(form);return{fullName:String(d.get('fullName')||'').trim(),phone:String(d.get('phone')||'').trim(),email:String(d.get('email')||'').trim(),city:String(d.get('city')||'').trim(),street:String(d.get('street')||'').trim(),houseNumber:String(d.get('houseNumber')||'').trim(),apartment:String(d.get('apartment')||'').trim(),postalCode:String(d.get('postalCode')||'').trim(),notes:String(d.get('notes')||'').trim()};}
-async function paypal(){
-  if(window.paypal?.Buttons)return window.paypal;
-  if(paypalPromise)return paypalPromise;
-  paypalPromise=(async()=>{const cfg=await json('/api/paypal?action=config');if(cfg.environment!=='sandbox')throw new Error('PayPal אינו במצב Sandbox');await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=`https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(cfg.clientId)}&currency=ILS&intent=capture&components=buttons`;s.onload=resolve;s.onerror=()=>reject(new Error('paypal_sdk_load_failed'));document.head.appendChild(s);});return window.paypal;})();
-  return paypalPromise;
-}
-async function renderPaypal(){
-  const pp=await paypal();
-  const buttons=pp.Buttons({
-    style:{layout:'vertical',shape:'rect',label:'paypal'},
-    createOrder:async()=>{ $('payStatus').textContent='יוצר הזמנת PayPal Sandbox…'; const d=await json('/api/paypal?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:storeOrder.orderId})}); if(d.environment!=='sandbox'||d.sandboxTest!==true)throw new Error('sandbox_guard_failed'); return d.orderId; },
-    onApprove:async(data)=>{ $('payStatus').textContent='מבצע Capture ומעביר ל-CJ Sandbox…'; const d=await json('/api/paypal?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:storeOrder.orderId,paypalOrderId:data.orderID})}); const f=d.fulfillment||{}; $('payStatus').className='status '+(f.ok&&f.sandbox&&f.chargedSupplier===false?'good':'bad'); $('payStatus').textContent=f.ok&&f.sandbox&&f.chargedSupplier===false?`הבדיקה עברה: PayPal Capture אושר, CJ Sandbox נוצר${f.providerPaymentCompleted?' ותשלום הספק הודמה בהצלחה':''}. CJ Order: ${(f.supplierOrderIds||[]).join(', ')}`:`PayPal אושר, אבל שלב CJ דורש בדיקה: ${f.error||f.validation?.reason||f.reason||'unknown'}`; },
-    onCancel:()=>{$('payStatus').textContent='PayPal Sandbox בוטל. לא סומן תשלום.';},
-    onError:(e)=>{$('payStatus').className='status bad';$('payStatus').textContent='שגיאת PayPal Sandbox: '+String(e?.message||e);}
-  });
-  if(!buttons.isEligible())throw new Error('paypal_buttons_not_eligible');
-  await buttons.render('#paypalButtons');
+function showOrder(o){$('orderId').textContent=o.orderId||'';$('product').textContent=o.product?.name||'';$('productPrice').textContent=money(o.product?.price);$('shipping').textContent=money(o.shippingCost)+(o.shippingService?' · '+o.shippingService:'');$('total').textContent=money(o.total);$('summary').style.display='block';}
+async function finishReturnedApproval(params){
+  const storeOrderId=String(params.get('storeOrderId')||'').toUpperCase();
+  const paypalOrderId=String(params.get('token')||'');
+  if(!/^AH-SBX-PAY-[A-Z0-9-]{5,60}$/.test(storeOrderId)||!paypalOrderId)throw new Error('missing_paypal_return_data');
+  setSystem('PayPal אושר. מבצע Capture ומעביר ל-CJ Sandbox…');
+  const d=await json('/api/paypal?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:storeOrderId,paypalOrderId})});
+  const f=d.fulfillment||{};
+  if(!(d.environment==='sandbox'&&d.sandboxTest===true&&f.ok&&f.sandbox&&f.chargedSupplier===false))throw new Error(f.error||f.validation?.reason||'sandbox_chain_incomplete');
+  setSystem(`הבדיקה עברה ✅ PayPal Capture אושר, CJ Sandbox נוצר${f.providerPaymentCompleted?' ותשלום הספק הודמה':''}. CJ Order: ${(f.supplierOrderIds||[]).join(', ')}`,'good');
+  history.replaceState({},'',location.pathname);
 }
 async function boot(){
+  const params=new URLSearchParams(location.search);
+  if(params.get('paypal')==='approved'){
+    try{await finishReturnedApproval(params);}catch(e){setSystem('האישור חזר מ-PayPal אבל הסיום נכשל: '+e.message,'bad');}
+    return;
+  }
+  if(params.get('paypal')==='cancelled'){
+    setSystem('PayPal Sandbox בוטל. לא בוצע Capture ולא נוצרה הזמנת ספק.','bad');
+    history.replaceState({},'',location.pathname);
+  }
   try{const d=await json('/api/admin?route=paypal-test');if(d.paypalEnvironment!=='sandbox')throw new Error('PayPal אינו Sandbox');if(!d.ready)throw new Error('אין כרגע מוצר CJ מוכן לבדיקה');setSystem(`מוכן לבדיקה · PayPal Sandbox · מוצר: ${d.product?.name||''}`,'good');$('testForm').hidden=false;}catch(e){setSystem(e.status===401?'יש להתחבר קודם לאדמין.':'הבדיקה אינה מוכנה: '+e.message,'bad');}
 }
-$('testForm').addEventListener('submit',async(e)=>{e.preventDefault();const btn=$('createBtn');btn.disabled=true;setSystem('מאמת מוצר ומשלוח מול CJ…');try{storeOrder=await json('/api/admin?route=paypal-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer:customer(e.currentTarget)})});$('orderId').textContent=storeOrder.orderId;$('product').textContent=storeOrder.product.name;$('productPrice').textContent=money(storeOrder.product.price);$('shipping').textContent=money(storeOrder.shippingCost)+' · '+String(storeOrder.shippingService||'');$('total').textContent=money(storeOrder.total);$('summary').style.display='block';setSystem('הזמנת Sandbox נוצרה. עכשיו אישור PayPal Sandbox בלבד.','good');await renderPaypal();}catch(err){setSystem('לא הצלחנו להכין את הבדיקה: '+err.message,'bad');btn.disabled=false;}});
+$('testForm').addEventListener('submit',async(e)=>{e.preventDefault();const btn=$('createBtn');btn.disabled=true;setSystem('מאמת מוצר ומשלוח מול CJ…');try{
+  const storeOrder=await json('/api/admin?route=paypal-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer:customer(e.currentTarget)})});
+  showOrder(storeOrder);
+  setSystem('יוצר PayPal Sandbox Order…');
+  const p=await json('/api/paypal?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:storeOrder.orderId})});
+  if(p.environment!=='sandbox'||p.sandboxTest!==true||!/^https:\/\/www\.sandbox\.paypal\.com\//i.test(String(p.approveUrl||'')))throw new Error('sandbox_redirect_guard_failed');
+  setSystem('מעביר אותך ל-PayPal Sandbox…','good');
+  location.assign(p.approveUrl);
+}catch(err){setSystem('לא הצלחנו להכין את הבדיקה: '+err.message,'bad');btn.disabled=false;}});
 boot();
 </script>
 </body>
