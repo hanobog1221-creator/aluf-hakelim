@@ -1,1 +1,1 @@
-Retry production deployment after Hobby build-rate window. This file has no runtime effect.
+Retry production deployment for AliExpress /ds/product/get verification. This file has no runtime effect.
