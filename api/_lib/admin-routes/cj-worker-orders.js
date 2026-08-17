@@ -52,39 +52,32 @@ function safeTrackingUrl(value) {
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
-function trackingFrom(detail, supplierOrderId) {
-  const number = clean(detail?.trackNumber, 200);
+function normalizedTracking(row) {
+  if (!row || typeof row !== 'object') return null;
+  const number = clean(row.number, 200);
   if (!number) return null;
   return {
     number,
-    provider: clean(detail?.trackingProvider || detail?.logisticName, 200) || null,
-    url: safeTrackingUrl(detail?.trackingUrl),
-    supplierOrderId: clean(supplierOrderId, 80),
-    status: normalizedStatus(detail)
+    provider: clean(row.provider, 200) || null,
+    url: safeTrackingUrl(row.url),
+    supplierOrderId: clean(row.supplierOrderId, 80) || null,
+    status: clean(row.status, 30).toUpperCase() || null
   };
 }
 
+function trackingRichness(row) {
+  return Number(Boolean(row?.supplierOrderId)) + Number(Boolean(row?.provider)) + Number(Boolean(row?.url)) + Number(Boolean(row?.status));
+}
+
 function mergeTracking(existing, fresh) {
-  const out = [];
-  const seen = new Set();
-  for (const row of [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(fresh) ? fresh : [])]) {
-    if (!row || typeof row !== 'object') continue;
-    const number = clean(row.number, 200);
-    if (!number) continue;
-    const supplierOrderId = clean(row.supplierOrderId, 80);
-    const key = `${supplierOrderId}|${number}`;
-    const normalized = {
-      number,
-      provider: clean(row.provider, 200) || null,
-      url: safeTrackingUrl(row.url),
-      supplierOrderId: supplierOrderId || null,
-      status: clean(row.status, 30).toUpperCase() || null
-    };
-    const priorIndex = out.findIndex((x) => `${clean(x.supplierOrderId,80)}|${x.number}` === key);
-    if (priorIndex >= 0) out[priorIndex] = normalized;
-    else if (!seen.has(key)) { seen.add(key); out.push(normalized); }
+  const byNumber = new Map();
+  for (const raw of [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(fresh) ? fresh : [])]) {
+    const row = normalizedTracking(raw);
+    if (!row) continue;
+    const previous = byNumber.get(row.number);
+    if (!previous || trackingRichness(row) >= trackingRichness(previous)) byNumber.set(row.number, row);
   }
-  return out.slice(0, 50);
+  return [...byNumber.values()].slice(0, 50);
 }
 
 function localState(statuses) {
@@ -118,7 +111,7 @@ async function reconcileAttempt(attempt, order) {
       trackNumber: clean(detail?.trackNumber, 200) || null,
       trackingProvider: clean(detail?.trackingProvider || detail?.logisticName, 200) || null,
       trackingUrl: safeTrackingUrl(detail?.trackingUrl),
-      isSandbox: Number(detail?.isSandbox ?? attempt.provider_sandbox ? 1 : 0),
+      isSandbox: Number((detail?.isSandbox ?? attempt.provider_sandbox) ? 1 : 0),
       checkedAt: new Date().toISOString()
     });
     if (providerOrders.length < ids.length) await sleep(1100);
