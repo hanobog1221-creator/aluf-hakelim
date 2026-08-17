@@ -46,6 +46,23 @@ function publicTracking(rows, fallbackNumber) {
   return output.slice(0, 50);
 }
 
+function deliveryMethodFromService(value) {
+  const text = String(value || '').normalize('NFKC').trim().toLowerCase();
+  if (!text) return 'unknown';
+  if (/(pickup|pick[ -]?up|collection|collect point|parcel shop|parcel point|locker|post office|self[ -]?collect|pickup point|pickup station)/i.test(text)) return 'pickup_point';
+  if (/(home delivery|deliver(?:y)? to (?:the )?door|door[ -]?to[ -]?door|door delivery|courier to door|courier delivery|home courier)/i.test(text)) return 'home_delivery';
+  return 'unknown';
+}
+
+function publicDeliveryMethod(quote) {
+  const lines = Array.isArray(quote?.lines) ? quote.lines : [];
+  if (!lines.length) return 'unknown';
+  const methods = [...new Set(lines.map((line) => deliveryMethodFromService(line?.deliveryMethod || line?.deliveryType || line?.serviceName)))];
+  if (methods.length === 1) return methods[0];
+  if (methods.every((method) => method === 'home_delivery' || method === 'pickup_point')) return 'mixed';
+  return 'unknown';
+}
+
 function validLookupOrderId(value) {
   const orderId = String(value || '').trim().toUpperCase();
   const liveFormat = /^AH-[A-Z0-9]+-[A-Z0-9]{4}$/;
@@ -84,7 +101,7 @@ module.exports = async function handler(req, res) {
     }
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,shipping_quote_status,items,customer,tracking_number,tracking_numbers,customer_note,created_at,updated_at&limit=1`,
+      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,shipping_quote_status,shipping_quote,items,customer,tracking_number,tracking_numbers,customer_note,created_at,updated_at&limit=1`,
       { headers: serverHeaders({}, serviceKey) }
     );
 
@@ -130,6 +147,7 @@ module.exports = async function handler(req, res) {
         currency: order.currency || 'ILS',
         shippingCost,
         shippingStatus: order.shipping_quote_status || 'not_quoted',
+        deliveryMethod: publicDeliveryMethod(order.shipping_quote),
         trackingNumber,
         trackingNumbers,
         customerNote: order.customer_note || null,
