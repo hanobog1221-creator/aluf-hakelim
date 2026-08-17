@@ -22,6 +22,7 @@
     { "source": "/api/admin/cj", "destination": "/api/admin?route=cj" },
     { "source": "/api/admin/orders", "destination": "/api/admin?route=orders" },
     { "source": "/api/admin/aliexpress-manual", "destination": "/api/admin?route=aliexpress-manual" },
+    { "source": "/api/admin/aliexpress-tracking", "destination": "/api/admin?route=aliexpress-tracking" },
     { "source": "/api/admin/product-intake", "destination": "/api/admin?route=product-intake" },
     { "source": "/api/admin/products", "destination": "/api/admin?route=products" },
     { "source": "/api/admin/session", "destination": "/api/admin?route=session" },
@@ -197,4 +198,3 @@
     }
   ]
 }
-
