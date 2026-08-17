@@ -67,6 +67,7 @@ async function preflightAliExpressOrder(orderId) {
   return {
     ok: false,
     skipped: true,
+    manualFulfillmentEligible: true,
     reason,
     provider: 'aliexpress',
     requestFingerprint: fingerprint,
@@ -84,4 +85,5 @@ module.exports = {
   aliExpressLiveAutomationReady,
   preflightAliExpressOrder
 };
+
 

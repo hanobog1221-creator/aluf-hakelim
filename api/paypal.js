@@ -1,6 +1,7 @@
 const { serverConfig, serverHeaders } = require('./_lib/supabase-server');
 const { sandboxMode, autoPayEnabled } = require('./_lib/cj-fulfillment');
 const { aliExpressLiveAutomationReady } = require('./_lib/aliexpress-fulfillment');
+const { enabled: manualAliExpressEnabled } = require('./_lib/manual-aliexpress-fulfillment');
 const { fulfillPaidOrder } = require('./_lib/paid-order-fulfillment');
 const { paypalSettlement } = require('./_lib/paypal-finance');
 const { readProviderCredentials } = require('./_lib/provider-credentials');
@@ -47,19 +48,23 @@ async function paypalRequest(cfg,path,{method='GET',body,requestId}={}){
 }
 async function rpc(name,args){const{supabaseUrl}=serverConfig();const r=await fetch(`${supabaseUrl}/rest/v1/rpc/${name}`,{method:'POST',headers:serverHeaders({'Content-Type':'application/json'}),body:JSON.stringify(args||{})});if(!r.ok)throw new Error(`${name}_${r.status}`);return r.json();}
 async function paymentReadiness(orderId){return rpc(isSandboxPaymentTest(orderId)?'check_sandbox_payment_readiness':'check_order_payment_readiness',{p_order_id:orderId});}
-async function readOrder(orderId){const{supabaseUrl}=serverConfig();const r=await fetch(`${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,payment_provider,payment_reference,currency,total,shipping_cost&limit=1`,{headers:serverHeaders()});if(!r.ok)throw new Error(`order_read_${r.status}`);return(await r.json())[0]||null;}
+async function readOrder(orderId){const{supabaseUrl}=serverConfig();const r=await fetch(`${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,payment_provider,payment_reference,currency,total,shipping_cost,items&limit=1`,{headers:serverHeaders()});if(!r.ok)throw new Error(`order_read_${r.status}`);return(await r.json())[0]||null;}
 async function markPaymentPending(orderId,paypalOrderId){const{supabaseUrl}=serverConfig();const r=await fetch(`${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}`,{method:'PATCH',headers:serverHeaders({'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({status:'payment_pending',payment_provider:'paypal',payment_reference:paypalOrderId,last_error:null,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(`order_payment_pending_${r.status}`);}
 function amountString(value){const n=Number(value);if(!Number.isFinite(n)||n<=0||n>1000000)throw new Error('invalid_order_amount');return n.toFixed(2);}
 function captureRecord(paypalOrder){for(const unit of(Array.isArray(paypalOrder?.purchase_units)?paypalOrder.purchase_units:[])){const captures=Array.isArray(unit?.payments?.captures)?unit.payments.captures:[];const c=captures.find(x=>x?.status==='COMPLETED');if(c)return c;}return null;}
-function publicLiveGate(cfg, sandboxTest) {
+function orderProviders(order) { return new Set((Array.isArray(order?.items) ? order.items : []).map((item) => clean(item?.supplier, 30).toLowerCase()).filter(Boolean)); }
+function publicLiveGate(cfg, sandboxTest, order) {
   if (sandboxTest) {
     if (cfg.environment !== 'sandbox') return 'sandbox_test_requires_paypal_sandbox';
     return null;
   }
   if (cfg.environment !== 'live') return 'paypal_live_required';
-  const cjReady = !sandboxMode() && autoPayEnabled();
-  const aliExpressReady = aliExpressLiveAutomationReady();
-  if (!cjReady && !aliExpressReady) return 'supplier_autopay_required';
+  const providers = orderProviders(order);
+  if (providers.size !== 1) return providers.size ? 'mixed_supplier_order_not_payable' : 'supplier_missing';
+  const provider = [...providers][0];
+  if (provider === 'cj' && (sandboxMode() || !autoPayEnabled())) return 'supplier_autopay_required';
+  if (provider === 'aliexpress' && !aliExpressLiveAutomationReady() && !manualAliExpressEnabled()) return 'supplier_payment_workflow_required';
+  if (!['cj', 'aliexpress'].includes(provider)) return 'unsupported_supplier';
   return null;
 }
 
@@ -67,7 +72,8 @@ async function handleCreate(req,res,body){
   const orderId=clean(body.orderId,80).toUpperCase();if(!/^AH-[A-Z0-9-]{5,60}$/.test(orderId))return res.status(400).json({ok:false,error:'invalid_order_id'});
   const cfg=await paypalConfig();
   const sandboxTest=isSandboxPaymentTest(orderId);
-  const liveBlock=publicLiveGate(cfg,sandboxTest);if(liveBlock)return res.status(409).json({ok:false,error:liveBlock});
+  const stored=await readOrder(orderId);if(!stored)return res.status(404).json({ok:false,error:'order_not_found'});
+  const liveBlock=publicLiveGate(cfg,sandboxTest,stored);if(liveBlock)return res.status(409).json({ok:false,error:liveBlock});
   const readiness=await paymentReadiness(orderId);if(!readiness?.ok)return res.status(409).json({ok:false,error:readiness?.reason||'order_not_payable',readiness});
   if(String(readiness.currency||'').toUpperCase()!==cfg.currency)return res.status(409).json({ok:false,error:'currency_mismatch'});const value=amountString(readiness.amount);
   const origin=requestOrigin(req);
@@ -90,7 +96,7 @@ async function handleCapture(res,body){
   const stored=await readOrder(orderId);if(!stored)return res.status(404).json({ok:false,error:'order_not_found'});if(stored.payment_status==='paid')return res.status(409).json({ok:false,error:'order_already_paid'});if(stored.payment_provider&&stored.payment_provider!=='paypal')return res.status(409).json({ok:false,error:'payment_provider_mismatch'});if(stored.payment_reference&&stored.payment_reference!==paypalOrderId)return res.status(409).json({ok:false,error:'paypal_order_mismatch'});
   const cfg=await paypalConfig();
   const sandboxTest=isSandboxPaymentTest(orderId);
-  const liveBlock=publicLiveGate(cfg,sandboxTest);if(liveBlock)return res.status(409).json({ok:false,error:liveBlock});
+  const liveBlock=publicLiveGate(cfg,sandboxTest,stored);if(liveBlock)return res.status(409).json({ok:false,error:liveBlock});
   const readiness=await paymentReadiness(orderId);if(!readiness?.ok)return res.status(409).json({ok:false,error:readiness?.reason||'order_not_payable',readiness});
   const expectedValue=amountString(readiness.amount);
   const capturedOrder=await paypalRequest(cfg,`/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`,{method:'POST',requestId:`capture-${orderId}`,body:{}});const capture=captureRecord(capturedOrder);
@@ -108,11 +114,12 @@ module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');
   try{
     const action=clean(req.query?.action,30);
-    if(req.method==='GET'&&action==='config'){const cfg=await paypalConfig();const supplierReady=(!sandboxMode()&&autoPayEnabled())||aliExpressLiveAutomationReady();return res.status(200).json({ok:true,clientId:cfg.clientId,currency:cfg.currency,environment:cfg.environment,publicPaymentsReady:cfg.environment==='live'&&supplierReady});}
+    if(req.method==='GET'&&action==='config'){const cfg=await paypalConfig();const supplierReady=(!sandboxMode()&&autoPayEnabled())||aliExpressLiveAutomationReady()||manualAliExpressEnabled();return res.status(200).json({ok:true,clientId:cfg.clientId,currency:cfg.currency,environment:cfg.environment,publicPaymentsReady:cfg.environment==='live'&&supplierReady});}
     if(req.method!=='POST')return res.status(405).json({ok:false,error:'method_not_allowed'});
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
     if(action==='create')return await handleCreate(req,res,body);if(action==='capture')return await handleCapture(res,body);
     return res.status(400).json({ok:false,error:'invalid_action'});
   }catch(error){console.error('PayPal checkout failed:',error.message);const code=clean(error.message||error,220);return res.status(error.status&&error.status>=400&&error.status<600?error.status:500).json({ok:false,error:code||'paypal_failed'});}
 };
+
 
