@@ -39,7 +39,7 @@ module.exports = async function handler(req, res) {
   try {
     const { supabaseUrl } = config();
     const headers = dbHeaders();
-    const [settingsRows, readinessRows, orders, attempts, cronRows, paypalStored, cjStored] = await Promise.all([
+    const [settingsRows, readinessRows, orders, attempts, cronRows, refundRequests, refundExpenses, paypalStored, cjStored] = await Promise.all([
       dbJson(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils,payment_quote_ttl_minutes,business_legal_name,business_tax_id,business_type,business_address,business_phone,support_email&limit=1`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,name,active,supplier,ready_for_paid_order,blockers,last_sync_at,shipping_last_checked_at&order=id.asc`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/orders?select=order_id,status,payment_status,fulfillment_status,supplier_order_id,tracking_number,tracking_numbers,created_at,updated_at&order=created_at.desc&limit=60`, { headers }),
@@ -47,6 +47,8 @@ module.exports = async function handler(req, res) {
       dbJson(`${supabaseUrl}/rest/v1/rpc/get_launch_cron_status`, {
         method: 'POST', headers: dbHeaders({ 'Content-Type': 'application/json' }), body: '{}'
       }),
+      dbJson(`${supabaseUrl}/rest/v1/payment_refund_requests?provider=eq.paypal&status=eq.completed&select=request_id,order_id,requested_amount,currency,provider_refund_id,status,created_at&order=created_at.desc&limit=30`, { headers }),
+      dbJson(`${supabaseUrl}/rest/v1/business_expenses?source=eq.paypal_refund&category=eq.refund&select=order_id,amount,currency,source_key,created_at&order=created_at.desc&limit=60`, { headers }),
       readProviderCredentials('paypal').catch(() => null),
       readProviderCredentials('cj').catch(() => null)
     ]);
@@ -75,6 +77,20 @@ module.exports = async function handler(req, res) {
     const trackingOrder = orders.find((order) => /^AH-SBX-/i.test(String(order.order_id || ''))
       && ['shipped', 'completed'].includes(String(order.status || '').toLowerCase())
       && hasTracking(order)) || null;
+
+    const refundExpenseByKey = new Map(refundExpenses.map((row) => [clean(row.source_key, 200), row]));
+    const refundE2ERequest = refundRequests.find((row) => {
+      const refundId = clean(row.provider_refund_id, 200);
+      const expense = refundExpenseByKey.get(refundId);
+      return /^AH-SBX-PAY-/i.test(String(row.order_id || ''))
+        && refundId
+        && expense
+        && String(expense.order_id) === String(row.order_id)
+        && clean(row.currency, 3).toUpperCase() === 'ILS'
+        && clean(expense.currency, 3).toUpperCase() === 'ILS'
+        && Number(row.requested_amount) > 0
+        && Number(row.requested_amount) === Number(expense.amount);
+    }) || null;
 
     const cronState = cronRows.map((row) => ({
       jobname: clean(row.jobname, 80),
@@ -117,6 +133,7 @@ module.exports = async function handler(req, res) {
       && nonAliBlockedRows.length === 0
       && Boolean(sandboxE2EOrder)
       && Boolean(trackingOrder)
+      && Boolean(refundE2ERequest)
       && workersReady
       && guardsReady;
     const liveProvidersReady = paypalLiveReady && cjLiveReady;
@@ -129,6 +146,7 @@ module.exports = async function handler(req, res) {
     if (nonAliBlockedRows.length) blockers.push('non_aliexpress_product_blockers');
     if (!sandboxE2EOrder) blockers.push('paypal_to_cj_sandbox_e2e_not_verified');
     if (!trackingOrder) blockers.push('tracking_e2e_not_verified');
+    if (!refundE2ERequest) blockers.push('paypal_refund_e2e_not_verified');
     if (!workersReady) blockers.push('automation_workers_not_ready');
     if (!guardsReady) blockers.push('checkout_guards_not_ready');
     if (!paypalLiveReady) blockers.push('paypal_live_credentials_required');
@@ -164,6 +182,8 @@ module.exports = async function handler(req, res) {
       payments: {
         sandboxE2EVerified: Boolean(sandboxE2EOrder),
         sandboxE2EOrderId: sandboxE2EOrder?.order_id || null,
+        refundE2EVerified: Boolean(refundE2ERequest),
+        refundE2EOrderId: refundE2ERequest?.order_id || null,
         paypalConfigured,
         paypalEnvironment: ppEnv,
         paypalLiveReady
