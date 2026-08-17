@@ -1,6 +1,7 @@
 const { loadOrderForFulfillment } = require('./fulfillment');
 const { fulfillCjOrder } = require('./cj-fulfillment');
 const { preflightAliExpressOrder } = require('./aliexpress-fulfillment');
+const { enabled: manualAliExpressEnabled, queueManualAliExpressOrder } = require('./manual-aliexpress-fulfillment');
 
 function providerSet(order) {
   return new Set((Array.isArray(order?.items) ? order.items : [])
@@ -16,8 +17,15 @@ async function fulfillPaidOrder(orderId) {
   }
   const provider = [...providers][0];
   if (provider === 'cj') return fulfillCjOrder(orderId);
-  if (provider === 'aliexpress') return preflightAliExpressOrder(orderId);
+  if (provider === 'aliexpress') {
+    const preflight = await preflightAliExpressOrder(orderId);
+    if (preflight.manualFulfillmentEligible && manualAliExpressEnabled()) {
+      return queueManualAliExpressOrder(order, preflight);
+    }
+    return preflight;
+  }
   return { ok: false, skipped: true, reason: 'unsupported_supplier', provider };
 }
 
 module.exports = { providerSet, fulfillPaidOrder };
+
