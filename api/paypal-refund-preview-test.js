@@ -9,12 +9,15 @@ module.exports = async function handler(req, res) {
   if (!await requireWorker(req, res)) return;
   const orderId = String(req.query?.orderId || '').trim().toUpperCase();
   const amount = Number(req.query?.amount || 1);
+  const requestId = String(req.query?.requestId || '').trim();
   if (!/^AH-SBX-PAY-[A-Z0-9-]{5,60}$/.test(orderId)) return res.status(400).json({ ok: false, error: 'sandbox_order_required' });
   if (!Number.isFinite(amount) || amount <= 0 || amount > 5) return res.status(400).json({ ok: false, error: 'test_amount_must_be_0_to_5' });
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) return res.status(400).json({ ok: false, error: 'test_request_id_required' });
   try {
-    const out = await issuePayPalRefund(orderId, amount);
+    const out = await issuePayPalRefund(orderId, amount, requestId);
     return res.status(200).json({
       ok: out.ok,
+      deduplicated: out.deduplicated === true,
       orderId: out.orderId,
       refundId: out.refundId,
       status: out.status,
