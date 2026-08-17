@@ -30,6 +30,7 @@ function skuRows(result) {
 function skuLabel(sku) {
   const props = toArray(
     sku?.ae_sku_property_dtos?.ae_sku_property_d_t_o ||
+    sku?.aeop_s_k_u_propertys?.aeop_sku_property ||
     sku?.aeop_s_k_u_property_list?.aeop_sku_property ||
     []
   );
@@ -93,6 +94,34 @@ async function callProduct(productId) {
   return snapshot;
 }
 
+function normalizedLabel(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function selectSku(snapshot, product) {
+  const skus = snapshot.skus || [];
+  const selectedId = product.supplier_sku_id ? String(product.supplier_sku_id) : '';
+  if (selectedId) return skus.find((sku) => sku.id === selectedId) || null;
+
+  const wanted = normalizedLabel(product.variant_label);
+  if (wanted) {
+    const exact = skus.filter((sku) => normalizedLabel(sku.label) === wanted);
+    if (exact.length === 1) return exact[0];
+    const containing = skus.filter((sku) => {
+      const label = normalizedLabel(sku.label);
+      return label && (label.includes(wanted) || wanted.includes(label));
+    });
+    if (containing.length === 1) return containing[0];
+  }
+
+  const available = skus.filter((sku) => sku.inStock !== false);
+  return available.length === 1 ? available[0] : null;
+}
+
 async function writeSyncHistory(product, row) {
   try {
     const { supabaseUrl } = config();
@@ -121,7 +150,7 @@ async function writeSyncHistory(product, row) {
 async function updateProduct(product, snapshot) {
   const { supabaseUrl } = config();
   const selectedId = product.supplier_sku_id ? String(product.supplier_sku_id) : null;
-  const selected = selectedId ? snapshot.skus.find((s) => s.id === selectedId) || null : null;
+  const selected = selectSku(snapshot, product);
   const selectedMissing = Boolean(selectedId && !selected);
   const availableSkus = snapshot.skus.filter((s) => s.inStock !== false);
   const fallback = availableSkus.find((s) => s.price != null) || snapshot.skus.find((s) => s.price != null) || null;
@@ -164,6 +193,8 @@ async function updateProduct(product, snapshot) {
   );
 
   const update = {
+    supplier_sku_id: selected?.id || selectedId || null,
+    variant_label: selected?.label || product.variant_label || null,
     supplier_in_stock: selectedMissing ? false : inStock,
     supplier_stock: selected?.stock ?? null,
     supplier_price: source?.price ?? null,
@@ -493,5 +524,6 @@ module.exports = async function handler(req, res) {
   return handleProductSync(req, res, cron);
 };
 
-module.exports._test = { snapshotFromResult };
+module.exports._test = { snapshotFromResult, selectSku };
+
 
