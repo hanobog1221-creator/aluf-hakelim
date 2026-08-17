@@ -1,10 +1,12 @@
 const crypto = require('crypto');
 const { requireAdmin } = require('../_lib/admin');
+const { requireWorker } = require('../_lib/cj-worker-auth');
 const { serverHeaders } = require('../_lib/supabase-server');
+const { APP_KEY, API_BASE, callTopApi, getValidAccessToken, readTokenRow } = require('../_lib/aliexpress');
 
 const CALLBACK_URL = 'https://aluf-hakelim-v2-ready.vercel.app/api/aliexpress/callback';
-const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const TOKEN_PATH = '/auth/token/create';
+const PRODUCT_PATH = '/ds/product/get';
 
 function signedState() {
   const secret = process.env.ALIEXPRESS_APP_SECRET;
@@ -199,6 +201,99 @@ async function handleResolve(req, res) {
   }
 }
 
+function productSkuCount(json) {
+  const root = json?.aliexpress_ds_product_get_response || json;
+  const result = root?.result || root;
+  const list = result?.ae_item_sku_info_dtos?.ae_item_sku_info_d_t_o
+    || result?.aeop_ae_product_s_k_us?.aeop_ae_product_sku
+    || result?.aeop_ae_product_skus?.aeop_ae_product_sku
+    || [];
+  return Array.isArray(list) ? list.length : (list ? 1 : 0);
+}
+
+function safeThrown(error) {
+  return {
+    ok: false,
+    code: String(error?.code || error?.message || 'unknown_error').slice(0, 120),
+    message: String(error?.details || error?.message || '').slice(0, 300)
+  };
+}
+
+async function handleDiagnose(req, res) {
+  if (!await requireWorker(req, res)) return;
+  const productId = String(req.query?.productId || '1005007178140659').trim();
+  if (!/^\d{8,20}$/.test(productId)) return res.status(400).json({ ok: false, error: 'bad_product' });
+
+  const tokenRow = await readTokenRow();
+  const appSecret = process.env.ALIEXPRESS_APP_SECRET;
+  if (!appSecret) return res.status(500).json({ ok: false, error: 'aliexpress_app_secret_missing' });
+  const accessToken = await getValidAccessToken();
+
+  let report;
+  try {
+    const json = await callTopApi('aliexpress.ds.add.info', {
+      param0: { store_url: 'https://aluf-hakelim-v2-ready.vercel.app/' }
+    }, { reportStore: false });
+    const root = json?.aliexpress_ds_add_info_response || json;
+    report = { ok: true, result: root?.result ?? null, rspCode: root?.rsp_code ?? null, rspMessage: root?.rsp_msg ?? null };
+  } catch (error) {
+    report = safeThrown(error);
+  }
+
+  let rest;
+  try {
+    const params = {
+      app_key: APP_KEY,
+      access_token: accessToken,
+      timestamp: String(Date.now()),
+      sign_method: 'sha256',
+      product_id: productId,
+      ship_to_country: 'IL',
+      target_currency: 'USD',
+      target_language: 'EN'
+    };
+    params.sign = signAliExpress(params, appSecret, PRODUCT_PATH);
+    const response = await fetch(`${API_BASE}${PRODUCT_PATH}?${new URLSearchParams(params).toString()}`, { headers: { accept: 'application/json' } });
+    const text = await response.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+    const errorCode = json?.code || json?.error_response?.sub_code || json?.error_response?.code;
+    rest = errorCode || !response.ok
+      ? { ok: false, httpStatus: response.status, code: String(errorCode || `http_${response.status}`), message: String(json?.message || json?.error_response?.sub_msg || json?.error_response?.msg || '').slice(0, 300) }
+      : { ok: true, httpStatus: response.status, skuCount: productSkuCount(json) };
+  } catch (error) {
+    rest = safeThrown(error);
+  }
+
+  let top;
+  try {
+    const json = await callTopApi('aliexpress.ds.product.get', {
+      product_id: productId,
+      ship_to_country: 'IL',
+      target_currency: 'USD',
+      target_language: 'EN'
+    }, { reportStore: false });
+    top = { ok: true, skuCount: productSkuCount(json) };
+  } catch (error) {
+    top = safeThrown(error);
+  }
+
+  return res.status(200).json({
+    ok: true,
+    effectiveAppKey: APP_KEY,
+    token: {
+      userId: tokenRow.user_id || null,
+      userNick: tokenRow.user_nick || null,
+      expiresAt: tokenRow.expires_at || null,
+      updatedAt: tokenRow.updated_at || null
+    },
+    productId,
+    dsReport: report,
+    restProductGet: rest,
+    topProductGet: top
+  });
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
@@ -210,5 +305,6 @@ module.exports = async function handler(req, res) {
   if (action === 'connect') return handleConnect(req, res);
   if (action === 'callback') return handleCallback(req, res);
   if (action === 'resolve') return handleResolve(req, res);
+  if (action === 'diagnose') return handleDiagnose(req, res);
   return res.status(400).json({ ok: false, error: 'invalid_aliexpress_action' });
 };
