@@ -19,22 +19,28 @@ module.exports = async function handler(req, res) {
     let out;
     if (action === 'refund') {
       const amount = Number(body.amount);
+      const requestId = clean(body.request_id || body.requestId, 100);
       if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ ok: false, error: 'invalid_refund_amount' });
-      out = await issuePayPalRefund(orderId, amount);
+      if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) return res.status(400).json({ ok: false, error: 'invalid_refund_request_id' });
+      out = await issuePayPalRefund(orderId, amount, requestId);
       await audit('paypal_refund_issue', 'order', orderId, {
+        requestId,
         refundId: out.refundId,
         status: out.status,
         amount: out.amount,
         currency: out.currency,
         environment: out.environment,
         completedTotal: out.completedTotal,
+        deduplicated: out.deduplicated === true,
         supplierCancellationRequired: out.supplierCancellationRequired === true
       });
     } else if (action === 'sync') {
       const refundId = clean(body.refund_id || body.refundId, 200);
+      const requestId = clean(body.request_id || body.requestId, 100) || null;
       if (!refundId) return res.status(400).json({ ok: false, error: 'refund_id_required' });
-      out = await syncPayPalRefund(orderId, refundId);
+      out = await syncPayPalRefund(orderId, refundId, requestId);
       await audit('paypal_refund_sync', 'order', orderId, {
+        requestId,
         refundId,
         status: out.status,
         completedTotal: out.completedTotal ?? null
