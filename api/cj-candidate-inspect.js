@@ -10,7 +10,12 @@ const CANDIDATES = [
 ];
 
 function clean(v){ return v === null || v === undefined ? '' : String(v).trim(); }
+function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+let lastCall = 0;
 async function cjGet(path, token){
+  const wait = Math.max(0, 1150 - (Date.now() - lastCall));
+  if(wait) await sleep(wait);
+  lastCall = Date.now();
   const r = await fetch(`${CJ_BASE}${path}`, { headers:{Accept:'application/json','CJ-Access-Token':token} });
   const txt = await r.text(); let j={}; try{j=txt?JSON.parse(txt):{}}catch{j={message:txt.slice(0,300)}}
   if(!r.ok || j.result===false || j.success===false || (j.code!=null && ![0,200].includes(Number(j.code)))) throw new Error(`cj_${j.code||r.status}_${clean(j.message)||'failed'}`);
@@ -24,11 +29,9 @@ module.exports = async function handler(req,res){
     const token=await ensureAccessToken(); const out=[];
     for(const c of CANDIDATES){
       try{
-        const [detail, variants, inventory] = await Promise.all([
-          cjGet(`/product/query?pid=${encodeURIComponent(c.pid)}`, token),
-          cjGet(`/product/variant/query?pid=${encodeURIComponent(c.pid)}`, token),
-          cjGet(`/product/stock/getInventoryByPid?pid=${encodeURIComponent(c.pid)}`, token)
-        ]);
+        const detail = await cjGet(`/product/query?pid=${encodeURIComponent(c.pid)}`, token);
+        const variants = await cjGet(`/product/variant/query?pid=${encodeURIComponent(c.pid)}`, token);
+        const inventory = await cjGet(`/product/stock/getInventoryByPid?pid=${encodeURIComponent(c.pid)}`, token);
         const vd=Array.isArray(variants.data)?variants.data:[];
         out.push({
           ...c,
