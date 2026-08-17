@@ -1,8 +1,12 @@
 const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken, callTopApi } = require('./aliexpress');
 const { ensureAccessToken, CJ_BASE } = require('./cj');
+const { serverConfig, serverHeaders } = require('./supabase-server');
 
 const FREIGHT_PATH = '/logistics/buyer/freight/calculate';
 const FREIGHT_METHOD = 'aliexpress.logistics.buyer.freight.calculate';
+const FX_MEMORY_TTL_MS = 15 * 60 * 1000;
+const FX_DB_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+const fxMemory = new Map();
 
 function asArray(value) {
   if (!value) return [];
@@ -14,6 +18,57 @@ function cleanCurrency(value) {
   return /^[A-Z]{3}$/.test(code) ? code : null;
 }
 
+function fxKey(base, quote = 'ILS') {
+  return `${base}:${quote}`;
+}
+
+function rememberFx(base, quote, rate) {
+  fxMemory.set(fxKey(base, quote), { rate: Number(rate), at: Date.now() });
+}
+
+function memoryFx(base, quote) {
+  const row = fxMemory.get(fxKey(base, quote));
+  if (!row || !Number.isFinite(row.rate) || row.rate <= 0 || Date.now() - row.at > FX_MEMORY_TTL_MS) return null;
+  return row.rate;
+}
+
+async function readCachedFxRate(base, quote = 'ILS') {
+  const { supabaseUrl } = serverConfig();
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/fx_rates?base_currency=eq.${encodeURIComponent(base)}&quote_currency=eq.${encodeURIComponent(quote)}&select=rate,fetched_at&limit=1`,
+    { headers: serverHeaders() }
+  );
+  if (!response.ok) throw new Error(`fx_cache_read_${response.status}`);
+  const row = (await response.json())[0] || null;
+  if (!row) return null;
+  const rate = Number(row.rate);
+  const fetchedAt = Date.parse(row.fetched_at || '');
+  if (!Number.isFinite(rate) || rate <= 0 || !Number.isFinite(fetchedAt)) return null;
+  if (Date.now() - fetchedAt > FX_DB_MAX_AGE_MS) return null;
+  return rate;
+}
+
+async function saveCachedFxRate(base, quote, rate, source = 'frankfurter') {
+  const { supabaseUrl } = serverConfig();
+  const now = new Date().toISOString();
+  const response = await fetch(`${supabaseUrl}/rest/v1/fx_rates?on_conflict=base_currency,quote_currency`, {
+    method: 'POST',
+    headers: serverHeaders({
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal'
+    }),
+    body: JSON.stringify({
+      base_currency: base,
+      quote_currency: quote,
+      rate,
+      source,
+      fetched_at: now,
+      updated_at: now
+    })
+  });
+  if (!response.ok) throw new Error(`fx_cache_write_${response.status}`);
+}
+
 async function convertToIls(amount, currency) {
   const numeric = Number(amount);
   if (!Number.isFinite(numeric) || numeric < 0) throw new Error('invalid_shipping_amount');
@@ -21,14 +76,37 @@ async function convertToIls(amount, currency) {
   if (!code) throw new Error('invalid_shipping_currency');
   if (code === 'ILS') return Number(numeric.toFixed(2));
 
-  const response = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(code)}&to=ILS`, {
-    headers: { accept: 'application/json' }
-  });
-  if (!response.ok) throw new Error(`fx_unavailable_${response.status}`);
-  const data = await response.json();
-  const rate = Number(data?.rates?.ILS);
-  if (!Number.isFinite(rate) || rate <= 0) throw new Error('fx_rate_missing');
-  return Number((numeric * rate).toFixed(2));
+  const inMemory = memoryFx(code, 'ILS');
+  if (inMemory) return Number((numeric * inMemory).toFixed(2));
+
+  let remoteError = null;
+  try {
+    const response = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(code)}&to=ILS`, {
+      headers: { accept: 'application/json' },
+      signal: typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(7000) : undefined
+    });
+    if (!response.ok) throw new Error(`fx_unavailable_${response.status}`);
+    const data = await response.json();
+    const rate = Number(data?.rates?.ILS);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error('fx_rate_missing');
+    rememberFx(code, 'ILS', rate);
+    saveCachedFxRate(code, 'ILS', rate).catch((error) => console.warn('FX cache write failed:', error.message));
+    return Number((numeric * rate).toFixed(2));
+  } catch (error) {
+    remoteError = error;
+  }
+
+  try {
+    const cachedRate = await readCachedFxRate(code, 'ILS');
+    if (cachedRate) {
+      rememberFx(code, 'ILS', cachedRate);
+      return Number((numeric * cachedRate).toFixed(2));
+    }
+  } catch (cacheError) {
+    console.warn('FX cache fallback failed:', cacheError.message);
+  }
+
+  throw remoteError || new Error('fx_unavailable');
 }
 
 function parseFreightOptions(json) {
