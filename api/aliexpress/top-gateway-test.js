@@ -1,56 +1,20 @@
-const { APP_KEY, TOP_API_BASE, callTopApi } = require('../_lib/aliexpress');
+const crypto = require('crypto');
+const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken } = require('../_lib/aliexpress');
 
-function safeError(error) {
-  return {
-    code: String(error?.code || error?.message || 'unknown_error').slice(0, 120),
-    message: String(error?.details || error?.message || '').slice(0, 300)
-  };
-}
+const PRODUCT_PATH = '/ds/product/get';
+const TOP_METHOD = 'aliexpress.ds.product.get';
+const TOP_GATEWAYS = [
+  ['api.alibaba.com', 'https://api.alibaba.com/router/rest'],
+  ['api.taobao.com', 'https://api.taobao.com/router/rest'],
+  ['eco.taobao.com', 'https://eco.taobao.com/router/rest'],
+  ['gw.api.taobao.com', 'https://gw.api.taobao.com/router/rest']
+];
 
-function skuCount(json) {
-  const root = json?.aliexpress_ds_product_get_response || json;
-  const result = root?.result || root;
-  const rows = result?.ae_item_sku_info_dtos?.ae_item_sku_info_d_t_o
-    || result?.aeop_ae_product_s_k_us?.aeop_ae_product_sku
-    || result?.aeop_ae_product_skus?.aeop_ae_product_sku
-    || [];
-  return Array.isArray(rows) ? rows.length : (rows ? 1 : 0);
-}
-
-module.exports = async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
-  if (process.env.VERCEL_ENV !== 'preview') return res.status(404).json({ ok: false, error: 'not_found' });
-  if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
-  const productId = String(req.query?.productId || '1005007178140659').trim();
-  if (!/^\d{8,20}$/.test(productId)) return res.status(400).json({ ok: false, error: 'bad_product' });
-  try {
-    const json = await callTopApi('aliexpress.ds.product.get', {
-      product_id: productId,
-      ship_to_country: 'IL',
-      target_currency: 'USD',
-      target_language: 'EN'
-    }, { reportStore: false });
-    const root = json?.aliexpress_ds_product_get_response || json;
-    const result = root?.result || root;
-    return res.status(200).json({
-      ok: true,
-      appKey: APP_KEY,
-      gateway: TOP_API_BASE,
-      method: 'aliexpress.ds.product.get',
-      productId,
-      skuCount: skuCount(json),
-      title: result?.ae_item_base_info_dto?.subject || result?.subject || null,
-      status: result?.ae_item_base_info_dto?.product_status_type || result?.product_status_type || null
-    });
-  } catch (error) {
-    return res.status(200).json({
-      ok: false,
-      appKey: APP_KEY,
-      gateway: TOP_API_BASE,
-      method: 'aliexpress.ds.product.get',
-      productId,
-      error: safeError(error)
-    });
-  }
-};
+function safe(value, max = 300) { return String(value == null ? '' : value).slice(0, max); }
+function formatTopTimestamp(date = new Date()) { const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000); const pad = (value) => String(value).padStart(2, '0'); return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`; }
+function signTop(params, secret) { const payload = Object.keys(params).filter((key) => key !== 'sign' && params[key] !== undefined && params[key] !== null).sort().map((key) => key + String(params[key])).join(''); return crypto.createHmac('md5', secret).update(payload, 'utf8').digest('hex').toUpperCase(); }
+function skuCount(json) { const root = json?.aliexpress_ds_product_get_response || json; const result = root?.result || root; const rows = result?.ae_item_sku_info_dtos?.ae_item_sku_info_d_t_o || result?.aeop_ae_product_s_k_us?.aeop_ae_product_sku || result?.aeop_ae_product_skus?.aeop_ae_product_sku || []; return Array.isArray(rows) ? rows.length : (rows ? 1 : 0); }
+function summarizeJson(json, status) { const error = json?.error_response || null; const restCode = json?.code && String(json.code) !== '0' ? json.code : null; if (error || restCode) return { ok:false, http:status, code:safe(error?.sub_code || error?.code || restCode || 'api_error',120), message:safe(error?.sub_msg || error?.msg || json?.message || json?.msg || '',300) }; const root=json?.aliexpress_ds_product_get_response||json; const result=root?.result||root; return { ok:true, http:status, skuCount:skuCount(json), title:result?.ae_item_base_info_dto?.subject||result?.subject||null, status:result?.ae_item_base_info_dto?.product_status_type||result?.product_status_type||null, keys:Object.keys(json||{}).slice(0,8) }; }
+async function testRest(productId, accessToken, secret) { const params={app_key:APP_KEY,access_token:accessToken,timestamp:String(Date.now()),sign_method:'sha256',product_id:productId,ship_to_country:'IL',target_currency:'USD',target_language:'EN'}; params.sign=signAliExpress(params,secret,PRODUCT_PATH); try { const response=await fetch(`${API_BASE}${PRODUCT_PATH}?${new URLSearchParams(params).toString()}`,{headers:{accept:'application/json'}}); const text=await response.text(); let json=null; try{json=JSON.parse(text)}catch{}; if(!json)return{ok:false,http:response.status,code:'non_json',message:safe(text)}; return summarizeJson(json,response.status);} catch(error){return{ok:false,code:safe(error?.code||error?.message||'fetch_failed',120),message:safe(error?.cause?.code||error?.cause?.message||'')}} }
+async function testTop(base, productId, session, secret) { const params={method:TOP_METHOD,app_key:APP_KEY,format:'json',sign_method:'hmac',timestamp:formatTopTimestamp(),v:'2.0',session,product_id:productId,ship_to_country:'IL',target_currency:'USD',target_language:'EN'}; params.sign=signTop(params,secret); try { const response=await fetch(base,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=utf-8',accept:'application/json'},body:new URLSearchParams(params).toString()}); const text=await response.text(); let json=null; try{json=JSON.parse(text)}catch{}; if(!json)return{ok:false,http:response.status,code:'non_json',message:safe(text)}; return summarizeJson(json,response.status);} catch(error){return{ok:false,code:safe(error?.code||error?.message||'fetch_failed',120),message:safe(error?.cause?.code||error?.cause?.message||'')}} }
+module.exports=async function handler(req,res){ res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store'); if(process.env.VERCEL_ENV!=='preview')return res.status(404).json({ok:false,error:'not_found'}); if(req.method!=='GET')return res.status(405).json({ok:false,error:'method_not_allowed'}); const productId=String(req.query?.productId||'1005007178140659').trim(); if(!/^\d{8,20}$/.test(productId))return res.status(400).json({ok:false,error:'bad_product'}); const secret=process.env.ALIEXPRESS_APP_SECRET; if(!secret)return res.status(500).json({ok:false,error:'aliexpress_app_secret_missing'}); const session=await getValidAccessToken(); const rest=await testRest(productId,session,secret); const top=[]; for(const [name,base] of TOP_GATEWAYS)top.push({name,base,...(await testTop(base,productId,session,secret))}); return res.status(200).json({ok:true,appKey:APP_KEY,productId,rest:{base:API_BASE,path:PRODUCT_PATH,...rest},top}); };
