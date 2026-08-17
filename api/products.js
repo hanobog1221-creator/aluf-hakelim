@@ -70,7 +70,7 @@ module.exports = async function handler(req, res) {
     const rows = await productsResponse.json();
     const products = rows.map((row) => {
       const fullReadiness = readiness.get(String(row.id)) === true;
-      const purchaseReady = store.salesEnabled === true && row.active === true && fullReadiness;
+      const purchaseReady = row.active === true && fullReadiness;
 
       return {
         id: String(row.id),
