@@ -1,4 +1,5 @@
 const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken, callTopApi } = require('./aliexpress');
+const { ensureAccessToken, CJ_BASE } = require('./cj');
 
 const FREIGHT_PATH = '/logistics/buyer/freight/calculate';
 const FREIGHT_METHOD = 'aliexpress.logistics.buyer.freight.calculate';
@@ -142,22 +143,87 @@ async function quoteAliExpressFreight({ productId, qty, countryCode = 'IL', ship
   return withIls[0];
 }
 
+function cjFreightRows(data) {
+  const list = Array.isArray(data) ? data
+    : Array.isArray(data?.list) ? data.list
+      : Array.isArray(data?.freightList) ? data.freightList
+        : Array.isArray(data?.logisticList) ? data.logisticList
+          : [];
+  return list.map((row) => ({
+    amount: Number(row?.logisticPrice ?? row?.shippingCost ?? row?.price),
+    currency: 'USD',
+    serviceName: row?.logisticName || row?.logisticsName || row?.enName || null,
+    estimatedDeliveryTime: row?.logisticAging || row?.logisticsTimeliness || row?.aging || null
+  })).filter((row) => Number.isFinite(row.amount) && row.amount >= 0 && row.serviceName);
+}
+
+async function quoteCjFreight({ variantId, qty, countryCode = 'IL', shipFromCountry = 'CN', preferredService = null }) {
+  if (!String(variantId || '').trim()) throw new Error('cj_variant_id_missing');
+  const token = await ensureAccessToken();
+  const response = await fetch(`${CJ_BASE}/logistic/freightCalculate`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'CJ-Access-Token': token
+    },
+    body: JSON.stringify({
+      startCountryCode: String(shipFromCountry || 'CN').toUpperCase(),
+      endCountryCode: String(countryCode || 'IL').toUpperCase(),
+      products: [{ quantity: Math.max(1, Math.min(20, Math.floor(Number(qty || 1)))), vid: String(variantId) }]
+    })
+  });
+  const raw = await response.text();
+  let json = {};
+  try { json = raw ? JSON.parse(raw) : {}; } catch { json = { message: raw.slice(0, 300) }; }
+  const code = Number(json?.code);
+  if (!response.ok || json?.result === false || json?.success === false || (Number.isFinite(code) && ![0, 200].includes(code))) {
+    throw new Error(`cj_freight_${json?.code || response.status}_${String(json?.message || 'failed').slice(0, 180)}`);
+  }
+
+  const options = cjFreightRows(json?.data);
+  if (!options.length) throw new Error('cj_shipping_unavailable');
+  const withIls = [];
+  for (const option of options) {
+    withIls.push({ ...option, amountIls: await convertToIls(option.amount, 'USD') });
+  }
+  withIls.sort((a, b) => a.amountIls - b.amountIls);
+  if (preferredService) {
+    const match = withIls.find((row) => String(row.serviceName).toLowerCase() === String(preferredService).toLowerCase());
+    if (match) return match;
+  }
+  return withIls[0];
+}
+
 async function quoteCartShipping(lines, countryCode = 'IL') {
   const quotedLines = [];
   for (const line of lines) {
-    if (!line.supplierProductId) {
-      const error = new Error(`supplier_product_missing_${line.id}`);
-      error.code = 'supplier_product_missing';
-      throw error;
+    const provider = String(line.fulfillmentProvider || line.supplier || '').trim().toLowerCase();
+    let quote;
+    if (provider === 'cj') {
+      quote = await quoteCjFreight({
+        variantId: line.supplierSkuId,
+        qty: line.qty,
+        countryCode,
+        shipFromCountry: line.supplierShipFromCountry || 'CN',
+        preferredService: line.fulfillmentLogisticName || null
+      });
+    } else {
+      if (!line.supplierProductId) {
+        const error = new Error(`supplier_product_missing_${line.id}`);
+        error.code = 'supplier_product_missing';
+        throw error;
+      }
+      quote = await quoteAliExpressFreight({
+        productId: line.supplierProductId,
+        qty: line.qty,
+        countryCode,
+        shipFromCountry: line.supplierShipFromCountry || 'CN'
+      });
     }
-    const quote = await quoteAliExpressFreight({
-      productId: line.supplierProductId,
-      qty: line.qty,
-      countryCode,
-      shipFromCountry: line.supplierShipFromCountry || 'CN'
-    });
     quotedLines.push({
       id: line.id,
+      provider: provider || 'aliexpress',
       qty: line.qty,
       cost: quote.amountIls,
       currency: 'ILS',
@@ -183,5 +249,6 @@ module.exports = {
   FREIGHT_METHOD,
   convertToIls,
   quoteAliExpressFreight,
+  quoteCjFreight,
   quoteCartShipping
 };

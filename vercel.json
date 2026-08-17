@@ -8,6 +8,8 @@
     { "source": "/expenses", "destination": "/admin-expenses.html", "permanent": false },
     { "source": "/refunds", "destination": "/admin-refunds.html", "permanent": false },
     { "source": "/suppliers", "destination": "/admin-suppliers.html", "permanent": false },
+    { "source": "/supplier-connection", "destination": "/admin-cj.html", "permanent": false },
+    { "source": "/product-intake", "destination": "/admin-product-intake.html", "permanent": false },
     { "source": "/profitability", "destination": "/admin-profitability.html", "permanent": false },
     { "source": "/fulfillment", "destination": "/admin-fulfillment.html", "permanent": false },
     { "source": "/policies", "destination": "/policies.html", "permanent": false },
@@ -99,6 +101,26 @@
     },
     {
       "source": "/admin-suppliers.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/admin-cj.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/admin-product-intake.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },

@@ -1,361 +1,145 @@
 (() => {
   const style = document.createElement('style');
   style.textContent = `
-    .ahCheckout{display:none;position:fixed;inset:0;background:#000b;z-index:170;padding:18px;place-items:center}
-    .ahCheckout.open{display:grid}
-    .ahCheckoutCard{width:min(720px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 24px 80px #0006}
-    .ahCheckoutHead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:2}
-    .ahCheckoutHead h2{margin:0;font-size:24px}.ahCheckoutClose{border:0;background:#f0f2f5;width:40px;height:40px;border-radius:10px}
-    .ahCheckoutBody{padding:20px}.ahCheckoutNote{background:#fff8d8;border:1px solid #f3d66a;border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.5}
-    .ahCheckoutGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ahField{display:flex;flex-direction:column;gap:6px}.ahField.full{grid-column:1/-1}
-    .ahField label{font-size:13px;font-weight:800}.ahField input,.ahField textarea{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:12px;font:inherit;background:#fff}.ahField textarea{min-height:78px;resize:vertical}
-    .ahCouponWrap{display:flex;gap:8px}.ahCouponWrap input{text-transform:uppercase}.ahCouponHint{font-size:12px;color:#68717c}
-    .ahTerms{display:flex;align-items:flex-start;gap:9px;margin:14px 0 4px;padding:11px 12px;border:1px solid #e0e4e8;border-radius:10px;background:#fafbfc;font-size:13px;line-height:1.55}.ahTerms input{width:18px;height:18px;margin-top:1px;flex:0 0 auto}.ahTerms a{font-weight:900;color:#111923;text-underline-offset:2px}
-    .ahCheckoutSummary{margin:18px 0;border-top:1px solid #e5e7eb;padding-top:14px}.ahCheckoutSummaryRow{display:flex;justify-content:space-between;gap:12px;padding:5px 0}.ahCheckoutSummaryRow.total{font-size:19px;font-weight:950}.ahShippingPending{color:#68717c}.ahShippingFree{color:#208b4b;font-weight:900}.ahDiscount{color:#197342;font-weight:900}
-    .ahCheckoutSubmit{width:100%;height:50px;border:0;border-radius:11px;background:#ffc928;color:#15100a;font-weight:950}.ahCheckoutSubmit:disabled{opacity:.55;cursor:not-allowed}
-    .ahCheckoutError{display:none;color:#b42318;background:#fff0ee;border:1px solid #ffc9c2;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:13px}.ahCheckoutError.show{display:block}
-    .ahCheckoutSuccess{text-align:center;padding:38px 20px}.ahCheckoutSuccess h2{margin:0 0 10px}.ahOrderId{display:inline-block;background:#111923;color:#fff;padding:9px 13px;border-radius:9px;font-weight:900;margin:8px 0 14px;direction:ltr}
-    @media(max-width:620px){.ahCheckout{padding:8px}.ahCheckoutGrid{grid-template-columns:1fr}.ahField.full{grid-column:auto}.ahCheckoutCard{border-radius:14px}.ahCheckoutBody{padding:16px}}
+  .ahCheckout{display:none;position:fixed;inset:0;background:#000b;z-index:170;padding:18px;place-items:center}.ahCheckout.open{display:grid}
+  .ahCheckoutCard{width:min(720px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 24px 80px #0006}.ahCheckoutHead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:2}.ahCheckoutHead h2{margin:0;font-size:24px}.ahCheckoutClose{border:0;background:#f0f2f5;width:40px;height:40px;border-radius:10px}.ahCheckoutBody{padding:20px}
+  .ahCheckoutNote{background:#fff8d8;border:1px solid #f3d66a;border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.5}.ahCheckoutGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ahField{display:flex;flex-direction:column;gap:6px}.ahField.full{grid-column:1/-1}.ahField label{font-size:13px;font-weight:800}.ahField input,.ahField textarea{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:12px;font:inherit;background:#fff}.ahField textarea{min-height:74px}.ahTerms{display:flex;align-items:flex-start;gap:9px;margin:14px 0;padding:11px 12px;border:1px solid #e0e4e8;border-radius:10px;background:#fafbfc;font-size:13px;line-height:1.55}.ahTerms input{width:18px;height:18px;flex:0 0 auto}.ahTerms a{font-weight:900;color:#111923}.ahCheckoutSummary{margin:18px 0;border-top:1px solid #e5e7eb;padding-top:14px}.ahCheckoutSummaryRow{display:flex;justify-content:space-between;gap:12px;padding:5px 0}.ahCheckoutSummaryRow.total{font-size:19px;font-weight:950}.ahDiscount{color:#197342;font-weight:900}.ahMuted{color:#68717c}.ahCheckoutSubmit{width:100%;height:50px;border:0;border-radius:11px;background:#ffc928;color:#15100a;font-weight:950}.ahCheckoutSubmit:disabled{opacity:.55}.ahCheckoutError{display:none;color:#b42318;background:#fff0ee;border:1px solid #ffc9c2;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:13px}.ahCheckoutError.show{display:block}.ahCheckoutSuccess{text-align:center;padding:30px 18px}.ahOrderId{display:inline-block;background:#111923;color:#fff;padding:9px 13px;border-radius:9px;font-weight:900;margin:8px 0 14px;direction:ltr}.ahPayPalWrap{margin:18px auto 0;max-width:460px}.ahPayPalBadge{display:inline-block;background:#e8f1ff;color:#173b69;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}.ahPayPalStatus{color:#68717c;line-height:1.55;margin:10px 0}
+  @media(max-width:620px){.ahCheckout{padding:8px}.ahCheckoutGrid{grid-template-columns:1fr}.ahField.full{grid-column:auto}.ahCheckoutCard{border-radius:14px}.ahCheckoutBody{padding:16px}}
   `;
   document.head.appendChild(style);
 
   const overlay = document.createElement('div');
   overlay.className = 'ahCheckout';
-  overlay.id = 'ahCheckout';
-  overlay.innerHTML = `
-    <div class="ahCheckoutCard" role="dialog" aria-modal="true" aria-labelledby="ahCheckoutTitle">
-      <div class="ahCheckoutHead"><h2 id="ahCheckoutTitle">פרטי משלוח</h2><button class="ahCheckoutClose" type="button" aria-label="סגירה">✕</button></div>
-      <div class="ahCheckoutBody" id="ahCheckoutBody"></div>
-    </div>`;
+  overlay.innerHTML = `<div class="ahCheckoutCard" role="dialog" aria-modal="true"><div class="ahCheckoutHead"><h2>פרטי משלוח ותשלום</h2><button class="ahCheckoutClose" type="button">✕</button></div><div class="ahCheckoutBody" id="ahCheckoutBody"></div></div>`;
   document.body.appendChild(overlay);
-
-  const bodyBox = document.getElementById('ahCheckoutBody');
-  const closeButton = overlay.querySelector('.ahCheckoutClose');
+  const bodyBox = overlay.querySelector('#ahCheckoutBody');
   let currentAttemptId = null;
+  let paypalSdkPromise = null;
 
-  function makeAttemptId() {
-    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
-      return 'req_' + globalThis.crypto.randomUUID();
+  const money = (v) => '₪' + Number(v || 0).toFixed(2);
+  const cartEntries = () => { try { return Object.entries(JSON.parse(localStorage.getItem('alufCart') || '{}')).filter(([,q]) => Number(q) > 0); } catch { return []; } };
+  const productList = () => { try { return Array.isArray(products) ? products : []; } catch { return []; } };
+  const cartTotal = (entries) => entries.reduce((sum,[id,qty]) => { const p=productList().find(x=>String(x.id)===String(id)); return sum+(p?Number(p.price||0)*Number(qty):0); },0);
+  const attemptId = () => 'req_' + (globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
+  const close = () => overlay.classList.remove('open');
+  const showError = (msg) => { const el=document.getElementById('ahCheckoutError'); if(el){el.textContent=msg;el.classList.add('show');} };
+
+  async function jsonRequest(url, options={}) {
+    const r = await fetch(url, options);
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok || d.ok !== true) { const e=new Error(String(d.error||'request_failed')); e.code=d.error; e.data=d; throw e; }
+    return d;
+  }
+
+  async function loadPayPalSdk() {
+    if (window.paypal?.Buttons) return window.paypal;
+    if (paypalSdkPromise) return paypalSdkPromise;
+    paypalSdkPromise = (async()=>{
+      const cfg = await jsonRequest('/api/paypal?action=config');
+      if (!['sandbox','live'].includes(cfg.environment)) throw new Error('paypal_environment_invalid');
+      await new Promise((resolve,reject)=>{
+        const s=document.createElement('script');
+        s.src=`https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(cfg.clientId)}&currency=${encodeURIComponent(cfg.currency)}&intent=capture&components=buttons`;
+        s.async=true;s.onload=resolve;s.onerror=()=>reject(new Error('paypal_sdk_load_failed'));document.head.appendChild(s);
+      });
+      if(!window.paypal?.Buttons) throw new Error('paypal_sdk_load_failed');
+      return window.paypal;
+    })().catch(e=>{paypalSdkPromise=null;throw e;});
+    return paypalSdkPromise;
+  }
+
+  function paypalMessage(error) {
+    const c=String(error?.code||error?.message||'');
+    if(c==='sales_disabled') return 'המכירות עדיין סגורות לבדיקות.';
+    if(c.includes('not_ready')||c.includes('not_payable')||c.includes('stale')) return 'ההזמנה השתנתה או שהצעת המשלוח התיישנה. סגור ובדוק מחדש.';
+    if(c==='paypal_capture_not_completed') return 'התשלום לא הושלם ב-PayPal.';
+    if(c.includes('mismatch')) return 'פרטי התשלום לא תאמו להזמנה ולכן היא לא סומנה כמשולמת.';
+    if(c==='paypal_not_configured') return 'PayPal עדיין לא מוגדר בשרת.';
+    return 'לא הצלחנו להשלים את התשלום ב-PayPal. לא סומן תשלום.';
+  }
+
+  async function renderPayPal(order) {
+    const paypal = await loadPayPalSdk();
+    const status=document.getElementById('ahPayPalStatus');
+    const buttons=paypal.Buttons({
+      style:{layout:'vertical',shape:'rect',label:'paypal'},
+      createOrder:async()=>{
+        if(status) status.textContent='פותח PayPal מאובטח…';
+        const out=await jsonRequest('/api/paypal?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId})});
+        return out.orderId;
+      },
+      onApprove:async(data)=>{
+        if(status) status.textContent='מאמת Capture מול PayPal…';
+        try{
+          const out=await jsonRequest('/api/paypal?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId,paypalOrderId:data.orderID})});
+          try{localStorage.removeItem('alufCart')}catch{}
+          if(typeof renderCart==='function') renderCart();
+          bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><div style="font-size:46px">✓</div><h2>התשלום הושלם</h2><p>ההזמנה אומתה בשרת.</p><div class="ahOrderId">${String(out.orderId||'')}</div><p class="ahMuted">PayPal Capture: <span dir="ltr">${String(out.captureId||'')}</span></p><button class="ahCheckoutSubmit" id="ahDone">סגור</button></div>`;
+          currentAttemptId=null;document.getElementById('ahDone')?.addEventListener('click',close);
+        }catch(e){if(status)status.textContent=paypalMessage(e);throw e;}
+      },
+      onCancel:()=>{if(status)status.textContent='התשלום בוטל. ההזמנה נשמרה אך לא שולמה.';},
+      onError:(e)=>{if(status)status.textContent=paypalMessage(e);}
+    });
+    if(!buttons.isEligible()) throw new Error('paypal_not_eligible');
+    await buttons.render('#ahPayPalButtons');
+  }
+
+  function customerFrom(form) {
+    const d=new FormData(form); if(String(d.get('website')||'').trim()) return null;
+    return {fullName:String(d.get('fullName')||'').trim(),phone:String(d.get('phone')||'').trim(),email:String(d.get('email')||'').trim(),city:String(d.get('city')||'').trim(),street:String(d.get('street')||'').trim(),houseNumber:String(d.get('houseNumber')||'').trim(),apartment:String(d.get('apartment')||'').trim(),postalCode:String(d.get('postalCode')||'').trim(),notes:String(d.get('notes')||'').trim(),countryCode:'IL'};
+  }
+  function validateCustomer(c){if(!c)return 'שגיאה בטופס.';if(c.fullName.length<2||c.city.length<2||c.street.length<2||!c.houseNumber)return 'יש למלא שם מלא וכתובת מלאה.';const digits=c.phone.replace(/\D/g,'');if(digits.length<8||digits.length>15)return 'מספר הטלפון לא תקין.';if(c.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email))return 'האימייל לא תקין.';return null;}
+
+  async function postOrder(entries, customer, quoteOnly) {
+    if(!currentAttemptId) currentAttemptId=attemptId();
+    const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:entries.map(([id,qty])=>({id,qty:Number(qty)})),customer,couponCode:String(document.getElementById('ahCoupon')?.value||'').trim().toUpperCase(),clientRequestId:currentAttemptId,termsAccepted:Boolean(document.getElementById('ahTerms')?.checked),importChargesAccepted:Boolean(document.getElementById('ahImportConsent')?.checked),quoteOnly})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!d.ok){
+      if(d.error==='sales_disabled') throw new Error('המכירות עדיין סגורות לבדיקות.');
+      if(d.error==='product_unavailable') throw new Error('אחד המוצרים אינו זמין כרגע.');
+      if(d.error==='quantity_limit') throw new Error(`אפשר להזמין עד ${Number(d.maxQty||1)} יחידות.`);
+      if(d.error==='terms_required') throw new Error('יש לאשר את תנאי השימוש.');
+      if(d.error==='import_charges_consent_required') throw new Error('יש לאשר שהבנת את אומדן מסי היבוא האפשריים.');
+      throw new Error(String(d.error||'לא הצלחנו לבדוק את ההזמנה.'));
     }
-    return 'req_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 14);
+    return d;
   }
 
-  function currentCartEntries() {
-    const saved = (() => { try { return JSON.parse(localStorage.getItem('alufCart') || '{}'); } catch { return {}; } })();
-    return Object.entries(saved).filter(([, qty]) => Number(qty) > 0);
+  function applyQuote(q) {
+    document.getElementById('ahProductsSubtotal').textContent=money(q.productsSubtotal||0);
+    const discount=document.getElementById('ahDiscountRow');
+    if(Number(q.discountAmount||0)>0){discount.style.display='flex';document.getElementById('ahDiscount').textContent='-'+money(q.discountAmount);}else discount.style.display='none';
+    document.getElementById('ahShippingCost').textContent=q.shippingStatus==='quoted'?(Number(q.shippingCost||0)<=0?'חינם':money(q.shippingCost)):'בבדיקה';
+    const estimatedTax=Number(q.estimatedImportTax||0);document.getElementById('ahImportTaxRow').style.display=estimatedTax>0?'flex':'none';document.getElementById('ahImportTax').textContent=money(estimatedTax);document.getElementById('ahImportConsentWrap').style.display=estimatedTax>0?'flex':'none';
+    document.getElementById('ahGrandTotal').textContent=money(q.estimatedTotalWithImportTax??q.total??0);
+    document.getElementById('ahShipmentPlanRow').style.display=Number(q.importPlan?.shipmentCount||1)>1?'flex':'none';document.getElementById('ahShipmentPlan').textContent=`${Number(q.importPlan?.shipmentCount||1)} חבילות`;
   }
 
-  function productList() {
-    try { return typeof products !== 'undefined' && Array.isArray(products) ? products : []; } catch { return []; }
-  }
-
-  function money(value) {
-    return '₪' + Number(value || 0).toFixed(2);
-  }
-
-  function cartTotal(entries) {
-    const list = productList();
-    return entries.reduce((sum, [id, qty]) => {
-      const product = list.find((p) => String(p.id) === String(id));
-      return sum + (product ? Number(product.price || 0) * Number(qty) : 0);
-    }, 0);
-  }
-
-  function closeCheckout() {
-    overlay.classList.remove('open');
+  async function submitCheckout(ev) {
+    ev.preventDefault();const form=ev.currentTarget,btn=document.getElementById('ahCheckoutSubmit'),c=customerFrom(form),err=validateCustomer(c);if(err){showError(err);return;}if(!document.getElementById('ahTerms')?.checked){showError('יש לאשר את תנאי השימוש.');return;}
+    if(btn.dataset.stage!=='quote'&&document.getElementById('ahImportConsentWrap').style.display!=='none'&&!document.getElementById('ahImportConsent')?.checked){showError('יש לאשר שהבנת את אומדן מסי היבוא האפשריים.');return;}
+    const entries=cartEntries();if(!entries.length){showError('הסל ריק.');return;}btn.disabled=true;document.getElementById('ahCheckoutError')?.classList.remove('show');
+    try{
+      if(btn.dataset.stage==='quote'){
+        btn.textContent='בודק מחיר ומשלוח…';const q=await postOrder(entries,c,true);applyQuote(q);
+        if(q.salesEnabled===false){document.getElementById('ahShippingStatus').textContent='בדיקת המשלוח הצליחה. המכירות עדיין סגורות עד סיום ה-Sandbox.';btn.dataset.stage='closed';btn.textContent='מצב בדיקות';btn.disabled=true;return;}
+        if(q.shippingStatus!=='quoted') throw new Error('אין כרגע אפשרות משלוח מאומתת לכתובת הזאת.');
+        document.getElementById('ahShippingStatus').textContent='המחיר והמשלוח אומתו. אפשר להמשיך.';btn.dataset.stage='finalize';btn.textContent='אישור והמשך ל-PayPal';btn.disabled=false;return;
+      }
+      if(btn.dataset.stage==='closed') throw new Error('המכירות עדיין סגורות לבדיקות.');
+      btn.textContent='שומר הזמנה…';const result=await postOrder(entries,c,false);
+      bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><span class="ahPayPalBadge">PayPal Sandbox — בדיקות</span><h2>ההזמנה מוכנה לתשלום</h2><div class="ahOrderId">${String(result.orderId||'')}</div><p>מוצרים: <b>${money(result.discountedProductsSubtotal??result.productsSubtotal)}</b></p><p>משלוח: <b>${money(result.shippingCost||0)}</b></p><p><b>סה״כ לחיוב ב-PayPal: ${money(result.total)}</b></p><p id="ahPayPalStatus" class="ahPayPalStatus">עדיין לא בוצע חיוב.</p><div class="ahPayPalWrap" id="ahPayPalButtons"></div><button class="ahCheckoutSubmit" id="ahCloseNoPay" style="margin-top:12px;background:#eef1f4">סגור בלי לשלם</button></div>`;
+      document.getElementById('ahCloseNoPay')?.addEventListener('click',close);await renderPayPal(result);
+    }catch(e){showError(e.message||'אירעה שגיאה.');btn.disabled=false;if(btn.dataset.stage==='quote')btn.textContent='בדיקת פרטים והמשך';else if(btn.dataset.stage==='closed'){btn.textContent='מצב בדיקות';btn.disabled=true;}else btn.textContent='אישור והמשך ל-PayPal';}
   }
 
   function renderForm() {
-    const entries = currentCartEntries();
-    if (!entries.length) {
-      currentAttemptId = null;
-      bodyBox.innerHTML = '<div class="empty">הסל ריק. הוסף מוצר לפני מעבר להזמנה.</div>';
-      overlay.classList.add('open');
-      return;
-    }
-
-    currentAttemptId = makeAttemptId();
-    const total = cartTotal(entries);
-    bodyBox.innerHTML = `
-      <div class="ahCheckoutNote"><b>החנות נמצאת בהרצה.</b> אפשר לבדוק פרטי משלוח וסכום, אבל שמירת הזמנה וחיוב ייפתחו רק כשהמכירות יופעלו.</div>
-      <form id="ahCheckoutForm" novalidate>
-        <div class="ahCheckoutGrid">
-          <div class="ahField full"><label for="ahFullName">שם מלא *</label><input id="ahFullName" name="fullName" autocomplete="name" maxlength="80" required></div>
-          <div class="ahField"><label for="ahPhone">טלפון *</label><input id="ahPhone" name="phone" inputmode="tel" autocomplete="tel" maxlength="20" required></div>
-          <div class="ahField"><label for="ahEmail">אימייל</label><input id="ahEmail" name="email" type="email" autocomplete="email" maxlength="120"></div>
-          <div class="ahField"><label for="ahCity">עיר / יישוב *</label><input id="ahCity" name="city" autocomplete="address-level2" maxlength="80" required></div>
-          <div class="ahField"><label for="ahStreet">רחוב *</label><input id="ahStreet" name="street" autocomplete="address-line1" maxlength="100" required></div>
-          <div class="ahField"><label for="ahHouse">מספר בית *</label><input id="ahHouse" name="houseNumber" maxlength="20" required></div>
-          <div class="ahField"><label for="ahApartment">דירה</label><input id="ahApartment" name="apartment" maxlength="20"></div>
-          <div class="ahField"><label for="ahPostal">מיקוד</label><input id="ahPostal" name="postalCode" inputmode="numeric" maxlength="12" autocomplete="postal-code"></div>
-          <div class="ahField full"><label for="ahNotes">הערות למשלוח</label><textarea id="ahNotes" name="notes" maxlength="300"></textarea></div>
-          <div class="ahField full"><label for="ahCoupon">קוד קופון</label><div class="ahCouponWrap"><input id="ahCoupon" name="couponCode" maxlength="40" autocomplete="off" placeholder="יש לך קוד? הכנס כאן"></div><span class="ahCouponHint">הקופון נבדק ומעודכן אוטומטית בסכום ההזמנה.</span></div>
-          <div class="ahField full" style="position:absolute;left:-9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
-        </div>
-        <label class="ahTerms"><input id="ahTerms" name="termsAccepted" type="checkbox" required><span>קראתי ואני מאשר את <a href="/policies" target="_blank" rel="noopener noreferrer">מדיניות המשלוחים, הביטולים, הפרטיות ותנאי השימוש</a>.</span></label>
-        <div class="ahCheckoutSummary">
-          <div class="ahCheckoutSummaryRow"><span>מוצרים</span><span>${entries.reduce((s,[,q])=>s+Number(q),0)}</span></div>
-          <div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(total)}</span></div>
-          <div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחת קופון</span><span id="ahDiscount" class="ahDiscount">-₪0.00</span></div>
-          <div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahShippingPending">יחושב לפי הכתובת</span></div>
-          <div class="ahCheckoutSummaryRow" id="ahShipmentPlanRow" style="display:none"><span>משלוחים צפויים</span><span id="ahShipmentPlan">1</span></div>
-          <div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא אפשריים — לא נגבים באתר</span><span id="ahImportTax">₪0.00</span></div>
-          <div class="ahCheckoutSummaryRow total"><span id="ahGrandTotalLabel">סה״כ לתשלום באתר</span><span id="ahGrandTotal">${money(total)}</span></div>
-          <div class="ahCheckoutSummaryRow"><small id="ahShippingStatus">עלות המשלוח תתעדכן לפי פרטי הכתובת.</small></div>
-          <div class="ahCheckoutSummaryRow" id="ahImportNotice" style="display:none"><small></small></div>
-        </div>
-        <label class="ahTerms" id="ahImportConsentWrap" style="display:none"><input id="ahImportConsent" name="importChargesAccepted" type="checkbox"><span>הבנתי שייתכן חיוב מסי יבוא או דמי שחרור בידי הרשויות או חברת השילוח, ושמדובר באומדן שאינו נגבה באתר.</span></label>
-        <div class="ahCheckoutError" id="ahCheckoutError"></div>
-        <button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button>
-      </form>`;
-
-    const form = document.getElementById('ahCheckoutForm');
-    form.addEventListener('submit', submitCheckout);
-    form.addEventListener('input', (event) => {
-      if (event.target?.id === 'ahTerms' || event.target?.id === 'ahImportConsent') return;
-      const submit = document.getElementById('ahCheckoutSubmit');
-      if (!submit || submit.dataset.stage === 'quote') return;
-      submit.dataset.stage = 'quote';
-      submit.textContent = 'בדיקת פרטים והמשך';
-      submit.disabled = false;
-      const shipping = document.getElementById('ahShippingCost');
-      const grand = document.getElementById('ahGrandTotal');
-      const status = document.getElementById('ahShippingStatus');
-      const discountRow = document.getElementById('ahDiscountRow');
-      if (shipping) { shipping.textContent = 'יחושב לפי הכתובת'; shipping.className = 'ahShippingPending'; }
-      if (grand) grand.textContent = money(cartTotal(currentCartEntries()));
-      if (discountRow) discountRow.style.display = 'none';
-      if (status) status.textContent = 'הפרטים השתנו — נבצע בדיקה מחדש.';
-    });
-    overlay.classList.add('open');
-    setTimeout(() => document.getElementById('ahFullName')?.focus(), 50);
+    const entries=cartEntries();currentAttemptId=attemptId();
+    if(!entries.length){bodyBox.innerHTML='<div class="ahMuted" style="padding:30px;text-align:center">הסל ריק.</div>';overlay.classList.add('open');return;}
+    bodyBox.innerHTML=`<div class="ahCheckoutNote"><b>בדיקת מערכת מאובטחת.</b> השרת מאמת מחיר, מלאי ומשלוח מחדש לפני PayPal.</div><form id="ahCheckoutForm"><div class="ahCheckoutGrid"><div class="ahField full"><label>שם מלא *</label><input name="fullName" maxlength="80" required></div><div class="ahField"><label>טלפון *</label><input name="phone" maxlength="20" required></div><div class="ahField"><label>אימייל</label><input name="email" type="email" maxlength="120"></div><div class="ahField"><label>עיר *</label><input name="city" maxlength="80" required></div><div class="ahField"><label>רחוב *</label><input name="street" maxlength="100" required></div><div class="ahField"><label>מספר בית *</label><input name="houseNumber" maxlength="20" required></div><div class="ahField"><label>דירה</label><input name="apartment" maxlength="20"></div><div class="ahField"><label>מיקוד</label><input name="postalCode" maxlength="12"></div><div class="ahField full"><label>הערות</label><textarea name="notes" maxlength="300"></textarea></div><div class="ahField full"><label>קוד קופון</label><input id="ahCoupon" maxlength="40"></div><input name="website" style="position:absolute;left:-9999px" tabindex="-1"></div><label class="ahTerms"><input id="ahTerms" type="checkbox"><span>קראתי ואני מאשר את <a href="/policies" target="_blank">מדיניות ותנאי החנות</a>.</span></label><div class="ahCheckoutSummary"><div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(cartTotal(entries))}</span></div><div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחה</span><span id="ahDiscount" class="ahDiscount"></span></div><div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahMuted">יחושב</span></div><div class="ahCheckoutSummaryRow" id="ahShipmentPlanRow" style="display:none"><span>משלוחים</span><span id="ahShipmentPlan"></span></div><div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא אפשריים — לא נגבים באתר</span><span id="ahImportTax"></span></div><div class="ahCheckoutSummaryRow total"><span>סה״כ</span><span id="ahGrandTotal">${money(cartTotal(entries))}</span></div><small id="ahShippingStatus" class="ahMuted">עלות המשלוח תיבדק מול הספק.</small></div><label class="ahTerms" id="ahImportConsentWrap" style="display:none"><input id="ahImportConsent" type="checkbox"><span>הבנתי שייתכנו מסי יבוא/שחרור שאינם נגבים באתר.</span></label><div class="ahCheckoutError" id="ahCheckoutError"></div><button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button></form>`;
+    document.getElementById('ahCheckoutForm').addEventListener('submit',submitCheckout);overlay.classList.add('open');
   }
 
-  function showError(message) {
-    const box = document.getElementById('ahCheckoutError');
-    if (!box) return;
-    box.textContent = message;
-    box.classList.add('show');
-  }
-
-  function collectCustomer(form) {
-    const data = new FormData(form);
-    if (String(data.get('website') || '').trim()) return null;
-    return {
-      fullName: String(data.get('fullName') || '').trim(),
-      phone: String(data.get('phone') || '').trim(),
-      email: String(data.get('email') || '').trim(),
-      city: String(data.get('city') || '').trim(),
-      street: String(data.get('street') || '').trim(),
-      houseNumber: String(data.get('houseNumber') || '').trim(),
-      apartment: String(data.get('apartment') || '').trim(),
-      postalCode: String(data.get('postalCode') || '').trim(),
-      notes: String(data.get('notes') || '').trim(),
-      countryCode: 'IL'
-    };
-  }
-
-  function validateCustomer(customer) {
-    if (!customer) return 'אירעה שגיאה בטופס.';
-    if (customer.fullName.length < 2 || customer.city.length < 2 || customer.street.length < 2 || !customer.houseNumber) {
-      return 'יש למלא שם מלא וכתובת משלוח מלאה.';
-    }
-    const phoneDigits = customer.phone.replace(/\D/g, '');
-    if (phoneDigits.length < 8 || phoneDigits.length > 15) return 'מספר הטלפון לא נראה תקין.';
-    if (customer.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email)) return 'כתובת האימייל לא נראית תקינה.';
-    return null;
-  }
-
-  function couponCode() {
-    return String(document.getElementById('ahCoupon')?.value || '').trim().toUpperCase();
-  }
-
-  function couponError(result) {
-    if (result.error === 'coupon_not_found' || result.error === 'invalid_coupon') return 'קוד הקופון לא תקין.';
-    if (result.error === 'coupon_expired') return 'תוקף הקופון הסתיים.';
-    if (result.error === 'coupon_not_started') return 'הקופון עדיין לא פעיל.';
-    if (result.error === 'coupon_limit_reached') return 'הקופון הגיע למספר המימושים המקסימלי.';
-    if (result.error === 'coupon_min_order') return `הקופון תקף בהזמנה של ${money(result.minOrder || 0)} ומעלה.`;
-    if (result.error === 'terms_required') return 'יש לאשר את מדיניות החנות ותנאי השימוש כדי להמשיך.';
-    if (result.error === 'import_charges_consent_required') return 'כדי להמשיך יש לאשר שהבנת את אומדן מסי היבוא האפשריים.';
-    return null;
-  }
-
-  async function postOrderPayload(entries, customer, quoteOnly) {
-    if (!currentAttemptId) currentAttemptId = makeAttemptId();
-    const response = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: entries.map(([id, qty]) => ({ id, qty: Number(qty) })),
-        customer,
-        couponCode: couponCode(),
-        clientRequestId: currentAttemptId,
-        termsAccepted: Boolean(document.getElementById('ahTerms')?.checked),
-        importChargesAccepted: Boolean(document.getElementById('ahImportConsent')?.checked),
-        quoteOnly
-      })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) {
-      const couponMessage = couponError(result);
-      if (couponMessage) throw new Error(couponMessage);
-      if (result.error === 'sales_disabled') throw new Error('המכירות עדיין לא נפתחו. אפשר לבדוק את הסל, אבל עדיין אי אפשר לשמור הזמנה או לבצע תשלום.');
-      if (result.error === 'product_unavailable') throw new Error('אחד המוצרים כבר אינו זמין להזמנה.');
-      if (result.error === 'quantity_limit') throw new Error(`ניתן להזמין עד ${Number(result.maxQty || 1)} יחידות מהמוצר הזה.`);
-      if (result.error === 'invalid_customer') throw new Error('יש לבדוק את פרטי המשלוח ולנסות שוב.');
-      if (result.error === 'idempotency_conflict') throw new Error('הבקשה השתנתה במהלך השמירה. סגור את החלון ופתח מחדש.');
-      throw new Error('לא הצלחנו לבדוק את ההזמנה כרגע. נסה שוב בעוד רגע.');
-    }
-    return result;
-  }
-
-  function applyPriceSummary(result) {
-    const productsSubtotal = document.getElementById('ahProductsSubtotal');
-    const discountRow = document.getElementById('ahDiscountRow');
-    const discount = document.getElementById('ahDiscount');
-    const grand = document.getElementById('ahGrandTotal');
-    const importTaxRow = document.getElementById('ahImportTaxRow');
-    const importTax = document.getElementById('ahImportTax');
-    const importNotice = document.querySelector('#ahImportNotice small');
-    const shipmentPlanRow = document.getElementById('ahShipmentPlanRow');
-    const shipmentPlan = document.getElementById('ahShipmentPlan');
-    const importConsentWrap = document.getElementById('ahImportConsentWrap');
-    const grandLabel = document.getElementById('ahGrandTotalLabel');
-    if (productsSubtotal) productsSubtotal.textContent = money(result.productsSubtotal || 0);
-    if (Number(result.discountAmount || 0) > 0) {
-      if (discountRow) discountRow.style.display = 'flex';
-      if (discount) discount.textContent = '-' + money(result.discountAmount);
-    } else if (discountRow) {
-      discountRow.style.display = 'none';
-    }
-    const fallbackTotal = Number(result.discountedProductsSubtotal ?? result.productsSubtotal ?? 0);
-    const estimatedTax = Number(result.estimatedImportTax || 0);
-    const shipmentCount = Number(result.importPlan?.shipmentCount || 1);
-    if (shipmentPlanRow) shipmentPlanRow.style.display = shipmentCount > 1 ? 'flex' : 'none';
-    if (shipmentPlan) shipmentPlan.textContent = `${shipmentCount} חבילות נפרדות מספקים שונים`;
-    if (importTaxRow) importTaxRow.style.display = estimatedTax > 0 ? 'flex' : 'none';
-    if (importConsentWrap) importConsentWrap.style.display = estimatedTax > 0 ? 'flex' : 'none';
-    if (importTax) importTax.textContent = money(estimatedTax);
-    if (importNotice) {
-      importNotice.parentElement.style.display = result.importPlan?.complianceNotice ? 'flex' : 'none';
-      importNotice.textContent = result.importPlan?.complianceNotice || '';
-    }
-    if (grandLabel) grandLabel.textContent = estimatedTax > 0 ? 'עלות כוללת משוערת' : 'סה״כ לתשלום באתר';
-    const displayedTotal = result.estimatedTotalWithImportTax ?? result.total ?? fallbackTotal;
-    if (grand) grand.textContent = money(displayedTotal);
-  }
-
-  async function submitCheckout(event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const submit = document.getElementById('ahCheckoutSubmit');
-    const customer = collectCustomer(form);
-    const validationError = validateCustomer(customer);
-    if (validationError) { showError(validationError); return; }
-    if (!document.getElementById('ahTerms')?.checked) { showError('יש לאשר את מדיניות החנות ותנאי השימוש כדי להמשיך.'); return; }
-    if (submit.dataset.stage !== 'quote' && document.getElementById('ahImportConsentWrap')?.style.display !== 'none' && !document.getElementById('ahImportConsent')?.checked) {
-      showError('כדי להמשיך יש לאשר שהבנת את אומדן מסי היבוא האפשריים.'); return;
-    }
-
-    const entries = currentCartEntries();
-    if (!entries.length) { showError('הסל ריק.'); return; }
-
-    submit.disabled = true;
-    const errorBox = document.getElementById('ahCheckoutError');
-    if (errorBox) errorBox.classList.remove('show');
-
-    try {
-      if (submit.dataset.stage === 'quote') {
-        submit.textContent = 'בודק...';
-        const quote = await postOrderPayload(entries, customer, true);
-        const shipping = document.getElementById('ahShippingCost');
-        const status = document.getElementById('ahShippingStatus');
-        applyPriceSummary(quote);
-
-        if (quote.shippingStatus === 'quoted') {
-          if (shipping) {
-            shipping.textContent = Number(quote.shippingCost || 0) <= 0 ? 'חינם' : money(quote.shippingCost);
-            shipping.className = Number(quote.shippingCost || 0) <= 0 ? 'ahShippingFree' : '';
-          }
-        } else if (quote.shippingPending) {
-          if (shipping) { shipping.textContent = 'בבדיקה'; shipping.className = 'ahShippingPending'; }
-        }
-
-        if (quote.salesEnabled === false) {
-          if (status) status.textContent = quote.shippingStatus === 'quoted'
-            ? 'הסכום עודכן, אבל המכירות עדיין לא נפתחו. לא תישמר הזמנה ולא יתבצע חיוב.'
-            : 'אפשר לבדוק את הפרטים, אבל המכירות עדיין לא נפתחו ולא תישמר הזמנה.';
-          submit.dataset.stage = 'closed';
-          submit.textContent = 'המכירות ייפתחו בקרוב';
-          submit.disabled = true;
-          return;
-        }
-
-        if (quote.shippingStatus === 'quoted') {
-          if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר ועלות המשלוח עודכנה.` : 'עלות המשלוח עודכנה לפי הכתובת.';
-          submit.dataset.stage = 'finalize';
-          submit.textContent = 'אישור ושמירת הזמנה';
-          submit.disabled = false;
-          return;
-        }
-
-        if (quote.shippingPending) {
-          if (status) status.textContent = quote.couponCode ? `הקופון ${quote.couponCode} אושר. עלות המשלוח עדיין בבדיקה.` : 'עלות המשלוח עדיין בבדיקה. לא יתבצע חיוב.';
-          submit.dataset.stage = 'finalize-pending';
-          submit.textContent = 'שמור הזמנה';
-          submit.disabled = false;
-          return;
-        }
-
-        throw new Error('לא נמצאה כרגע אפשרות משלוח תקינה לכתובת הזאת.');
-      }
-
-      if (submit.dataset.stage === 'closed') {
-        throw new Error('המכירות עדיין לא נפתחו.');
-      }
-
-      submit.textContent = 'שומר...';
-      const result = await postOrderPayload(entries, customer, false);
-      const shippingLine = result.shippingStatus === 'quoted'
-        ? `<p>משלוח: <b>${Number(result.shippingCost || 0) <= 0 ? 'חינם' : money(result.shippingCost)}</b></p>`
-        : '<p style="color:#68717c">עלות המשלוח עדיין בבדיקה ולא בוצע חיוב.</p>';
-      const discountLine = Number(result.discountAmount || 0) > 0
-        ? `<p>קופון ${String(result.couponCode || '')}: <b class="ahDiscount">-${money(result.discountAmount)}</b></p>`
-        : '';
-      const importTaxLine = Number(result.estimatedImportTax || 0) > 0
-        ? `<p>מסי יבוא אפשריים שאינם נגבים באתר: <b>${money(result.estimatedImportTax)}</b></p><p style="color:#68717c">זהו אומדן בלבד; הרשויות או חברת השילוח עשויות לקבוע ולגבות סכום שונה.</p>`
-        : '';
-
-      bodyBox.innerHTML = `
-        <div class="ahCheckoutSuccess">
-          <div style="font-size:46px">✓</div>
-          <h2>פרטי ההזמנה נשמרו</h2>
-          <p>מספר ההזמנה שלך:</p>
-          <div class="ahOrderId">${String(result.orderId || '')}</div>
-          ${discountLine}
-          ${shippingLine}
-          ${importTaxLine}
-          <p><b>סה״כ משוער עד הבית: ${money(result.estimatedTotalWithImportTax ?? result.total)}</b></p>
-          <p style="color:#68717c;line-height:1.6">לא בוצע חיוב. כאשר התשלום יהיה פעיל, ההזמנה תמשיך רק לאחר אישור הסכום הסופי.</p>
-          <button class="ahCheckoutSubmit" type="button" id="ahCheckoutDone">סגור</button>
-        </div>`;
-      currentAttemptId = null;
-      document.getElementById('ahCheckoutDone')?.addEventListener('click', closeCheckout);
-    } catch (error) {
-      showError(error.message || 'אירעה שגיאה.');
-      submit.disabled = false;
-      if (submit.dataset.stage === 'quote') submit.textContent = 'בדיקת פרטים והמשך';
-      else if (submit.dataset.stage === 'finalize-pending') submit.textContent = 'שמור הזמנה';
-      else if (submit.dataset.stage === 'closed') { submit.textContent = 'המכירות ייפתחו בקרוב'; submit.disabled = true; }
-      else submit.textContent = 'אישור ושמירת הזמנה';
-    }
-  }
-
-  closeButton.addEventListener('click', closeCheckout);
-  overlay.addEventListener('click', (event) => { if (event.target === overlay) closeCheckout(); });
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeCheckout(); });
-
-  window.checkoutNotice = renderForm;
+  overlay.querySelector('.ahCheckoutClose').addEventListener('click',close);overlay.addEventListener('click',e=>{if(e.target===overlay)close()});document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});window.checkoutNotice=renderForm;
 })();
-
