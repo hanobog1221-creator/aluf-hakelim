@@ -1,4 +1,5 @@
 const { serverConfig, serverHeaders } = require('./supabase-server');
+const { readProviderCredentials } = require('./provider-credentials');
 
 const CJ_BASE = 'https://developers.cjdropshipping.com/api2.0/v1';
 const TOKEN_ID = 'primary';
@@ -82,8 +83,15 @@ async function cjRequest(path, { method = 'GET', token = '', body } = {}) {
   return json;
 }
 
+async function cjApiKey() {
+  const envKey = cleanString(process.env.CJ_API_KEY);
+  if (envKey) return envKey;
+  const row = await readProviderCredentials('cj');
+  return cleanString(row?.api_key);
+}
+
 async function tokenFromApiKey() {
-  const apiKey = cleanString(process.env.CJ_API_KEY);
+  const apiKey = await cjApiKey();
   if (!apiKey) throw new Error('cj_api_key_missing');
   const json = await cjRequest('/authentication/getAccessToken', {
     method: 'POST',
