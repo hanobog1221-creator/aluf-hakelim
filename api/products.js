@@ -18,9 +18,13 @@ module.exports = async function handler(req, res) {
     }
     const headers = apiKeyHeaders({}, configuredKey);
 
-    const [productsResponse, settingsResponse] = await Promise.all([
+    const [productsResponse, readinessResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,fulfillment_ready,supplier_in_stock,supplier_shipping_available&active=eq.true&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_shipping_available&active=eq.true&order=sort_order.asc`,
+        { headers }
+      ),
+      fetch(
+        `${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,ready_for_paid_order`,
         { headers }
       ),
       fetch(
@@ -29,38 +33,11 @@ module.exports = async function handler(req, res) {
       )
     ]);
 
-    if (!productsResponse.ok) {
-      const details = await productsResponse.text();
-      console.error('Supabase product catalog failed:', productsResponse.status, details.slice(0, 300));
+    if (!productsResponse.ok || !readinessResponse.ok) {
+      const details = !productsResponse.ok ? await productsResponse.text() : await readinessResponse.text();
+      console.error('Supabase product catalog/readiness failed:', !productsResponse.ok ? productsResponse.status : readinessResponse.status, details.slice(0, 300));
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
-
-    const rows = await productsResponse.json();
-    const products = rows.map((row) => {
-      const purchaseReady = row.active === true
-        && row.fulfillment_ready === true
-        && row.supplier_in_stock === true
-        && row.supplier_shipping_available === true;
-
-      return {
-        id: String(row.id),
-        name: String(row.name),
-        price: Number(row.selling_price),
-        old: row.old_price == null ? null : Number(row.old_price),
-        currency: row.currency || 'ILS',
-        img: row.image_url || null,
-        cat: Array.isArray(row.categories) ? row.categories : [],
-        kind: row.kind || '',
-        badge: row.badge || '',
-        badgeClass: row.badge_class || '',
-        desc: row.description || '',
-        specs: Array.isArray(row.specs) ? row.specs : [],
-        maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
-        available: row.active === true,
-        purchaseReady,
-        shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true
-      };
-    });
 
     let store = {
       salesEnabled: false,
@@ -87,6 +64,33 @@ module.exports = async function handler(req, res) {
     } else {
       console.error('Public store settings read failed:', settingsResponse.status, (await settingsResponse.text()).slice(0, 300));
     }
+
+    const readinessRows = await readinessResponse.json();
+    const readiness = new Map(readinessRows.map((row) => [String(row.id), row.ready_for_paid_order === true]));
+    const rows = await productsResponse.json();
+    const products = rows.map((row) => {
+      const fullReadiness = readiness.get(String(row.id)) === true;
+      const purchaseReady = store.salesEnabled === true && row.active === true && fullReadiness;
+
+      return {
+        id: String(row.id),
+        name: String(row.name),
+        price: Number(row.selling_price),
+        old: row.old_price == null ? null : Number(row.old_price),
+        currency: row.currency || 'ILS',
+        img: row.image_url || null,
+        cat: Array.isArray(row.categories) ? row.categories : [],
+        kind: row.kind || '',
+        badge: row.badge || '',
+        badgeClass: row.badge_class || '',
+        desc: row.description || '',
+        specs: Array.isArray(row.specs) ? row.specs : [],
+        maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
+        available: row.active === true,
+        purchaseReady,
+        shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true
+      };
+    });
 
     return res.status(200).json({ ok: true, products, store });
   } catch (error) {
