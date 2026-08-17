@@ -52,7 +52,8 @@ test('parses the documented product.get response and its nested SKU DTOs', () =>
     ae_item_base_info_dto: { subject: 'Tool', product_status_type: 'onSelling' },
     ae_item_sku_info_dtos: {
       ae_item_sku_info_d_t_o: [{
-        id: 123,
+        id: 'internal-row-id',
+        sku_id: '123',
         sku_stock: true,
         sku_available_stock: 7,
         offer_sale_price: '12.50',
