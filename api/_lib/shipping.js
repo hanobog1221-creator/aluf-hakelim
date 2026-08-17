@@ -1,4 +1,4 @@
-const { APP_KEY, API_BASE, signAliExpress, getValidAccessToken, callTopApi } = require('./aliexpress');
+const { callTopApi } = require('./aliexpress');
 const { ensureAccessToken, CJ_BASE } = require('./cj');
 const { serverConfig, serverHeaders } = require('./supabase-server');
 
@@ -134,10 +134,11 @@ function parseFreightOptions(json) {
   }).filter((row) => row.successful && row.amount != null && row.currency);
 }
 
-function freightDto({ productId, qty, countryCode, shipFromCountry }) {
+function freightDto({ productId, skuId, qty, countryCode, shipFromCountry }) {
   return {
     country_code: String(countryCode || 'IL').toUpperCase(),
-    product_id: Number(productId),
+    product_id: String(productId),
+    sku_id: String(skuId),
     product_num: Math.max(1, Math.min(20, Math.floor(Number(qty || 1)))),
     send_goods_country_code: String(shipFromCountry || 'CN').toUpperCase()
   };
@@ -158,59 +159,10 @@ async function quoteFreightTop(input) {
   return options;
 }
 
-async function quoteFreightLegacy(input) {
-  const secret = process.env.ALIEXPRESS_APP_SECRET;
-  if (!secret) throw new Error('aliexpress_app_secret_missing');
-  const accessToken = await getValidAccessToken();
-  const dto = freightDto(input);
-  const params = {
-    app_key: APP_KEY,
-    access_token: accessToken,
-    timestamp: String(Date.now()),
-    sign_method: 'sha256',
-    param_aeop_freight_calculate_for_buyer_d_t_o: JSON.stringify(dto)
-  };
-  params.sign = signAliExpress(params, secret, FREIGHT_PATH);
-
-  const response = await fetch(`${API_BASE}${FREIGHT_PATH}?${new URLSearchParams(params).toString()}`, {
-    headers: { accept: 'application/json' }
-  });
-  const text = await response.text();
-  let json = null;
-  try { json = JSON.parse(text); } catch {}
-
-  const errorCode = json?.code || json?.error_response?.sub_code || json?.error_response?.code;
-  if (!response.ok || !json || errorCode) {
-    const error = new Error(String(errorCode || `freight_http_${response.status}`));
-    error.code = String(errorCode || `freight_http_${response.status}`);
-    error.details = text.slice(0, 1200);
-    throw error;
-  }
-
-  const options = parseFreightOptions(json);
-  if (!options.length) {
-    const result = json?.aliexpress_logistics_buyer_freight_calculate_response?.result || json?.result;
-    const error = new Error(result?.error_desc || 'no_shipping_option');
-    error.code = 'no_shipping_option';
-    throw error;
-  }
-  return options;
-}
-
-async function quoteAliExpressFreight({ productId, qty, countryCode = 'IL', shipFromCountry = 'CN' }) {
+async function quoteAliExpressFreight({ productId, skuId, qty, countryCode = 'IL', shipFromCountry = 'CN' }) {
   if (!/^\d{8,20}$/.test(String(productId || ''))) throw new Error('bad_supplier_product_id');
-  const input = { productId, qty, countryCode, shipFromCountry };
-  let options;
-  try {
-    options = await quoteFreightTop(input);
-  } catch (topError) {
-    try {
-      options = await quoteFreightLegacy(input);
-    } catch (legacyError) {
-      if (/permission|authorize/i.test(String(topError.code || topError.message || ''))) throw topError;
-      throw legacyError;
-    }
-  }
+  if (!/^\d{5,30}$/.test(String(skuId || ''))) throw new Error('bad_supplier_sku_id');
+  const options = await quoteFreightTop({ productId, skuId, qty, countryCode, shipFromCountry });
 
   const withIls = [];
   for (const option of options) {
@@ -294,6 +246,7 @@ async function quoteCartShipping(lines, countryCode = 'IL') {
       }
       quote = await quoteAliExpressFreight({
         productId: line.supplierProductId,
+        skuId: line.supplierSkuId,
         qty: line.qty,
         countryCode,
         shipFromCountry: line.supplierShipFromCountry || 'CN'
@@ -325,8 +278,10 @@ async function quoteCartShipping(lines, countryCode = 'IL') {
 module.exports = {
   FREIGHT_PATH,
   FREIGHT_METHOD,
+  freightDto,
   convertToIls,
   quoteAliExpressFreight,
   quoteCjFreight,
   quoteCartShipping
 };
+
