@@ -1,3 +1,5 @@
+const { requireAdmin } = require('./_lib/_lib/admin');
+
 const handlers = {
   'cj-fulfillment': require('./_lib/admin-routes/cj-fulfillment'),
   'cj': require('./_lib/admin-routes/cj'),
@@ -33,6 +35,7 @@ module.exports = async function handler(req, res) {
     const body = parsedBody(req);
     const status = String(body.refund_status || '').trim().toLowerCase();
     if (status === 'partial' || status === 'refunded') {
+      if (!await requireAdmin(req, res)) return;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       return res.status(409).json({ ok: false, error: 'completed_refund_requires_provider_route' });
     }
