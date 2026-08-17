@@ -28,14 +28,32 @@ function customerItems(items) {
   }));
 }
 
+function deliveryMethodFromService(value) {
+  const text = String(value || '').normalize('NFKC').trim().toLowerCase();
+  if (!text) return 'unknown';
+  if (/(pickup|pick[ -]?up|collection|collect point|parcel shop|parcel point|locker|post office|self[ -]?collect|pickup point|pickup station)/i.test(text)) return 'pickup_point';
+  if (/(home delivery|deliver(?:y)? to (?:the )?door|door[ -]?to[ -]?door|door delivery|courier to door|courier delivery|home courier)/i.test(text)) return 'home_delivery';
+  return 'unknown';
+}
+
 function customerShippingLines(lines) {
   return (Array.isArray(lines) ? lines : []).map((line) => ({
     id: String(line.id || ''),
     qty: Number(line.qty || 0),
     cost: Number(line.cost || 0),
     currency: 'ILS',
+    deliveryMethod: deliveryMethodFromService(line.deliveryMethod || line.deliveryType || line.serviceName),
     estimatedDeliveryTime: line.estimatedDeliveryTime || null
   }));
+}
+
+function customerDeliveryMethod(lines) {
+  const mapped = customerShippingLines(lines);
+  if (!mapped.length) return 'unknown';
+  const methods = [...new Set(mapped.map((line) => line.deliveryMethod))];
+  if (methods.length === 1) return methods[0];
+  if (methods.every((method) => method === 'home_delivery' || method === 'pickup_point')) return 'mixed';
+  return 'unknown';
 }
 
 function customerShippingStatus(status) {
@@ -189,6 +207,7 @@ function responseFromStoredOrder(order, duplicate = true) {
     shippingPending: shippingPending(order.shipping_quote),
     shippingCost,
     shippingCurrency: 'ILS',
+    deliveryMethod: customerDeliveryMethod(order.shipping_quote?.lines),
     shippingLines: customerShippingLines(order.shipping_quote?.lines),
     importPlan: customerImportPlan(order.import_compliance_plan),
     estimatedImportTax: Number(order.estimated_import_tax || 0),
@@ -433,6 +452,7 @@ module.exports = async function handler(req, res) {
         shippingPending: shippingPending(shippingQuote),
         shippingCost: shippingQuote.status === 'quoted' ? shippingCost : null,
         shippingCurrency: 'ILS',
+        deliveryMethod: customerDeliveryMethod(shippingQuote.lines),
         shippingLines: customerShippingLines(shippingQuote.lines),
         importPlan: customerImportPlan(importPlan),
         estimatedImportTax: importPlan.estimatedTaxIls,
@@ -514,6 +534,7 @@ module.exports = async function handler(req, res) {
       shippingPending: false,
       shippingCost,
       shippingCurrency: 'ILS',
+      deliveryMethod: customerDeliveryMethod(shippingQuote.lines),
       shippingLines: customerShippingLines(shippingQuote.lines),
       importPlan: customerImportPlan(importPlan),
       estimatedImportTax: importPlan.estimatedTaxIls,
