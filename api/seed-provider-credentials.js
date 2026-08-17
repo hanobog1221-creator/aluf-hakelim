@@ -18,7 +18,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   if (process.env.VERCEL_ENV !== 'preview') return res.status(403).json({ ok: false, error: 'preview_only' });
-  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
+  if (!['GET','POST'].includes(req.method)) return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   try {
     const paypalClientId = clean(process.env.PAYPAL_CLIENT_ID, 300);
     const paypalSecret = clean(process.env.PAYPAL_CLIENT_SECRET, 300);
