@@ -21,6 +21,31 @@ async function consumeLookupRateLimit(req, supabaseUrl, serviceKey) {
   return (await response.json()) === true;
 }
 
+function safeTrackingUrl(value) {
+  const url = String(value || '').trim();
+  return /^https?:\/\//i.test(url) ? url.slice(0, 500) : null;
+}
+
+function publicTracking(rows, fallbackNumber) {
+  const output = [];
+  const seen = new Set();
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    if (!row || typeof row !== 'object') continue;
+    const number = String(row.number || '').trim().slice(0, 200);
+    if (!number || seen.has(number)) continue;
+    seen.add(number);
+    output.push({
+      number,
+      provider: String(row.provider || '').trim().slice(0, 200) || null,
+      url: safeTrackingUrl(row.url),
+      status: String(row.status || '').trim().toUpperCase().slice(0, 30) || null
+    });
+  }
+  const fallback = String(fallbackNumber || '').trim().slice(0, 200);
+  if (!output.length && fallback) output.push({ number: fallback, provider: null, url: null, status: null });
+  return output.slice(0, 50);
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -52,7 +77,7 @@ module.exports = async function handler(req, res) {
     }
 
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,shipping_quote_status,items,customer,tracking_number,customer_note,created_at,updated_at&limit=1`,
+      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=order_id,status,payment_status,fulfillment_status,total,products_subtotal,discount_amount,coupon_code,currency,shipping_cost,shipping_quote_status,items,customer,tracking_number,tracking_numbers,customer_note,created_at,updated_at&limit=1`,
       { headers: serverHeaders({}, serviceKey) }
     );
 
@@ -81,6 +106,8 @@ module.exports = async function handler(req, res) {
     const shippingQuoted = order.shipping_quote_status === 'quoted';
     const shippingCost = shippingQuoted ? Number(order.shipping_cost || 0) : null;
     const finalTotal = Number((Number(order.total || 0) + (shippingQuoted ? Number(order.shipping_cost || 0) : 0)).toFixed(2));
+    const trackingNumbers = publicTracking(order.tracking_numbers, order.tracking_number);
+    const trackingNumber = trackingNumbers.length ? trackingNumbers.map((row) => row.number).join(' · ') : null;
 
     return res.status(200).json({
       ok: true,
@@ -96,7 +123,8 @@ module.exports = async function handler(req, res) {
         currency: order.currency || 'ILS',
         shippingCost,
         shippingStatus: order.shipping_quote_status || 'not_quoted',
-        trackingNumber: order.tracking_number || null,
+        trackingNumber,
+        trackingNumbers,
         customerNote: order.customer_note || null,
         items,
         createdAt: order.created_at,
