@@ -3,13 +3,37 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 
 const { buildTopParams, signTop } = require('../api/_lib/aliexpress');
-const { snapshotFromResult } = require('../api/aliexpress/product-v2')._test;
+const { snapshotFromResult, selectSku } = require('../api/aliexpress/product-v2')._test;
 
 test('migrated API signature sorts every system and business parameter by ASCII key order', () => {
   const params = { product_id: '32982857990', app_key: '12129701', method: 'aliexpress.ds.product.get', format: 'json' };
   const canonical = 'app_key12129701formatjsonmethodaliexpress.ds.product.getproduct_id32982857990';
   const expected = crypto.createHmac('sha256', 'secret').update(canonical, 'utf8').digest('hex').toUpperCase();
   assert.equal(signTop(params, 'secret'), expected);
+});
+
+test('automatically selects a unique SKU matching the stored variant label', () => {
+  const snapshot = { skus: [
+    { id: '1', label: 'Body only / no battery', inStock: true },
+    { id: '2', label: '1 Battery 1 Charger', inStock: true }
+  ] };
+  assert.equal(selectSku(snapshot, { variant_label: '1 battery, 1 charger' }).id, '2');
+});
+
+test('selects the only available SKU without manual extraction', () => {
+  const snapshot = { skus: [
+    { id: '1', label: 'Red', inStock: false },
+    { id: '2', label: 'Blue', inStock: true }
+  ] };
+  assert.equal(selectSku(snapshot, {}).id, '2');
+});
+
+test('fails closed when multiple SKUs are available and no variant is specified', () => {
+  const snapshot = { skus: [
+    { id: '1', label: 'EU', inStock: true },
+    { id: '2', label: 'US', inStock: true }
+  ] };
+  assert.equal(selectSku(snapshot, {}), null);
 });
 
 test('parses the documented product.get response and its nested SKU DTOs', () => {
@@ -52,4 +76,5 @@ test('product.get uses the sync method, OAuth token as session, HMAC-SHA256, and
   assert.match(encoded, /session=session\+token%2B%2F%3D/);
   assert.match(encoded, /method=aliexpress.ds.product.get/);
 });
+
 
