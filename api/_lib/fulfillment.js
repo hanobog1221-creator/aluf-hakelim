@@ -1,6 +1,7 @@
 const { serverHeaders } = require('./supabase-server');
 
 const MAX_SUPPLIER_STATE_AGE_MS = 8 * 60 * 60 * 1000;
+const SUPPORTED_SUPPLIERS = new Set(['aliexpress', 'cj']);
 
 async function loadOrderForFulfillment(orderId) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
@@ -27,7 +28,7 @@ async function loadCurrentSupplierState(order) {
 
   const [productsResponse, settingsResponse] = await Promise.all([
     ids.length
-      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_id,supplier_product_id,supplier_sku_id,alternative_suppliers,fulfillment_ready,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
+      ? fetch(`${supabaseUrl}/rest/v1/products?select=id,active,max_order_quantity,supplier,supplier_id,supplier_product_id,supplier_sku_id,alternative_suppliers,fulfillment_ready,fulfillment_provider,fulfillment_product_id,fulfillment_variant_id,fulfillment_sku,fulfillment_origin_country,fulfillment_logistic_name,fulfillment_provider_status,fulfillment_verified_at,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers })
       : Promise.resolve({ ok: true, json: async () => [] }),
     fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils&limit=1`, { headers })
   ]);
@@ -52,18 +53,42 @@ function hasSupplierOrder(order) {
   return Array.isArray(order.supplier_order_ids) && order.supplier_order_ids.length > 0;
 }
 
+function providerOf(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function currentSupplierMapping(product, item) {
+  const itemSupplier = providerOf(item.supplier);
+  const currentSupplier = providerOf(product.supplier || product.fulfillment_provider);
   if (
+    itemSupplier === currentSupplier &&
     (!item.supplierId || String(product.supplier_id || '') === String(item.supplierId || '')) &&
     String(product.supplier_product_id || '') === String(item.supplierProductId || '') &&
     String(product.supplier_sku_id || '') === String(item.supplierSkuId || '')
   ) return product;
+
+  if (itemSupplier !== 'aliexpress') return null;
   return (Array.isArray(product.alternative_suppliers) ? product.alternative_suppliers : []).find((candidate) =>
     candidate.verified === true &&
+    providerOf(candidate.supplier || 'aliexpress') === itemSupplier &&
     String(candidate.supplier_id || candidate.supplierId || '') === String(item.supplierId || '') &&
     String(candidate.supplier_product_id || candidate.supplierProductId || '') === String(item.supplierProductId || '') &&
     String(candidate.supplier_sku_id || candidate.supplierSkuId || '') === String(item.supplierSkuId || '')
   ) || null;
+}
+
+function currentMappingReady(current, itemSupplier) {
+  if (!current.fulfillment_ready || !current.supplier_product_id || !current.supplier_sku_id) return false;
+  if (itemSupplier === 'cj') {
+    return providerOf(current.fulfillment_provider) === 'cj'
+      && Boolean(current.fulfillment_product_id)
+      && Boolean(current.fulfillment_variant_id)
+      && Boolean(current.fulfillment_sku)
+      && Boolean(current.fulfillment_verified_at)
+      && String(current.fulfillment_product_id) === String(current.supplier_product_id)
+      && String(current.fulfillment_variant_id) === String(current.supplier_sku_id);
+  }
+  return true;
 }
 
 function validateFulfillmentOrder(order, supplierState = null) {
@@ -85,7 +110,8 @@ function validateFulfillmentOrder(order, supplierState = null) {
   const globalMinimumProfit = globalMinProfitRaw == null ? null : Number(globalMinProfitRaw);
 
   for (const item of items) {
-    if (item.supplier !== 'aliexpress') return { ok: false, reason: 'unsupported_supplier', productId: item.id };
+    const itemSupplier = providerOf(item.supplier);
+    if (!SUPPORTED_SUPPLIERS.has(itemSupplier)) return { ok: false, reason: 'unsupported_supplier', productId: item.id };
     if (!item.fulfillmentReady || !item.supplierProductId || !item.supplierSkuId) {
       return { ok: false, reason: 'supplier_sku_not_verified', productId: item.id };
     }
@@ -101,8 +127,9 @@ function validateFulfillmentOrder(order, supplierState = null) {
       if (qty > maxQty) return { ok: false, reason: 'quantity_limit_changed', productId: item.id, maxQty };
       const mapping = currentSupplierMapping(current, item);
       if (!mapping) return { ok: false, reason: 'supplier_mapping_changed', productId: item.id };
-      if ((mapping.supplier || current.supplier) !== 'aliexpress') return { ok: false, reason: 'supplier_changed', productId: item.id };
-      if (mapping === current && (!current.fulfillment_ready || !current.supplier_product_id || !current.supplier_sku_id)) {
+      const mappingSupplier = providerOf(mapping.supplier || current.supplier || current.fulfillment_provider);
+      if (mappingSupplier !== itemSupplier) return { ok: false, reason: 'supplier_changed', productId: item.id };
+      if (mapping === current && !currentMappingReady(current, itemSupplier)) {
         return { ok: false, reason: 'current_supplier_mapping_not_ready', productId: item.id };
       }
 
@@ -178,14 +205,14 @@ async function getFulfillmentCandidate(orderId) {
   const order = await loadOrderForFulfillment(orderId);
   const supplierState = await loadCurrentSupplierState(order);
   const validation = validateFulfillmentOrder(order, supplierState);
-  return { order, validation };
+  return { order, validation, supplierState };
 }
 
 module.exports = {
   MAX_SUPPLIER_STATE_AGE_MS,
+  SUPPORTED_SUPPLIERS,
   loadOrderForFulfillment,
   loadCurrentSupplierState,
   validateFulfillmentOrder,
   getFulfillmentCandidate
 };
-
