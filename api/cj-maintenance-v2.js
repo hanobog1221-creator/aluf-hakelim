@@ -21,6 +21,17 @@ function cjOkay(json) {
   const code = Number(json.code);
   return !Number.isFinite(code) || [0, 200].includes(code);
 }
+function directVerified(product) {
+  return Boolean(
+    product &&
+    String(product.fulfillment_provider || '').toLowerCase() === 'cj' &&
+    String(product.fulfillment_provider_status || '').toLowerCase() === 'verified_direct_catalog' &&
+    product.fulfillment_verified_at &&
+    clean(product.fulfillment_product_id, 200) &&
+    clean(product.fulfillment_variant_id, 200) &&
+    clean(product.fulfillment_sku, 200)
+  );
+}
 async function cjCall(path, { method = 'GET', body } = {}) {
   const token = await ensureAccessToken();
   const headers = { Accept: 'application/json', 'CJ-Access-Token': token };
@@ -66,8 +77,28 @@ async function getProduct(job) {
     const byId = await dbGet(`products?id=eq.${encodeURIComponent(job.store_product_id)}&select=*&limit=1`);
     if (byId[0]) return byId[0];
   }
-  const rows = await dbGet(`products?supplier_product_id=eq.${encodeURIComponent(job.supplier_product_id)}&select=*&limit=1`);
-  return rows[0] || null;
+  const rows = await dbGet(`products?id=eq.${encodeURIComponent(job.store_product_id || '')}&select=*&limit=1`);
+  if (rows[0]) return rows[0];
+  return null;
+}
+async function preserveDirectJob(job, product, extra = {}) {
+  return patchJob(job.id, {
+    status: 'published',
+    provider_status: 'direct_catalog_verified',
+    provider_product_id: product.fulfillment_product_id,
+    provider_variant_id: product.fulfillment_variant_id,
+    provider_variant_sku: product.fulfillment_sku,
+    provider_snapshot: {
+      ...(job.provider_snapshot && typeof job.provider_snapshot === 'object' ? job.provider_snapshot : {}),
+      directCatalogPreserved: true,
+      fulfillmentProviderStatus: product.fulfillment_provider_status,
+      resolvedAt: new Date().toISOString(),
+      ...extra
+    },
+    last_error: null,
+    store_product_id: product.id,
+    processed_at: new Date().toISOString()
+  });
 }
 function sourceImage(product) {
   const raw = clean(product?.image_url, 2000);
@@ -116,6 +147,11 @@ async function quotaInfo() {
   }
 }
 async function syncSourcing(job) {
+  const currentProduct = await getProduct(job);
+  if (directVerified(currentProduct)) {
+    return preserveDirectJob(job, currentProduct, { sourceResolution: 'direct_catalog_preferred_over_sourcing' });
+  }
+
   const result = await querySourcing([String(job.provider_sourcing_id)]);
   const source = sourceRecord(result, job.provider_sourcing_id) || {};
   const sourceStatus = clean(source.sourceStatus, 40);
@@ -177,14 +213,17 @@ async function syncSourcing(job) {
     processed_at: new Date().toISOString()
   });
   if (job.store_product_id) {
-    await patchProduct(job.store_product_id, {
-      fulfillment_provider: 'cj', fulfillment_product_id: cjProductId, fulfillment_variant_id: String(variant.vid),
-      fulfillment_sku: cjVariantSku, fulfillment_origin_country: origin,
-      fulfillment_logistic_name: chosen?.logisticName || null,
-      fulfillment_provider_status: quoted ? 'quoted' : 'mapped',
-      fulfillment_provider_snapshot: providerSnapshot,
-      fulfillment_verified_at: quoted ? new Date().toISOString() : null
-    });
+    const latestProduct = await getProduct(job);
+    if (!directVerified(latestProduct)) {
+      await patchProduct(job.store_product_id, {
+        fulfillment_provider: 'cj', fulfillment_product_id: cjProductId, fulfillment_variant_id: String(variant.vid),
+        fulfillment_sku: cjVariantSku, fulfillment_origin_country: origin,
+        fulfillment_logistic_name: chosen?.logisticName || null,
+        fulfillment_provider_status: quoted ? 'quoted' : 'mapped',
+        fulfillment_provider_snapshot: providerSnapshot,
+        fulfillment_verified_at: quoted ? new Date().toISOString() : null
+      });
+    }
   }
   return updated;
 }
@@ -192,6 +231,10 @@ async function retryDailyLimited(job) {
   if (job.provider_sourcing_id || String(job.last_error || '') !== DAILY_LIMIT_ERROR || utcDay(job.updated_at) >= utcDay()) return { job, attempted: false };
   const product = await getProduct(job);
   if (!product) throw new Error('catalog_product_missing');
+  if (directVerified(product)) {
+    const updated = await preserveDirectJob(job, product, { sourceResolution: 'direct_catalog_resolved_daily_limit' });
+    return { job: updated, attempted: false };
+  }
   const image = sourceImage(product);
   if (!clean(product.name, 200) || !image) throw new Error('catalog_product_data_missing');
   const selectedSku = clean(job.requested_sku_id || product.supplier_sku_id, 100);
@@ -254,9 +297,11 @@ module.exports = async function handler(req, res) {
     const rows = await dbGet('product_intake_jobs?select=status,provider_status,provider_sourcing_id,provider_product_id,provider_variant_id,last_error');
     const summary = {
       total: rows.length,
-      sourcing: rows.filter((r) => r.provider_sourcing_id).length,
+      published: rows.filter((r) => r.status === 'published').length,
+      sourcing: rows.filter((r) => r.provider_sourcing_id && r.status !== 'published').length,
       pending: rows.filter((r) => String(r.provider_status || '').startsWith('sourcing_')).length,
       quoteReady: rows.filter((r) => r.provider_status === 'cj_quote_ready').length,
+      directVerified: rows.filter((r) => r.provider_status === 'direct_catalog_verified').length,
       dailyLimited: rows.filter((r) => String(r.last_error || '') === DAILY_LIMIT_ERROR).length,
       failed: rows.filter((r) => r.status === 'failed').length
     };
