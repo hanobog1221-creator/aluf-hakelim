@@ -19,6 +19,64 @@
     foot.appendChild(box);
   }
 
+  function deliveryLabel(method) {
+    if (method === 'home_delivery') return 'משלוח עד הבית';
+    if (method === 'pickup_point') return 'משלוח לנקודת איסוף / לוקר';
+    if (method === 'mixed') return 'ההזמנה כוללת יותר מסוג מסירה אחד';
+    return 'סוג המסירה ייקבע על ידי חברת המשלוחים';
+  }
+
+  function renderCheckoutDelivery(data) {
+    if (!data || data.ok !== true) return;
+    const label = deliveryLabel(data.deliveryMethod);
+    const shippingCost = document.getElementById('ahShippingCost');
+    if (shippingCost) {
+      let row = document.getElementById('ahDeliveryMethodRow');
+      if (!row) {
+        row = document.createElement('div');
+        row.id = 'ahDeliveryMethodRow';
+        row.className = 'ahCheckoutSummaryRow';
+        row.innerHTML = '<span>סוג מסירה</span><span id="ahDeliveryMethod" class="ahMuted"></span>';
+        shippingCost.closest('.ahCheckoutSummaryRow')?.insertAdjacentElement('afterend', row);
+      }
+      const value = document.getElementById('ahDeliveryMethod');
+      if (value) value.textContent = label;
+    }
+
+    if (data.quoteOnly !== true) {
+      const success = document.querySelector('.ahCheckoutSuccess');
+      if (success && !document.getElementById('ahPaymentDeliveryMethod')) {
+        const p = document.createElement('p');
+        p.id = 'ahPaymentDeliveryMethod';
+        p.className = 'ahMuted';
+        p.textContent = `סוג מסירה: ${label}`;
+        const status = document.getElementById('ahPayPalStatus');
+        if (status) status.insertAdjacentElement('beforebegin', p);
+        else success.appendChild(p);
+      }
+    }
+  }
+
+  function patchCheckoutDelivery() {
+    if (window.__ahDeliveryFetchPatched || typeof window.fetch !== 'function') return;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async function patchedFetch(input, init) {
+      const response = await nativeFetch(input, init);
+      try {
+        const rawUrl = typeof input === 'string' ? input : input?.url;
+        const url = new URL(String(rawUrl || ''), window.location.origin);
+        const method = String(init?.method || input?.method || 'GET').toUpperCase();
+        if (url.pathname === '/api/orders' && method === 'POST') {
+          response.clone().json().then((data) => {
+            if (data?.ok === true) setTimeout(() => renderCheckoutDelivery(data), 40);
+          }).catch(() => {});
+        }
+      } catch {}
+      return response;
+    };
+    window.__ahDeliveryFetchPatched = true;
+  }
+
   function addWhatsAppPopup(attempt = 0) {
     if (document.getElementById('ahWaHelpPopup')) return;
     const contact = window.alufStoreContact;
@@ -49,6 +107,7 @@
   }
 
   function boot() {
+    patchCheckoutDelivery();
     addFooterLinks();
     setTimeout(() => addWhatsAppPopup(), 300);
   }
