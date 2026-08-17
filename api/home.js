@@ -99,6 +99,9 @@ ${image ? `<meta name="twitter:image" content="${escapeAttr(image)}">` : ''}
     if (!html.includes('/catalog-loader.js')) {
       html = html.replace('</body>', '<script src="/catalog-loader.js"></script></body>');
     }
+    if (!html.includes('/checkout-return-safety.js')) {
+      html = html.replace('</body>', '<script src="/checkout-return-safety.js"></script></body>');
+    }
     if (!html.includes('/checkout.js')) {
       html = html.replace('</body>', '<script src="/checkout.js"></script></body>');
     }
