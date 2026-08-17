@@ -5,6 +5,7 @@ const handlers = {
   'cj': require('./_lib/admin-routes/cj'),
   'orders': require('./_lib/admin-routes/orders'),
   'aliexpress-manual': require('./_lib/admin-routes/aliexpress-manual'),
+  'aliexpress-tracking': require('./_lib/admin-routes/aliexpress-tracking'),
   'product-intake': require('./_lib/admin-routes/product-intake'),
   'products': require('./_lib/admin-routes/products'),
   'session': require('./_lib/admin-routes/session'),
@@ -44,4 +45,3 @@ module.exports = async function handler(req, res) {
 
   return selected(req, res);
 };
-
