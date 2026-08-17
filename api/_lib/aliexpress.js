@@ -3,7 +3,7 @@ const { serverHeaders } = require('./supabase-server');
 
 const APP_KEY = process.env.ALIEXPRESS_APP_KEY || '542860';
 const API_BASE = 'https://api-sg.aliexpress.com/rest';
-const TOP_API_BASE = 'https://gw.api.taobao.com/router/rest';
+const TOP_API_BASE = 'https://api-sg.aliexpress.com/sync';
 const REFRESH_PATH = '/auth/token/refresh';
 const REFRESH_EARLY_MS = 30 * 60 * 1000;
 
@@ -17,9 +17,7 @@ function signAliExpress(params, appSecret, apiPath) {
 }
 
 function formatTopTimestamp(date = new Date()) {
-  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`;
+  return String(date.getTime());
 }
 
 function signTop(params, appSecret) {
@@ -28,19 +26,18 @@ function signTop(params, appSecret) {
     .sort()
     .map((key) => key + String(params[key]))
     .join('');
-  return crypto.createHmac('md5', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
+  return crypto.createHmac('sha256', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
 }
 
 function buildTopParams(method, businessParams, session, appSecret, date = new Date()) {
   const params = {
     method: String(method),
     app_key: APP_KEY,
-    format: 'json',
-    sign_method: 'hmac',
-    timestamp: formatTopTimestamp(date),
-    v: '2.0'
+    session: String(session),
+    simplify: 'true',
+    sign_method: 'sha256',
+    timestamp: formatTopTimestamp(date)
   };
-  if (session) params.session = String(session);
   for (const [key, value] of Object.entries(businessParams || {})) {
     if (value === undefined || value === null) continue;
     params[key] = typeof value === 'string' ? value : JSON.stringify(value);
