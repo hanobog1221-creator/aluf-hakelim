@@ -11,6 +11,7 @@ const handlers = {
   'cj-worker-status': require('./_lib/admin-routes/cj-worker-status'),
   'cj-worker-orders': require('./_lib/admin-routes/cj-worker-orders'),
   'paypal-test': require('./_lib/admin-routes/paypal-test'),
+  'paypal-refund': require('./_lib/admin-routes/paypal-refund'),
   'launch-readiness': require('./_lib/admin-routes/launch-readiness')
 };
 
