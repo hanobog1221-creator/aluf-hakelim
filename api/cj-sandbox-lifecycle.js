@@ -18,14 +18,15 @@ module.exports=async function handler(req,res){
   try{
     const attempt=await latestAttempt();if(!attempt)throw new Error('sandbox_payment_pending_attempt_missing');
     const ids=Array.isArray(attempt.supplier_order_ids)?attempt.supplier_order_ids:[];if(ids.length!==1)throw new Error('sandbox_single_order_required');const cjOrderId=String(ids[0]);
+    const confirmed=await api('/shopping/order/confirmOrder',{method:'PATCH',body:{orderId:cjOrderId}});await sleep(1150);
     const pay=await api('/shopping/sandbox/simulatePay',{body:{orderId:cjOrderId}});await sleep(1150);
     const unshipped=await api('/shopping/sandbox/updateStatus',{body:{orderId:cjOrderId,targetStatus:400}});await sleep(1150);
     const trackNumber=`SBXTN${Date.now().toString().slice(-12)}`;
     const tracking=await api('/shopping/sandbox/updateTrackNumber',{body:{orderId:cjOrderId,trackNumber}});await sleep(1150);
     const shipped=await api('/shopping/sandbox/updateStatus',{body:{orderId:cjOrderId,targetStatus:500}});await sleep(1150);
     const detail=await api(`/shopping/order/getOrderDetail?orderId=${encodeURIComponent(cjOrderId)}&features=LOGISTICS_TIMELINESS`,{method:'GET'});
-    const updatedAttempt=await patch('supplier_order_attempts',`id=eq.${attempt.id}`,{status:'paid',provider_payment_required:true,provider_payment_completed:true,response:{...(attempt.response||{}),sandboxLifecycle:{simulatePay:pay.data===true,unshipped:unshipped.data===true,tracking:tracking.data===true,shipped:shipped.data===true,trackNumber,detail:detail.data||null,completedAt:new Date().toISOString()}}});
+    const updatedAttempt=await patch('supplier_order_attempts',`id=eq.${attempt.id}`,{status:'paid',provider_payment_required:true,provider_payment_completed:true,response:{...(attempt.response||{}),sandboxLifecycle:{confirmed:confirmed.data||true,simulatePay:pay.data===true,unshipped:unshipped.data===true,tracking:tracking.data===true,shipped:shipped.data===true,trackNumber,detail:detail.data||null,completedAt:new Date().toISOString()}}});
     const order=await patch('orders',`order_id=eq.${encodeURIComponent(attempt.order_id)}`,{status:'shipped',fulfillment_status:'shipped',tracking_number:trackNumber,last_error:null});
-    return res.status(200).json({ok:true,sandbox:true,realCharge:false,realShipment:false,cjOrderId,trackNumber,attempt:{status:updatedAttempt?.status,providerPaymentCompleted:updatedAttempt?.provider_payment_completed},order:{orderId:order?.order_id,status:order?.status,fulfillmentStatus:order?.fulfillment_status,trackingNumber:order?.tracking_number},cj:{pay:pay.data,unshipped:unshipped.data,tracking:tracking.data,shipped:shipped.data,orderStatus:detail.data?.orderStatus||detail.data?.status||null,isSandbox:detail.data?.isSandbox??true}});
+    return res.status(200).json({ok:true,sandbox:true,realCharge:false,realShipment:false,cjOrderId,trackNumber,attempt:{status:updatedAttempt?.status,providerPaymentCompleted:updatedAttempt?.provider_payment_completed},order:{orderId:order?.order_id,status:order?.status,fulfillmentStatus:order?.fulfillment_status,trackingNumber:order?.tracking_number},cj:{confirmed:confirmed.data||true,pay:pay.data,unshipped:unshipped.data,tracking:tracking.data,shipped:shipped.data,orderStatus:detail.data?.orderStatus||detail.data?.status||null,isSandbox:detail.data?.isSandbox??true}});
   }catch(e){console.error('CJ sandbox lifecycle failed:',e.message);return res.status(500).json({ok:false,sandbox:true,realCharge:false,realShipment:false,error:clean(e.message,240)});}
 };
