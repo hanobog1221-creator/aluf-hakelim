@@ -31,7 +31,7 @@ const products=[
 {id:'ratchet',name:'ראצ׳ט חשמלי זוויתי 120W',price:139.90,old:null,cat:['power','car','maintenance'],kind:'כלים חשמליים · אביזרי רכב · תחזוקה',badge:'תואם Makita',badgeClass:'',desc:'גוף בלבד ללא סוללה. ראצ׳ט קומפקטי לעבודה במקומות צפופים ולתחזוקת רכב.',img:'https://i5.walmartimages.com/seo/18V-Electric-Ratchet-Wrench-1-2-Right-Angle-Ratchet-for-Makita-18V-Battery-Hand-Impact-Driver-Tools-Wrench-Blue-130nm_1bf0f543-88ef-4f78-8cb7-04f91a3194f8.724ab8f3f2c10f5cb5f41b4a8e82f73d.jpeg',specs:['גוף בלבד — ללא סוללה','מבנה זוויתי','מתאים לעבודות תחזוקה','תואם סוללות Makita לפי הדגם']},
 {id:'impact',name:'מפתח אימפקט אלחוטי 18V – 520Nm',price:79.90,old:105.68,cat:['power','car','maintenance'],kind:'כלים חשמליים · אביזרי רכב',badge:'חדש · 520Nm',badgeClass:'red',desc:'מפתח אימפקט אלחוטי לעבודות רכב ותחזוקה. גוף בלבד ללא סוללה.',img:'https://img.joomcdn.net/181eebb2cb57412f67c7470f00fda90d41bc9c43_1024_1024.jpeg',specs:['18V','מומנט עד 520Nm','גוף בלבד — ללא סוללה','מתאים לעבודות רכב ותחזוקה']},
 {id:'battery588',name:'סוללת 588VF + מטען תואם Makita',price:110,old:142.05,cat:['power'],kind:'כלים חשמליים · סוללות ומטענים',badge:'סוללה + מטען',badgeClass:'',desc:'ערכת סוללת ליתיום נטענת 588VF עם מטען, תואמת למגוון כלי עבודה 18V בסגנון Makita B-Series.',img:'https://img.joomcdn.net/239ccb6ea20a6834688ad30623c038a2d1bbfa26_original.jpeg',specs:['סוללה 588VF','כולל מטען','מתח עבודה 18–21V לפי היצרן','תואם לדגמי Makita B-Series נבחרים — יש לוודא התאמה לפני הזמנה']},
-{id:'washer',name:'מכונת שטיפה אלחוטית תואמת Makita 18V',price:160,cat:['power','car','maintenance'],kind:'כלים חשמליים · אביזרי רכב · תחזוקה',badge:'Set 1',badgeClass:'',desc:'מכונת שטיפה אלחוטית ניידת לשטיפת רכב, חצר ותחזוקה שוטפת. הווריאנט שנבחר להזמנה הוא Set 1.',img:'/washer-set1.jpg.PNG',specs:['זמין להזמנה','Set 1']},
+{id:'washer',name:'מכונת שטיפה אלחוטית Hippcron 21V – לחץ 65BAR',price:140,old:null,cat:['power','car','maintenance'],kind:'כלים חשמליים · שטיפה ותחזוקת רכב',badge:'65BAR',badgeClass:'',desc:'מכונת שטיפה אלחוטית וניידת Hippcron לניקוי רכב, חצר וגינה. לחץ מרבי מוצהר של 65BAR. הווריאנט שנבחר הוא גוף בלבד ללא סוללה וללא מטען.',img:'https://ae01.alicdn.com/kf/S38d445f9e43d4974a366c8e1cec265c8P.jpg',specs:['21V לפי היצרן','לחץ מרבי מוצהר 65BAR','גוף בלבד — ללא סוללה וללא מטען','ניידת ומתאימה לרכב, חצר וגינה']},
 ];
 let cart=JSON.parse(localStorage.getItem('alufCart')||'{}');
 function money(n){return '₪'+Number(n).toFixed(2)}
@@ -55,5 +55,7 @@ function checkoutNotice(){showToast('ממשיכים לפרטי ההזמנה')}
 function showToast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(window.toastT);window.toastT=setTimeout(()=>el.classList.remove('show'),2200)}
 renderProducts();renderCart();
 </script>
+<script src="/catalog-loader.js"></script>
 </body>
 </html>
+
