@@ -9,7 +9,8 @@ const handlers = {
   'cj-worker-sourcing': require('./_lib/admin-routes/cj-worker-sourcing'),
   'cj-worker-catalog': require('./_lib/admin-routes/cj-worker-catalog'),
   'cj-worker-status': require('./_lib/admin-routes/cj-worker-status'),
-  'cj-worker-orders': require('./_lib/admin-routes/cj-worker-orders')
+  'cj-worker-orders': require('./_lib/admin-routes/cj-worker-orders'),
+  'paypal-test': require('./_lib/admin-routes/paypal-test')
 };
 
 module.exports = async function handler(req, res) {
