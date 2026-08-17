@@ -173,6 +173,7 @@ async function updateProduct(product, snapshot) {
   try {
     freight = await quoteAliExpressFreight({
       productId: product.supplier_product_id || snapshot.productId,
+      skuId: selected?.id,
       qty: 1,
       countryCode: 'IL',
       shipFromCountry: product.supplier_ship_from_country || 'CN'
