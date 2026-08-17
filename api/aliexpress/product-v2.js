@@ -105,7 +105,10 @@ function normalizedLabel(value) {
 function selectSku(snapshot, product) {
   const skus = snapshot.skus || [];
   const selectedId = product.supplier_sku_id ? String(product.supplier_sku_id) : '';
-  if (selectedId) return skus.find((sku) => sku.id === selectedId) || null;
+  if (selectedId) {
+    const byId = skus.find((sku) => sku.id === selectedId);
+    if (byId) return byId;
+  }
 
   const wanted = normalizedLabel(product.variant_label);
   if (wanted) {
