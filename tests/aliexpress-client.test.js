@@ -31,6 +31,14 @@ test('automatically selects a unique SKU matching the stored variant label', () 
   assert.equal(selectSku(snapshot, { variant_label: '1 battery, 1 charger' }).id, '2');
 });
 
+test('repairs a legacy SKU id by matching the stored variant label', () => {
+  const snapshot = { skus: [
+    { id: 'new-1', label: 'Set 1', inStock: true },
+    { id: 'new-2', label: 'Set 2', inStock: true }
+  ] };
+  assert.equal(selectSku(snapshot, { supplier_sku_id: 'legacy-row-id', variant_label: 'Set 2' }).id, 'new-2');
+});
+
 test('selects the only available SKU without manual extraction', () => {
   const snapshot = { skus: [
     { id: '1', label: 'Red', inStock: false },
