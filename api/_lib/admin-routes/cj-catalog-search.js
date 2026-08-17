@@ -1,4 +1,5 @@
 const { ensureAccessToken, CJ_BASE } = require('../cj');
+const { quoteCjFreight } = require('../shipping');
 
 function clean(value, max = 300) { return String(value ?? '').trim().slice(0, max); }
 
@@ -59,6 +60,11 @@ module.exports = async function handler(req, res) {
   if (process.env.VERCEL_ENV !== 'preview') return res.status(404).json({ ok: false, error: 'not_found' });
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   try {
+    const vid = clean(req.query?.vid, 200);
+    if (vid) {
+      const freight = await quoteCjFreight({ variantId: vid, qty: 1, countryCode: 'IL', shipFromCountry: 'CN' });
+      return res.status(200).json({ ok: true, vid, freight });
+    }
     const pid = clean(req.query?.pid, 200);
     if (pid) {
       const json = await cjGet(`/product/variant/query?pid=${encodeURIComponent(pid)}`);
