@@ -1,6 +1,6 @@
 const { serverConfig, serverHeaders } = require('./_lib/supabase-server');
 const { sandboxMode, autoPayEnabled } = require('./_lib/cj-fulfillment');
-const { aliExpressCreateEnabled, aliExpressAutoPayAuthorized } = require('./_lib/aliexpress-fulfillment');
+const { aliExpressLiveAutomationReady } = require('./_lib/aliexpress-fulfillment');
 const { fulfillPaidOrder } = require('./_lib/paid-order-fulfillment');
 const { paypalSettlement } = require('./_lib/paypal-finance');
 const { readProviderCredentials } = require('./_lib/provider-credentials');
@@ -58,7 +58,7 @@ function publicLiveGate(cfg, sandboxTest) {
   }
   if (cfg.environment !== 'live') return 'paypal_live_required';
   const cjReady = !sandboxMode() && autoPayEnabled();
-  const aliExpressReady = aliExpressCreateEnabled() && aliExpressAutoPayAuthorized();
+  const aliExpressReady = aliExpressLiveAutomationReady();
   if (!cjReady && !aliExpressReady) return 'supplier_autopay_required';
   return null;
 }
@@ -108,7 +108,7 @@ module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');
   try{
     const action=clean(req.query?.action,30);
-    if(req.method==='GET'&&action==='config'){const cfg=await paypalConfig();const supplierReady=(!sandboxMode()&&autoPayEnabled())||(aliExpressCreateEnabled()&&aliExpressAutoPayAuthorized());return res.status(200).json({ok:true,clientId:cfg.clientId,currency:cfg.currency,environment:cfg.environment,publicPaymentsReady:cfg.environment==='live'&&supplierReady});}
+    if(req.method==='GET'&&action==='config'){const cfg=await paypalConfig();const supplierReady=(!sandboxMode()&&autoPayEnabled())||aliExpressLiveAutomationReady();return res.status(200).json({ok:true,clientId:cfg.clientId,currency:cfg.currency,environment:cfg.environment,publicPaymentsReady:cfg.environment==='live'&&supplierReady});}
     if(req.method!=='POST')return res.status(405).json({ok:false,error:'method_not_allowed'});
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
     if(action==='create')return await handleCreate(req,res,body);if(action==='capture')return await handleCapture(res,body);
