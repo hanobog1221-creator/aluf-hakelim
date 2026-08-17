@@ -10,6 +10,7 @@ function money(value) {
 }
 function isSandboxOrder(orderId) { return /^AH-SBX-PAY-[A-Z0-9-]{5,60}$/i.test(String(orderId || '')); }
 function paypalEnvironment(value) { return clean(value || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox'; }
+function validRequestId(value) { return /^[A-Za-z0-9_-]{8,100}$/.test(String(value || '')); }
 
 async function paypalConfig() {
   const stored = await readProviderCredentials('paypal').catch(() => null);
@@ -89,8 +90,67 @@ async function completedRefundExpenses(orderId) {
   );
   if (!response.ok) throw new Error(`refund_expenses_read_${response.status}`);
   const rows = await response.json();
-  const total = money(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
-  return { rows, total };
+  return { rows, total: money(rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)) };
+}
+
+async function readRefundRequest(requestId) {
+  const { supabaseUrl } = serverConfig();
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/payment_refund_requests?request_id=eq.${encodeURIComponent(requestId)}&select=*&limit=1`,
+    { headers: serverHeaders() }
+  );
+  if (!response.ok) throw new Error(`refund_request_read_${response.status}`);
+  return (await response.json())[0] || null;
+}
+
+async function readRefundRequestByProviderId(refundId) {
+  const { supabaseUrl } = serverConfig();
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/payment_refund_requests?provider_refund_id=eq.${encodeURIComponent(refundId)}&select=*&limit=1`,
+    { headers: serverHeaders() }
+  );
+  if (!response.ok) throw new Error(`refund_request_provider_read_${response.status}`);
+  return (await response.json())[0] || null;
+}
+
+async function ensureRefundRequest(requestId, orderId, amount) {
+  if (!validRequestId(requestId)) throw new Error('invalid_refund_request_id');
+  let existing = await readRefundRequest(requestId);
+  if (!existing) {
+    const { supabaseUrl } = serverConfig();
+    const response = await fetch(`${supabaseUrl}/rest/v1/payment_refund_requests`, {
+      method: 'POST',
+      headers: serverHeaders({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
+      body: JSON.stringify({
+        request_id: requestId,
+        order_id: orderId,
+        provider: 'paypal',
+        requested_amount: amount,
+        currency: 'ILS',
+        status: 'started',
+        updated_at: new Date().toISOString()
+      })
+    });
+    if (response.ok) existing = (await response.json())[0] || null;
+    else if (response.status === 409) existing = await readRefundRequest(requestId);
+    else throw new Error(`refund_request_create_${response.status}`);
+  }
+  if (!existing) throw new Error('refund_request_missing');
+  if (String(existing.order_id) !== orderId || money(existing.requested_amount) !== amount || String(existing.currency) !== 'ILS') {
+    throw new Error('refund_request_conflict');
+  }
+  return existing;
+}
+
+async function updateRefundRequest(requestId, patch) {
+  const { supabaseUrl } = serverConfig();
+  const response = await fetch(`${supabaseUrl}/rest/v1/payment_refund_requests?request_id=eq.${encodeURIComponent(requestId)}`, {
+    method: 'PATCH',
+    headers: serverHeaders({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
+    body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() })
+  });
+  if (!response.ok) throw new Error(`refund_request_update_${response.status}`);
+  return (await response.json())[0] || null;
 }
 
 async function upsertPaymentEvent({ refund, orderId, environment }) {
@@ -116,10 +176,7 @@ async function upsertPaymentEvent({ refund, orderId, environment }) {
   };
   const response = await fetch(`${supabaseUrl}/rest/v1/payment_events?on_conflict=provider,provider_event_id`, {
     method: 'POST',
-    headers: serverHeaders({
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal'
-    }),
+    headers: serverHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
     body: JSON.stringify(row)
   });
   if (!response.ok) throw new Error(`refund_event_write_${response.status}`);
@@ -133,25 +190,21 @@ async function upsertRefundExpense({ refund, orderId }) {
   if (!refundId || amount <= 0 || currency !== 'ILS') throw new Error('invalid_completed_refund');
   const completedAt = clean(refund?.update_time || refund?.create_time, 60);
   const date = Number.isFinite(Date.parse(completedAt)) ? new Date(completedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const row = {
-    expense_date: date,
-    category: 'refund',
-    description: `PayPal refund ${orderId}`,
-    amount,
-    currency: 'ILS',
-    reference: refundId,
-    order_id: orderId,
-    source: 'paypal_refund',
-    source_key: refundId,
-    updated_at: new Date().toISOString()
-  };
   const response = await fetch(`${supabaseUrl}/rest/v1/business_expenses?on_conflict=source,source_key`, {
     method: 'POST',
-    headers: serverHeaders({
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal'
-    }),
-    body: JSON.stringify(row)
+    headers: serverHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify({
+      expense_date: date,
+      category: 'refund',
+      description: `PayPal refund ${orderId}`,
+      amount,
+      currency: 'ILS',
+      reference: refundId,
+      order_id: orderId,
+      source: 'paypal_refund',
+      source_key: refundId,
+      updated_at: new Date().toISOString()
+    })
   });
   if (!response.ok) {
     const details = await response.text();
@@ -175,9 +228,10 @@ async function patchOrderRefund(order, completedTotal, { pending = false } = {})
   const total = money(Math.max(0, Math.min(gross, completedTotal)));
   let refundStatus = 'none';
   let paymentStatus = order.payment_status;
-  let refundedAt = null;
+  let refundedAt = order.refunded_at || null;
   if (pending) {
     refundStatus = 'processing';
+    if (total < gross) paymentStatus = 'paid';
   } else if (total > 0 && total < gross) {
     refundStatus = 'partial';
     paymentStatus = 'paid';
@@ -190,13 +244,7 @@ async function patchOrderRefund(order, completedTotal, { pending = false } = {})
   const response = await fetch(`${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(order.order_id)}`, {
     method: 'PATCH',
     headers: serverHeaders({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
-    body: JSON.stringify({
-      refund_status: refundStatus,
-      refund_amount: total,
-      payment_status: paymentStatus,
-      refunded_at: refundedAt,
-      updated_at: new Date().toISOString()
-    })
+    body: JSON.stringify({ refund_status: refundStatus, refund_amount: total, payment_status: paymentStatus, refunded_at: refundedAt, updated_at: new Date().toISOString() })
   });
   if (!response.ok) throw new Error(`refund_order_update_${response.status}`);
   return (await response.json())[0] || null;
@@ -214,18 +262,31 @@ function validateOrderForPayPalRefund(order, cfg) {
   return captureId;
 }
 
-function refundRequestId(orderId, captureId, completedBefore, amount) {
-  const seed = `${orderId}|${captureId}|${Math.round(completedBefore * 100)}|${Math.round(amount * 100)}`;
+function paypalRefundRequestId(orderId, captureId, clientRequestId) {
+  const seed = `${orderId}|${captureId}|${clientRequestId}`;
   return `rf-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 32)}`;
 }
 
-async function finalizeCompletedRefund({ order, refund, environment }) {
+function supplierCancellationRequired(order) {
+  return Boolean(order?.supplier_order_id || (Array.isArray(order?.supplier_order_ids) && order.supplier_order_ids.length));
+}
+
+async function finalizeCompletedRefund({ order, refund, environment, requestId }) {
   await upsertPaymentEvent({ refund, orderId: order.order_id, environment });
   await upsertRefundExpense({ refund, orderId: order.order_id });
   const completed = await completedRefundExpenses(order.order_id);
   const updatedOrder = await patchOrderRefund(order, completed.total);
+  if (requestId) {
+    await updateRefundRequest(requestId, {
+      status: 'completed',
+      provider_refund_id: clean(refund.id, 200),
+      provider_status: 'COMPLETED',
+      last_error: null
+    });
+  }
   await writeOrderEvent(order.order_id, 'paypal_refund_completed', {
     refundId: clean(refund.id, 200),
+    requestId: requestId || null,
     amount: money(refund.amount?.value),
     currency: clean(refund.amount?.currency_code, 3).toUpperCase(),
     totalRefunded: completed.total,
@@ -235,38 +296,82 @@ async function finalizeCompletedRefund({ order, refund, environment }) {
   return { completed, updatedOrder };
 }
 
-async function issuePayPalRefund(orderId, requestedAmount) {
+async function resultFromCompletedRequest(order, requestRow, environment) {
+  const completed = await completedRefundExpenses(order.order_id);
+  const gross = money(Number(order.total || 0) + Number(order.shipping_cost || 0));
+  return {
+    ok: true,
+    deduplicated: true,
+    orderId: order.order_id,
+    refundId: clean(requestRow.provider_refund_id, 200),
+    status: 'COMPLETED',
+    amount: money(requestRow.requested_amount),
+    currency: 'ILS',
+    environment,
+    completedTotal: completed.total,
+    remaining: money(Math.max(0, gross - completed.total)),
+    order,
+    supplierCancellationRequired: supplierCancellationRequired(order)
+  };
+}
+
+async function issuePayPalRefund(orderId, requestedAmount, clientRequestId) {
   const id = clean(orderId, 80).toUpperCase();
+  const requestId = clean(clientRequestId, 100);
   if (!/^AH-[A-Z0-9-]{5,60}$/.test(id)) throw new Error('invalid_order_id');
+  if (!validRequestId(requestId)) throw new Error('invalid_refund_request_id');
   const amount = money(requestedAmount);
   if (amount <= 0) throw new Error('invalid_refund_amount');
 
   const [cfg, order] = await Promise.all([paypalConfig(), readOrder(id)]);
   const captureId = validateOrderForPayPalRefund(order, cfg);
+  const requestRow = await ensureRefundRequest(requestId, id, amount);
+
+  if (requestRow.status === 'completed' && requestRow.provider_refund_id) {
+    return resultFromCompletedRequest(order, requestRow, cfg.environment);
+  }
+  if (requestRow.provider_refund_id) {
+    return syncPayPalRefund(id, requestRow.provider_refund_id, requestId);
+  }
+
   const gross = money(Number(order.total || 0) + Number(order.shipping_cost || 0));
   const completedBefore = await completedRefundExpenses(id);
   const remaining = money(Math.max(0, gross - completedBefore.total));
   if (remaining <= 0) throw new Error('order_already_fully_refunded');
   if (amount > remaining) throw new Error('refund_amount_exceeds_remaining');
 
-  const requestId = refundRequestId(id, captureId, completedBefore.total, amount);
   const fullFirstRefund = completedBefore.total === 0 && amount === gross;
   const body = fullFirstRefund ? {} : { amount: { value: amount.toFixed(2), currency_code: 'ILS' } };
-  const refund = await paypalRequest(cfg, `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
-    method: 'POST',
-    body,
-    requestId
-  });
+  let refund;
+  try {
+    refund = await paypalRequest(cfg, `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, {
+      method: 'POST',
+      body,
+      requestId: paypalRefundRequestId(id, captureId, requestId)
+    });
+  } catch (error) {
+    await updateRefundRequest(requestId, { status: 'failed', last_error: clean(error.message || error, 1000) }).catch(() => {});
+    throw error;
+  }
+
   const status = clean(refund?.status, 30).toUpperCase();
   const refundAmount = money(refund?.amount?.value ?? amount);
   const refundCurrency = clean(refund?.amount?.currency_code || 'ILS', 3).toUpperCase();
   if (!refund?.id || refundCurrency !== 'ILS' || refundAmount !== amount) throw new Error('paypal_refund_response_mismatch');
 
+  await updateRefundRequest(requestId, {
+    status: status === 'COMPLETED' || status === 'PENDING' ? 'pending' : 'failed',
+    provider_refund_id: clean(refund.id, 200),
+    provider_status: status || null,
+    last_error: null
+  });
   await upsertPaymentEvent({ refund, orderId: id, environment: cfg.environment });
+
   if (status === 'COMPLETED') {
-    const finalized = await finalizeCompletedRefund({ order, refund, environment: cfg.environment });
+    const finalized = await finalizeCompletedRefund({ order, refund, environment: cfg.environment, requestId });
     return {
       ok: true,
+      deduplicated: false,
       orderId: id,
       refundId: clean(refund.id, 200),
       status,
@@ -276,17 +381,16 @@ async function issuePayPalRefund(orderId, requestedAmount) {
       completedTotal: finalized.completed.total,
       remaining: money(Math.max(0, gross - finalized.completed.total)),
       order: finalized.updatedOrder,
-      supplierCancellationRequired: Boolean(order.supplier_order_id || (Array.isArray(order.supplier_order_ids) && order.supplier_order_ids.length))
+      supplierCancellationRequired: supplierCancellationRequired(order)
     };
   }
 
   if (status === 'PENDING') {
     const updatedOrder = await patchOrderRefund(order, completedBefore.total, { pending: true });
-    await writeOrderEvent(id, 'paypal_refund_pending', {
-      refundId: clean(refund.id, 200), amount, currency: 'ILS', environment: cfg.environment
-    });
+    await writeOrderEvent(id, 'paypal_refund_pending', { refundId: clean(refund.id, 200), requestId, amount, currency: 'ILS', environment: cfg.environment });
     return {
       ok: true,
+      deduplicated: false,
       orderId: id,
       refundId: clean(refund.id, 200),
       status,
@@ -296,33 +400,41 @@ async function issuePayPalRefund(orderId, requestedAmount) {
       completedTotal: completedBefore.total,
       remaining,
       order: updatedOrder,
-      supplierCancellationRequired: Boolean(order.supplier_order_id || (Array.isArray(order.supplier_order_ids) && order.supplier_order_ids.length))
+      supplierCancellationRequired: supplierCancellationRequired(order)
     };
   }
 
+  await updateRefundRequest(requestId, { status: 'failed', provider_status: status || null, last_error: `paypal_refund_${status || 'unknown'}` });
   throw new Error(`paypal_refund_${status || 'unknown'}`.toLowerCase());
 }
 
-async function syncPayPalRefund(orderId, refundId) {
+async function syncPayPalRefund(orderId, refundId, clientRequestId = null) {
   const id = clean(orderId, 80).toUpperCase();
   const rid = clean(refundId, 200);
   if (!/^AH-[A-Z0-9-]{5,60}$/.test(id) || !/^[A-Z0-9]+$/i.test(rid)) throw new Error('invalid_refund_sync_request');
   const [cfg, order] = await Promise.all([paypalConfig(), readOrder(id)]);
   validateOrderForPayPalRefund(order, cfg);
+  const requestRow = clientRequestId ? await readRefundRequest(clean(clientRequestId, 100)) : await readRefundRequestByProviderId(rid);
+  if (requestRow && (String(requestRow.order_id) !== id || (requestRow.provider_refund_id && String(requestRow.provider_refund_id) !== rid))) {
+    throw new Error('refund_request_conflict');
+  }
+  const requestId = requestRow?.request_id || null;
   const refund = await paypalRequest(cfg, `/v2/payments/refunds/${encodeURIComponent(rid)}`);
   if (clean(refund?.id, 200) !== rid) throw new Error('paypal_refund_id_mismatch');
   await upsertPaymentEvent({ refund, orderId: id, environment: cfg.environment });
   const status = clean(refund?.status, 30).toUpperCase();
   if (status === 'COMPLETED') {
-    const finalized = await finalizeCompletedRefund({ order, refund, environment: cfg.environment });
+    const finalized = await finalizeCompletedRefund({ order, refund, environment: cfg.environment, requestId });
     const gross = money(Number(order.total || 0) + Number(order.shipping_cost || 0));
-    return { ok: true, orderId: id, refundId: rid, status, completedTotal: finalized.completed.total, remaining: money(Math.max(0, gross - finalized.completed.total)), order: finalized.updatedOrder };
+    return { ok: true, deduplicated: true, orderId: id, refundId: rid, status, completedTotal: finalized.completed.total, remaining: money(Math.max(0, gross - finalized.completed.total)), order: finalized.updatedOrder };
   }
   if (status === 'PENDING') {
+    if (requestId) await updateRefundRequest(requestId, { status: 'pending', provider_status: status, last_error: null });
     const completed = await completedRefundExpenses(id);
     const updatedOrder = await patchOrderRefund(order, completed.total, { pending: true });
-    return { ok: true, orderId: id, refundId: rid, status, completedTotal: completed.total, order: updatedOrder };
+    return { ok: true, deduplicated: true, orderId: id, refundId: rid, status, completedTotal: completed.total, order: updatedOrder };
   }
+  if (requestId) await updateRefundRequest(requestId, { status: 'failed', provider_status: status || null, last_error: `paypal_refund_${status || 'unknown'}` });
   return { ok: false, orderId: id, refundId: rid, status, error: `paypal_refund_${status || 'unknown'}`.toLowerCase() };
 }
 
