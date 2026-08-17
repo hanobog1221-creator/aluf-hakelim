@@ -4,12 +4,23 @@ const crypto = require('node:crypto');
 
 const { buildTopParams, signTop } = require('../api/_lib/aliexpress');
 const { snapshotFromResult, selectSku } = require('../api/aliexpress/product-v2')._test;
+const { freightDto } = require('../api/_lib/shipping');
 
 test('migrated API signature sorts every system and business parameter by ASCII key order', () => {
   const params = { product_id: '32982857990', app_key: '12129701', method: 'aliexpress.ds.product.get', format: 'json' };
   const canonical = 'app_key12129701formatjsonmethodaliexpress.ds.product.getproduct_id32982857990';
   const expected = crypto.createHmac('sha256', 'secret').update(canonical, 'utf8').digest('hex').toUpperCase();
   assert.equal(signTop(params, 'secret'), expected);
+});
+
+test('freight request includes the selected AliExpress SKU', () => {
+  assert.deepEqual(freightDto({
+    productId: '1005012832500138', skuId: '12000050063719484', qty: 2,
+    countryCode: 'IL', shipFromCountry: 'CN'
+  }), {
+    country_code: 'IL', product_id: '1005012832500138', sku_id: '12000050063719484',
+    product_num: 2, send_goods_country_code: 'CN'
+  });
 });
 
 test('automatically selects a unique SKU matching the stored variant label', () => {
@@ -41,7 +52,8 @@ test('parses the documented product.get response and its nested SKU DTOs', () =>
     ae_item_base_info_dto: { subject: 'Tool', product_status_type: 'onSelling' },
     ae_item_sku_info_dtos: {
       ae_item_sku_info_d_t_o: [{
-        id: 123,
+        id: 'internal-row-id',
+        sku_id: '123',
         sku_stock: true,
         sku_available_stock: 7,
         offer_sale_price: '12.50',

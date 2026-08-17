@@ -48,7 +48,7 @@ function normalizedSku(sku) {
   const priceRaw = sku?.offer_sale_price ?? sku?.sku_price;
   const price = priceRaw == null ? null : Number(priceRaw);
   return {
-    id: sku?.id == null ? null : String(sku.id),
+    id: (sku?.sku_id ?? sku?.id) == null ? null : String(sku.sku_id ?? sku.id),
     label: skuLabel(sku),
     inStock,
     stock: Number.isFinite(stockCount) ? stockCount : null,
@@ -173,6 +173,7 @@ async function updateProduct(product, snapshot) {
   try {
     freight = await quoteAliExpressFreight({
       productId: product.supplier_product_id || snapshot.productId,
+      skuId: selected?.id,
       qty: 1,
       countryCode: 'IL',
       shipFromCountry: product.supplier_ship_from_country || 'CN'
