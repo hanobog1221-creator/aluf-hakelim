@@ -1,10 +1,28 @@
 const { serverConfig, serverHeaders } = require('./_lib/supabase-server');
-const { fulfillCjOrder } = require('./_lib/cj-fulfillment');
+const { fulfillCjOrder, sandboxMode, autoPayEnabled } = require('./_lib/cj-fulfillment');
 const { readProviderCredentials } = require('./_lib/provider-credentials');
 
 function clean(value, max = 200) { return String(value ?? '').trim().slice(0, max); }
 function normalizedPayPalEnvironment(value) { return clean(value || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox'; }
 function isSandboxPaymentTest(orderId) { return /^AH-SBX-PAY-[A-Z0-9-]{5,60}$/.test(String(orderId || '').toUpperCase()); }
+function requestOrigin(req) {
+  const proto = clean(String(req.headers['x-forwarded-proto'] || 'https').split(',')[0], 10).toLowerCase();
+  const host = clean(String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0], 300);
+  if (!['http','https'].includes(proto) || !host || !/^[A-Za-z0-9.-]+(?::\d+)?$/.test(host)) throw new Error('invalid_request_host');
+  return `${proto}://${host}`;
+}
+function approvalLink(created, environment) {
+  const links = Array.isArray(created?.links) ? created.links : [];
+  const row = links.find((x) => ['payer-action', 'approve'].includes(String(x?.rel || '').toLowerCase()));
+  const href = clean(row?.href, 2000);
+  try {
+    const url = new URL(href);
+    const expected = environment === 'live' ? 'www.paypal.com' : 'www.sandbox.paypal.com';
+    return url.protocol === 'https:' && url.hostname.toLowerCase() === expected ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 async function paypalConfig() {
   const stored = await readProviderCredentials('paypal').catch(() => null);
   const clientId = clean(process.env.PAYPAL_CLIENT_ID || stored?.client_id, 300);
@@ -30,42 +48,65 @@ async function readOrder(orderId){const{supabaseUrl}=serverConfig();const r=awai
 async function markPaymentPending(orderId,paypalOrderId){const{supabaseUrl}=serverConfig();const r=await fetch(`${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}`,{method:'PATCH',headers:serverHeaders({'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({status:'payment_pending',payment_provider:'paypal',payment_reference:paypalOrderId,last_error:null,updated_at:new Date().toISOString()})});if(!r.ok)throw new Error(`order_payment_pending_${r.status}`);}
 function amountString(value){const n=Number(value);if(!Number.isFinite(n)||n<=0||n>1000000)throw new Error('invalid_order_amount');return n.toFixed(2);}
 function captureRecord(paypalOrder){for(const unit of(Array.isArray(paypalOrder?.purchase_units)?paypalOrder.purchase_units:[])){const captures=Array.isArray(unit?.payments?.captures)?unit.payments.captures:[];const c=captures.find(x=>x?.status==='COMPLETED');if(c)return c;}return null;}
+function publicLiveGate(cfg, sandboxTest) {
+  if (sandboxTest) {
+    if (cfg.environment !== 'sandbox') return 'sandbox_test_requires_paypal_sandbox';
+    return null;
+  }
+  if (cfg.environment !== 'live') return 'paypal_live_required';
+  if (sandboxMode()) return 'supplier_live_not_enabled';
+  if (!autoPayEnabled()) return 'supplier_autopay_required';
+  return null;
+}
 
-async function handleCreate(res,body){
+async function handleCreate(req,res,body){
   const orderId=clean(body.orderId,80).toUpperCase();if(!/^AH-[A-Z0-9-]{5,60}$/.test(orderId))return res.status(400).json({ok:false,error:'invalid_order_id'});
   const cfg=await paypalConfig();
-  if(isSandboxPaymentTest(orderId)&&cfg.environment!=='sandbox')return res.status(409).json({ok:false,error:'sandbox_test_requires_paypal_sandbox'});
+  const sandboxTest=isSandboxPaymentTest(orderId);
+  const liveBlock=publicLiveGate(cfg,sandboxTest);if(liveBlock)return res.status(409).json({ok:false,error:liveBlock});
   const readiness=await paymentReadiness(orderId);if(!readiness?.ok)return res.status(409).json({ok:false,error:readiness?.reason||'order_not_payable',readiness});
   if(String(readiness.currency||'').toUpperCase()!==cfg.currency)return res.status(409).json({ok:false,error:'currency_mismatch'});const value=amountString(readiness.amount);
-  const created=await paypalRequest(cfg,'/v2/checkout/orders',{method:'POST',requestId:`create-${orderId}`,body:{intent:'CAPTURE',purchase_units:[{reference_id:orderId,custom_id:orderId,invoice_id:orderId,description:isSandboxPaymentTest(orderId)?'Aluf Hakelim sandbox test':'Aluf Hakelim order',amount:{currency_code:cfg.currency,value}}]}});
-  if(!created?.id)throw new Error('paypal_order_id_missing');await markPaymentPending(orderId,created.id);return res.status(200).json({ok:true,orderId:created.id,storeOrderId:orderId,environment:cfg.environment,sandboxTest:isSandboxPaymentTest(orderId)});
+  const origin=requestOrigin(req);
+  const returnPath=sandboxTest?'/admin-paypal-test.html':'/';
+  const returnUrl=`${origin}${returnPath}?paypal=approved&storeOrderId=${encodeURIComponent(orderId)}`;
+  const cancelUrl=`${origin}${returnPath}?paypal=cancelled&storeOrderId=${encodeURIComponent(orderId)}`;
+  const created=await paypalRequest(cfg,'/v2/checkout/orders',{method:'POST',requestId:`create-${orderId}`,body:{
+    intent:'CAPTURE',
+    purchase_units:[{reference_id:orderId,custom_id:orderId,invoice_id:orderId,description:sandboxTest?'Aluf Hakelim sandbox test':'Aluf Hakelim order',amount:{currency_code:cfg.currency,value}}],
+    payment_source:{paypal:{experience_context:{return_url:returnUrl,cancel_url:cancelUrl,user_action:'PAY_NOW',shipping_preference:'NO_SHIPPING',locale:'he-IL'}}}
+  }});
+  if(!created?.id)throw new Error('paypal_order_id_missing');
+  const approveUrl=approvalLink(created,cfg.environment);if(!approveUrl)throw new Error('paypal_approval_url_missing');
+  await markPaymentPending(orderId,created.id);
+  return res.status(200).json({ok:true,orderId:created.id,storeOrderId:orderId,environment:cfg.environment,sandboxTest,approveUrl});
 }
 
 async function handleCapture(res,body){
   const orderId=clean(body.orderId,80).toUpperCase(),paypalOrderId=clean(body.paypalOrderId,80);if(!/^AH-[A-Z0-9-]{5,60}$/.test(orderId)||!paypalOrderId)return res.status(400).json({ok:false,error:'invalid_capture_request'});
   const stored=await readOrder(orderId);if(!stored)return res.status(404).json({ok:false,error:'order_not_found'});if(stored.payment_status==='paid')return res.status(409).json({ok:false,error:'order_already_paid'});if(stored.payment_provider&&stored.payment_provider!=='paypal')return res.status(409).json({ok:false,error:'payment_provider_mismatch'});if(stored.payment_reference&&stored.payment_reference!==paypalOrderId)return res.status(409).json({ok:false,error:'paypal_order_mismatch'});
   const cfg=await paypalConfig();
-  if(isSandboxPaymentTest(orderId)&&cfg.environment!=='sandbox')return res.status(409).json({ok:false,error:'sandbox_test_requires_paypal_sandbox'});
+  const sandboxTest=isSandboxPaymentTest(orderId);
+  const liveBlock=publicLiveGate(cfg,sandboxTest);if(liveBlock)return res.status(409).json({ok:false,error:liveBlock});
   const readiness=await paymentReadiness(orderId);if(!readiness?.ok)return res.status(409).json({ok:false,error:readiness?.reason||'order_not_payable',readiness});
   const expectedValue=amountString(readiness.amount);
   const capturedOrder=await paypalRequest(cfg,`/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`,{method:'POST',requestId:`capture-${orderId}`,body:{}});const capture=captureRecord(capturedOrder);
   if(capturedOrder?.status!=='COMPLETED'||!capture||capture.status!=='COMPLETED')return res.status(409).json({ok:false,error:'paypal_capture_not_completed'});
   const capturedCurrency=clean(capture?.amount?.currency_code,3).toUpperCase(),capturedValue=amountString(capture?.amount?.value);if(capturedCurrency!==cfg.currency||capturedValue!==expectedValue)return res.status(409).json({ok:false,error:'paypal_capture_amount_mismatch'});
-  const confirmed=await rpc('confirm_order_payment',{p_provider:'paypal',p_provider_event_id:String(capture.id),p_order_id:orderId,p_amount:Number(capturedValue),p_currency:capturedCurrency,p_payment_reference:String(capture.id),p_payload:{paypalOrderId,captureId:capture.id,status:capture.status,environment:cfg.environment,sandboxTest:isSandboxPaymentTest(orderId)}});if(!confirmed?.ok)return res.status(409).json({ok:false,error:confirmed?.error||'payment_confirmation_failed'});
+  const confirmed=await rpc('confirm_order_payment',{p_provider:'paypal',p_provider_event_id:String(capture.id),p_order_id:orderId,p_amount:Number(capturedValue),p_currency:capturedCurrency,p_payment_reference:String(capture.id),p_payload:{paypalOrderId,captureId:capture.id,status:capture.status,environment:cfg.environment,sandboxTest}});if(!confirmed?.ok)return res.status(409).json({ok:false,error:confirmed?.error||'payment_confirmation_failed'});
 
   let fulfillment={ok:false,skipped:true,reason:'not_attempted'};
   try{fulfillment=await fulfillCjOrder(orderId);}catch(error){fulfillment={ok:false,error:clean(error.message||error,220)};console.error('CJ fulfillment after PayPal capture failed:',error.message);}
-  return res.status(200).json({ok:true,orderId,paypalOrderId,captureId:String(capture.id),paymentStatus:'paid',environment:cfg.environment,sandboxTest:isSandboxPaymentTest(orderId),fulfillment});
+  return res.status(200).json({ok:true,orderId,paypalOrderId,captureId:String(capture.id),paymentStatus:'paid',environment:cfg.environment,sandboxTest,fulfillment});
 }
 
 module.exports=async function handler(req,res){
   res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Cache-Control','no-store');
   try{
     const action=clean(req.query?.action,30);
-    if(req.method==='GET'&&action==='config'){const cfg=await paypalConfig();return res.status(200).json({ok:true,clientId:cfg.clientId,currency:cfg.currency,environment:cfg.environment});}
+    if(req.method==='GET'&&action==='config'){const cfg=await paypalConfig();return res.status(200).json({ok:true,clientId:cfg.clientId,currency:cfg.currency,environment:cfg.environment,publicPaymentsReady:cfg.environment==='live'&&!sandboxMode()&&autoPayEnabled()});}
     if(req.method!=='POST')return res.status(405).json({ok:false,error:'method_not_allowed'});
     const body=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
-    if(action==='create')return await handleCreate(res,body);if(action==='capture')return await handleCapture(res,body);
+    if(action==='create')return await handleCreate(req,res,body);if(action==='capture')return await handleCapture(res,body);
     return res.status(400).json({ok:false,error:'invalid_action'});
   }catch(error){console.error('PayPal checkout failed:',error.message);const code=clean(error.message||error,220);return res.status(error.status&&error.status>=400&&error.status<600?error.status:500).json({ok:false,error:code||'paypal_failed'});}
 };

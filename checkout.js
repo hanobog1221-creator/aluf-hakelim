@@ -3,7 +3,7 @@
   style.textContent = `
   .ahCheckout{display:none;position:fixed;inset:0;background:#000b;z-index:170;padding:18px;place-items:center}.ahCheckout.open{display:grid}
   .ahCheckoutCard{width:min(720px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 24px 80px #0006}.ahCheckoutHead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:2}.ahCheckoutHead h2{margin:0;font-size:24px}.ahCheckoutClose{border:0;background:#f0f2f5;width:40px;height:40px;border-radius:10px}.ahCheckoutBody{padding:20px}
-  .ahCheckoutNote{background:#fff8d8;border:1px solid #f3d66a;border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.5}.ahCheckoutGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ahField{display:flex;flex-direction:column;gap:6px}.ahField.full{grid-column:1/-1}.ahField label{font-size:13px;font-weight:800}.ahField input,.ahField textarea{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:12px;font:inherit;background:#fff}.ahField textarea{min-height:74px}.ahTerms{display:flex;align-items:flex-start;gap:9px;margin:14px 0;padding:11px 12px;border:1px solid #e0e4e8;border-radius:10px;background:#fafbfc;font-size:13px;line-height:1.55}.ahTerms input{width:18px;height:18px;flex:0 0 auto}.ahTerms a{font-weight:900;color:#111923}.ahCheckoutSummary{margin:18px 0;border-top:1px solid #e5e7eb;padding-top:14px}.ahCheckoutSummaryRow{display:flex;justify-content:space-between;gap:12px;padding:5px 0}.ahCheckoutSummaryRow.total{font-size:19px;font-weight:950}.ahDiscount{color:#197342;font-weight:900}.ahMuted{color:#68717c}.ahCheckoutSubmit{width:100%;height:50px;border:0;border-radius:11px;background:#ffc928;color:#15100a;font-weight:950}.ahCheckoutSubmit:disabled{opacity:.55}.ahCheckoutError{display:none;color:#b42318;background:#fff0ee;border:1px solid #ffc9c2;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:13px}.ahCheckoutError.show{display:block}.ahCheckoutSuccess{text-align:center;padding:30px 18px}.ahOrderId{display:inline-block;background:#111923;color:#fff;padding:9px 13px;border-radius:9px;font-weight:900;margin:8px 0 14px;direction:ltr}.ahPayPalWrap{margin:18px auto 0;max-width:460px}.ahPayPalBadge{display:inline-block;background:#e8f1ff;color:#173b69;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}.ahPayPalStatus{color:#68717c;line-height:1.55;margin:10px 0}
+  .ahCheckoutNote{background:#fff8d8;border:1px solid #f3d66a;border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:13px;line-height:1.5}.ahCheckoutGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ahField{display:flex;flex-direction:column;gap:6px}.ahField.full{grid-column:1/-1}.ahField label{font-size:13px;font-weight:800}.ahField input,.ahField textarea{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:12px;font:inherit;background:#fff}.ahField textarea{min-height:74px}.ahTerms{display:flex;align-items:flex-start;gap:9px;margin:14px 0;padding:11px 12px;border:1px solid #e0e4e8;border-radius:10px;background:#fafbfc;font-size:13px;line-height:1.55}.ahTerms input{width:18px;height:18px;flex:0 0 auto}.ahTerms a{font-weight:900;color:#111923}.ahCheckoutSummary{margin:18px 0;border-top:1px solid #e5e7eb;padding-top:14px}.ahCheckoutSummaryRow{display:flex;justify-content:space-between;gap:12px;padding:5px 0}.ahCheckoutSummaryRow.total{font-size:19px;font-weight:950}.ahDiscount{color:#197342;font-weight:900}.ahMuted{color:#68717c}.ahCheckoutSubmit{width:100%;height:50px;border:0;border-radius:11px;background:#ffc928;color:#15100a;font-weight:950;cursor:pointer}.ahCheckoutSubmit:disabled{opacity:.55;cursor:not-allowed}.ahCheckoutError{display:none;color:#b42318;background:#fff0ee;border:1px solid #ffc9c2;border-radius:10px;padding:10px 12px;margin:12px 0;font-size:13px}.ahCheckoutError.show{display:block}.ahCheckoutSuccess{text-align:center;padding:30px 18px}.ahOrderId{display:inline-block;background:#111923;color:#fff;padding:9px 13px;border-radius:9px;font-weight:900;margin:8px 0 14px;direction:ltr}.ahPayPalWrap{margin:18px auto 0;max-width:460px}.ahPayPalBadge{display:inline-block;background:#e8f1ff;color:#173b69;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900}.ahPayPalStatus{color:#68717c;line-height:1.55;margin:10px 0}
   @media(max-width:620px){.ahCheckout{padding:8px}.ahCheckoutGrid{grid-template-columns:1fr}.ahField.full{grid-column:auto}.ahCheckoutCard{border-radius:14px}.ahCheckoutBody{padding:16px}}
   `;
   document.head.appendChild(style);
@@ -14,7 +14,6 @@
   document.body.appendChild(overlay);
   const bodyBox = overlay.querySelector('#ahCheckoutBody');
   let currentAttemptId = null;
-  let paypalSdkPromise = null;
 
   const money = (v) => '₪' + Number(v || 0).toFixed(2);
   const cartEntries = () => { try { return Object.entries(JSON.parse(localStorage.getItem('alufCart') || '{}')).filter(([,q]) => Number(q) > 0); } catch { return []; } };
@@ -31,26 +30,11 @@
     return d;
   }
 
-  async function loadPayPalSdk() {
-    if (window.paypal?.Buttons) return window.paypal;
-    if (paypalSdkPromise) return paypalSdkPromise;
-    paypalSdkPromise = (async()=>{
-      const cfg = await jsonRequest('/api/paypal?action=config');
-      if (!['sandbox','live'].includes(cfg.environment)) throw new Error('paypal_environment_invalid');
-      await new Promise((resolve,reject)=>{
-        const s=document.createElement('script');
-        s.src=`https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(cfg.clientId)}&currency=${encodeURIComponent(cfg.currency)}&intent=capture&components=buttons`;
-        s.async=true;s.onload=resolve;s.onerror=()=>reject(new Error('paypal_sdk_load_failed'));document.head.appendChild(s);
-      });
-      if(!window.paypal?.Buttons) throw new Error('paypal_sdk_load_failed');
-      return window.paypal;
-    })().catch(e=>{paypalSdkPromise=null;throw e;});
-    return paypalSdkPromise;
-  }
-
   function paypalMessage(error) {
     const c=String(error?.code||error?.message||'');
     if(c==='sales_disabled') return 'המכירות עדיין סגורות לבדיקות.';
+    if(c==='paypal_live_required') return 'מערכת התשלום החיה עדיין לא הופעלה.';
+    if(c==='supplier_live_not_enabled'||c==='supplier_autopay_required') return 'מערכת הספק החיה עדיין לא הופעלה.';
     if(c.includes('not_ready')||c.includes('not_payable')||c.includes('stale')) return 'ההזמנה השתנתה או שהצעת המשלוח התיישנה. סגור ובדוק מחדש.';
     if(c==='paypal_capture_not_completed') return 'התשלום לא הושלם ב-PayPal.';
     if(c.includes('mismatch')) return 'פרטי התשלום לא תאמו להזמנה ולכן היא לא סומנה כמשולמת.';
@@ -58,31 +42,67 @@
     return 'לא הצלחנו להשלים את התשלום ב-PayPal. לא סומן תשלום.';
   }
 
-  async function renderPayPal(order) {
-    const paypal = await loadPayPalSdk();
+  function safePayPalApproval(url, environment) {
+    try {
+      const u=new URL(String(url||''));
+      const expected=environment==='live'?'www.paypal.com':'www.sandbox.paypal.com';
+      return u.protocol==='https:'&&u.hostname.toLowerCase()===expected;
+    } catch { return false; }
+  }
+
+  async function startPayPalRedirect(order) {
     const status=document.getElementById('ahPayPalStatus');
-    const buttons=paypal.Buttons({
-      style:{layout:'vertical',shape:'rect',label:'paypal'},
-      createOrder:async()=>{
-        if(status) status.textContent='פותח PayPal מאובטח…';
-        const out=await jsonRequest('/api/paypal?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId})});
-        return out.orderId;
-      },
-      onApprove:async(data)=>{
-        if(status) status.textContent='מאמת Capture מול PayPal…';
-        try{
-          const out=await jsonRequest('/api/paypal?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId,paypalOrderId:data.orderID})});
-          try{localStorage.removeItem('alufCart')}catch{}
-          if(typeof renderCart==='function') renderCart();
-          bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><div style="font-size:46px">✓</div><h2>התשלום הושלם</h2><p>ההזמנה אומתה בשרת.</p><div class="ahOrderId">${String(out.orderId||'')}</div><p class="ahMuted">PayPal Capture: <span dir="ltr">${String(out.captureId||'')}</span></p><button class="ahCheckoutSubmit" id="ahDone">סגור</button></div>`;
-          currentAttemptId=null;document.getElementById('ahDone')?.addEventListener('click',close);
-        }catch(e){if(status)status.textContent=paypalMessage(e);throw e;}
-      },
-      onCancel:()=>{if(status)status.textContent='התשלום בוטל. ההזמנה נשמרה אך לא שולמה.';},
-      onError:(e)=>{if(status)status.textContent=paypalMessage(e);}
-    });
-    if(!buttons.isEligible()) throw new Error('paypal_not_eligible');
-    await buttons.render('#ahPayPalButtons');
+    const btn=document.getElementById('ahPayPalRedirect');
+    if(btn) btn.disabled=true;
+    if(status) status.textContent='יוצר תשלום מאובטח ב-PayPal…';
+    try {
+      const out=await jsonRequest('/api/paypal?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId})});
+      if(!safePayPalApproval(out.approveUrl,out.environment)) throw new Error('paypal_approval_url_invalid');
+      try{sessionStorage.setItem('alufPendingPayPalOrder',String(order.orderId||''));}catch{}
+      if(status) status.textContent='מעביר ל-PayPal…';
+      location.assign(out.approveUrl);
+    } catch(e) {
+      if(status) status.textContent=paypalMessage(e);
+      if(btn) btn.disabled=false;
+    }
+  }
+
+  function renderPaymentStep(result) {
+    bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><span class="ahPayPalBadge">PayPal</span><h2>ההזמנה מוכנה לתשלום</h2><div class="ahOrderId">${String(result.orderId||'')}</div><p>מוצרים: <b>${money(result.discountedProductsSubtotal??result.productsSubtotal)}</b></p><p>משלוח: <b>${money(result.shippingCost||0)}</b></p><p><b>סה״כ לחיוב ב-PayPal: ${money(result.total)}</b></p><p id="ahPayPalStatus" class="ahPayPalStatus">עדיין לא בוצע חיוב.</p><div class="ahPayPalWrap"><button class="ahCheckoutSubmit" id="ahPayPalRedirect" type="button">המשך לתשלום מאובטח ב-PayPal</button></div><button class="ahCheckoutSubmit" id="ahCloseNoPay" type="button" style="margin-top:12px;background:#eef1f4">סגור בלי לשלם</button></div>`;
+    document.getElementById('ahCloseNoPay')?.addEventListener('click',close);
+    document.getElementById('ahPayPalRedirect')?.addEventListener('click',()=>startPayPalRedirect(result));
+  }
+
+  async function finishPayPalReturn() {
+    const params=new URLSearchParams(location.search);
+    const state=params.get('paypal');
+    if(state!=='approved'&&state!=='cancelled') return;
+    const orderId=String(params.get('storeOrderId')||'').trim().toUpperCase();
+    const paypalOrderId=String(params.get('token')||'').trim();
+    history.replaceState({},'',location.pathname);
+    overlay.classList.add('open');
+    if(state==='cancelled') {
+      bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><h2>התשלום בוטל</h2><p>לא בוצע Capture ב-PayPal.</p>${/^AH-[A-Z0-9-]{5,60}$/.test(orderId)?`<div class="ahOrderId">${orderId}</div>`:''}<button class="ahCheckoutSubmit" id="ahDone">חזרה לחנות</button></div>`;
+      document.getElementById('ahDone')?.addEventListener('click',close);
+      return;
+    }
+    if(!/^AH-[A-Z0-9-]{5,60}$/.test(orderId)||!paypalOrderId) {
+      bodyBox.innerHTML='<div class="ahCheckoutSuccess"><h2>לא ניתן לאמת את החזרה מ-PayPal</h2><p class="ahMuted">לא בוצע סימון תשלום.</p><button class="ahCheckoutSubmit" id="ahDone">סגור</button></div>';
+      document.getElementById('ahDone')?.addEventListener('click',close);
+      return;
+    }
+    bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><h2>מאמת תשלום…</h2><div class="ahOrderId">${orderId}</div><p id="ahReturnStatus" class="ahPayPalStatus">מבצע Capture מאובטח מול PayPal.</p></div>`;
+    try {
+      const out=await jsonRequest('/api/paypal?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId,paypalOrderId})});
+      try{localStorage.removeItem('alufCart');sessionStorage.removeItem('alufPendingPayPalOrder')}catch{}
+      if(typeof renderCart==='function') renderCart();
+      bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><div style="font-size:46px">✓</div><h2>התשלום הושלם</h2><p>ההזמנה אומתה בשרת והועברה למנגנון הטיפול.</p><div class="ahOrderId">${String(out.orderId||orderId)}</div><p class="ahMuted">PayPal Capture: <span dir="ltr">${String(out.captureId||'')}</span></p><button class="ahCheckoutSubmit" id="ahDone">סגור</button></div>`;
+      currentAttemptId=null;
+      document.getElementById('ahDone')?.addEventListener('click',close);
+    } catch(e) {
+      bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><h2>התשלום לא סומן כמושלם</h2><p class="ahCheckoutError show">${paypalMessage(e)}</p><div class="ahOrderId">${orderId}</div><p class="ahMuted">ההזמנה נשמרה לבדיקה; לא ניצור הזמנת ספק כאילו התשלום הצליח.</p><button class="ahCheckoutSubmit" id="ahDone">סגור</button></div>`;
+      document.getElementById('ahDone')?.addEventListener('click',close);
+    }
   }
 
   function customerFrom(form) {
@@ -98,6 +118,7 @@
     if(!r.ok||!d.ok){
       if(d.error==='sales_disabled') throw new Error('המכירות עדיין סגורות לבדיקות.');
       if(d.error==='product_unavailable') throw new Error('אחד המוצרים אינו זמין כרגע.');
+      if(d.error==='product_not_purchase_ready') throw new Error('אחד המוצרים עדיין אינו מוכן להזמנה.');
       if(d.error==='quantity_limit') throw new Error(`אפשר להזמין עד ${Number(d.maxQty||1)} יחידות.`);
       if(d.error==='terms_required') throw new Error('יש לאשר את תנאי השימוש.');
       if(d.error==='import_charges_consent_required') throw new Error('יש לאשר שהבנת את אומדן מסי היבוא האפשריים.');
@@ -123,23 +144,26 @@
     try{
       if(btn.dataset.stage==='quote'){
         btn.textContent='בודק מחיר ומשלוח…';const q=await postOrder(entries,c,true);applyQuote(q);
-        if(q.salesEnabled===false){document.getElementById('ahShippingStatus').textContent='בדיקת המשלוח הצליחה. המכירות עדיין סגורות עד סיום ה-Sandbox.';btn.dataset.stage='closed';btn.textContent='מצב בדיקות';btn.disabled=true;return;}
+        if(q.salesEnabled===false){document.getElementById('ahShippingStatus').textContent='בדיקת המשלוח הצליחה. המכירות עדיין סגורות עד סיום ההכנות למצב חי.';btn.dataset.stage='closed';btn.textContent='מצב בדיקות';btn.disabled=true;return;}
         if(q.shippingStatus!=='quoted') throw new Error('אין כרגע אפשרות משלוח מאומתת לכתובת הזאת.');
         document.getElementById('ahShippingStatus').textContent='המחיר והמשלוח אומתו. אפשר להמשיך.';btn.dataset.stage='finalize';btn.textContent='אישור והמשך ל-PayPal';btn.disabled=false;return;
       }
       if(btn.dataset.stage==='closed') throw new Error('המכירות עדיין סגורות לבדיקות.');
       btn.textContent='שומר הזמנה…';const result=await postOrder(entries,c,false);
-      bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><span class="ahPayPalBadge">PayPal Sandbox — בדיקות</span><h2>ההזמנה מוכנה לתשלום</h2><div class="ahOrderId">${String(result.orderId||'')}</div><p>מוצרים: <b>${money(result.discountedProductsSubtotal??result.productsSubtotal)}</b></p><p>משלוח: <b>${money(result.shippingCost||0)}</b></p><p><b>סה״כ לחיוב ב-PayPal: ${money(result.total)}</b></p><p id="ahPayPalStatus" class="ahPayPalStatus">עדיין לא בוצע חיוב.</p><div class="ahPayPalWrap" id="ahPayPalButtons"></div><button class="ahCheckoutSubmit" id="ahCloseNoPay" style="margin-top:12px;background:#eef1f4">סגור בלי לשלם</button></div>`;
-      document.getElementById('ahCloseNoPay')?.addEventListener('click',close);await renderPayPal(result);
+      renderPaymentStep(result);
     }catch(e){showError(e.message||'אירעה שגיאה.');btn.disabled=false;if(btn.dataset.stage==='quote')btn.textContent='בדיקת פרטים והמשך';else if(btn.dataset.stage==='closed'){btn.textContent='מצב בדיקות';btn.disabled=true;}else btn.textContent='אישור והמשך ל-PayPal';}
   }
 
   function renderForm() {
     const entries=cartEntries();currentAttemptId=attemptId();
     if(!entries.length){bodyBox.innerHTML='<div class="ahMuted" style="padding:30px;text-align:center">הסל ריק.</div>';overlay.classList.add('open');return;}
-    bodyBox.innerHTML=`<div class="ahCheckoutNote"><b>בדיקת מערכת מאובטחת.</b> השרת מאמת מחיר, מלאי ומשלוח מחדש לפני PayPal.</div><form id="ahCheckoutForm"><div class="ahCheckoutGrid"><div class="ahField full"><label>שם מלא *</label><input name="fullName" maxlength="80" required></div><div class="ahField"><label>טלפון *</label><input name="phone" maxlength="20" required></div><div class="ahField"><label>אימייל</label><input name="email" type="email" maxlength="120"></div><div class="ahField"><label>עיר *</label><input name="city" maxlength="80" required></div><div class="ahField"><label>רחוב *</label><input name="street" maxlength="100" required></div><div class="ahField"><label>מספר בית *</label><input name="houseNumber" maxlength="20" required></div><div class="ahField"><label>דירה</label><input name="apartment" maxlength="20"></div><div class="ahField"><label>מיקוד</label><input name="postalCode" maxlength="12"></div><div class="ahField full"><label>הערות</label><textarea name="notes" maxlength="300"></textarea></div><div class="ahField full"><label>קוד קופון</label><input id="ahCoupon" maxlength="40"></div><input name="website" style="position:absolute;left:-9999px" tabindex="-1"></div><label class="ahTerms"><input id="ahTerms" type="checkbox"><span>קראתי ואני מאשר את <a href="/policies" target="_blank">מדיניות ותנאי החנות</a>.</span></label><div class="ahCheckoutSummary"><div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(cartTotal(entries))}</span></div><div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחה</span><span id="ahDiscount" class="ahDiscount"></span></div><div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahMuted">יחושב</span></div><div class="ahCheckoutSummaryRow" id="ahShipmentPlanRow" style="display:none"><span>משלוחים</span><span id="ahShipmentPlan"></span></div><div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא אפשריים — לא נגבים באתר</span><span id="ahImportTax"></span></div><div class="ahCheckoutSummaryRow total"><span>סה״כ</span><span id="ahGrandTotal">${money(cartTotal(entries))}</span></div><small id="ahShippingStatus" class="ahMuted">עלות המשלוח תיבדק מול הספק.</small></div><label class="ahTerms" id="ahImportConsentWrap" style="display:none"><input id="ahImportConsent" type="checkbox"><span>הבנתי שייתכנו מסי יבוא/שחרור שאינם נגבים באתר.</span></label><div class="ahCheckoutError" id="ahCheckoutError"></div><button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button></form>`;
+    bodyBox.innerHTML=`<div class="ahCheckoutNote"><b>תשלום מאובטח.</b> השרת מאמת מחיר, מלאי ומשלוח מחדש לפני מעבר ל-PayPal.</div><form id="ahCheckoutForm"><div class="ahCheckoutGrid"><div class="ahField full"><label>שם מלא *</label><input name="fullName" maxlength="80" required></div><div class="ahField"><label>טלפון *</label><input name="phone" maxlength="20" required></div><div class="ahField"><label>אימייל</label><input name="email" type="email" maxlength="120"></div><div class="ahField"><label>עיר *</label><input name="city" maxlength="80" required></div><div class="ahField"><label>רחוב *</label><input name="street" maxlength="100" required></div><div class="ahField"><label>מספר בית *</label><input name="houseNumber" maxlength="20" required></div><div class="ahField"><label>דירה</label><input name="apartment" maxlength="20"></div><div class="ahField"><label>מיקוד</label><input name="postalCode" maxlength="12"></div><div class="ahField full"><label>הערות</label><textarea name="notes" maxlength="300"></textarea></div><div class="ahField full"><label>קוד קופון</label><input id="ahCoupon" maxlength="40"></div><input name="website" style="position:absolute;left:-9999px" tabindex="-1"></div><label class="ahTerms"><input id="ahTerms" type="checkbox"><span>קראתי ואני מאשר את <a href="/policies" target="_blank">מדיניות ותנאי החנות</a>.</span></label><div class="ahCheckoutSummary"><div class="ahCheckoutSummaryRow"><span>סה״כ מוצרים</span><span id="ahProductsSubtotal">${money(cartTotal(entries))}</span></div><div class="ahCheckoutSummaryRow" id="ahDiscountRow" style="display:none"><span>הנחה</span><span id="ahDiscount" class="ahDiscount"></span></div><div class="ahCheckoutSummaryRow"><span>משלוח</span><span id="ahShippingCost" class="ahMuted">יחושב</span></div><div class="ahCheckoutSummaryRow" id="ahShipmentPlanRow" style="display:none"><span>משלוחים</span><span id="ahShipmentPlan"></span></div><div class="ahCheckoutSummaryRow" id="ahImportTaxRow" style="display:none"><span>מסי יבוא אפשריים — לא נגבים באתר</span><span id="ahImportTax"></span></div><div class="ahCheckoutSummaryRow total"><span>סה״כ</span><span id="ahGrandTotal">${money(cartTotal(entries))}</span></div><small id="ahShippingStatus" class="ahMuted">עלות המשלוח תיבדק מול הספק.</small></div><label class="ahTerms" id="ahImportConsentWrap" style="display:none"><input id="ahImportConsent" type="checkbox"><span>הבנתי שייתכנו מסי יבוא/שחרור שאינם נגבים באתר.</span></label><div class="ahCheckoutError" id="ahCheckoutError"></div><button class="ahCheckoutSubmit" id="ahCheckoutSubmit" type="submit" data-stage="quote">בדיקת פרטים והמשך</button></form>`;
     document.getElementById('ahCheckoutForm').addEventListener('submit',submitCheckout);overlay.classList.add('open');
   }
 
-  overlay.querySelector('.ahCheckoutClose').addEventListener('click',close);overlay.addEventListener('click',e=>{if(e.target===overlay)close()});document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});window.checkoutNotice=renderForm;
+  overlay.querySelector('.ahCheckoutClose').addEventListener('click',close);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)close()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+  window.checkoutNotice=renderForm;
+  finishPayPalReturn().catch(()=>{});
 })();
