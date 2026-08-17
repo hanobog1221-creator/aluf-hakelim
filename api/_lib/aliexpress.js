@@ -6,8 +6,6 @@ const API_BASE = 'https://api-sg.aliexpress.com/rest';
 const TOP_API_BASE = 'https://gw.api.taobao.com/router/rest';
 const REFRESH_PATH = '/auth/token/refresh';
 const REFRESH_EARLY_MS = 30 * 60 * 1000;
-const STORE_URL = 'https://aluf-hakelim-v2-ready.vercel.app/';
-let dsStoreReportAttempted = false;
 
 function signAliExpress(params, appSecret, apiPath) {
   const keys = Object.keys(params)
@@ -33,6 +31,24 @@ function signTop(params, appSecret) {
   return crypto.createHmac('md5', appSecret).update(payload, 'utf8').digest('hex').toUpperCase();
 }
 
+function buildTopParams(method, businessParams, session, appSecret, date = new Date()) {
+  const params = {
+    method: String(method),
+    app_key: APP_KEY,
+    format: 'json',
+    sign_method: 'hmac',
+    timestamp: formatTopTimestamp(date),
+    v: '2.0'
+  };
+  if (session) params.session = String(session);
+  for (const [key, value] of Object.entries(businessParams || {})) {
+    if (value === undefined || value === null) continue;
+    params[key] = typeof value === 'string' ? value : JSON.stringify(value);
+  }
+  params.sign = signTop(params, appSecret);
+  return params;
+}
+
 function safeTopError(json, status) {
   const error = json?.error_response || null;
   const code = error?.sub_code || error?.code || `top_http_${status}`;
@@ -45,20 +61,7 @@ function safeTopError(json, status) {
 
 async function executeTopApi(method, businessParams = {}, session = null) {
   const { appSecret } = getServerConfig();
-  const params = {
-    method: String(method),
-    app_key: APP_KEY,
-    format: 'json',
-    sign_method: 'hmac',
-    timestamp: formatTopTimestamp(),
-    v: '2.0'
-  };
-  if (session) params.session = session;
-  for (const [key, value] of Object.entries(businessParams || {})) {
-    if (value === undefined || value === null) continue;
-    params[key] = typeof value === 'string' ? value : JSON.stringify(value);
-  }
-  params.sign = signTop(params, appSecret);
+  const params = buildTopParams(method, businessParams, session, appSecret);
 
   const response = await fetch(TOP_API_BASE, {
     method: 'POST',
@@ -73,36 +76,13 @@ async function executeTopApi(method, businessParams = {}, session = null) {
   try { json = JSON.parse(text); } catch {}
   if (!response.ok || !json || json.error_response) {
     const err = safeTopError(json, response.status);
-    console.warn('AliExpress TOP call failed', String(method), err.code, err.details);
     throw err;
   }
-  console.log('AliExpress TOP call succeeded', String(method));
   return json;
-}
-
-async function ensureDropshipperReported(session) {
-  if (dsStoreReportAttempted) return;
-  dsStoreReportAttempted = true;
-  try {
-    const json = await executeTopApi('aliexpress.ds.add.info', {
-      param0: { store_url: STORE_URL }
-    }, session);
-    const root = json?.aliexpress_ds_add_info_response || json;
-    console.log('AliExpress DS group diagnostic succeeded', JSON.stringify({
-      result: root?.result ?? null,
-      rsp_code: root?.rsp_code ?? null,
-      rsp_msg: root?.rsp_msg ?? null
-    }));
-  } catch (error) {
-    console.warn('AliExpress DS group diagnostic failed', String(error.code || error.message || error), String(error.details || '').slice(0, 300));
-  }
 }
 
 async function callTopApi(method, businessParams = {}, options = {}) {
   const session = options.session === false ? null : await getValidAccessToken();
-  if (session && method !== 'aliexpress.ds.add.info' && options.reportStore !== false) {
-    await ensureDropshipperReported(session);
-  }
   return executeTopApi(method, businessParams, session);
 }
 
@@ -230,8 +210,10 @@ module.exports = {
   TOP_API_BASE,
   signAliExpress,
   signTop,
+  buildTopParams,
   callTopApi,
   readTokenRow,
   refreshAccessToken,
   getValidAccessToken
 };
+
