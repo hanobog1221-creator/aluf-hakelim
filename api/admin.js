@@ -6,6 +6,7 @@ const handlers = {
   'orders': require('./_lib/admin-routes/orders'),
   'aliexpress-manual': require('./_lib/admin-routes/aliexpress-manual'),
   'aliexpress-tracking': require('./_lib/admin-routes/aliexpress-tracking'),
+  'aliexpress-payment-queue': require('./_lib/admin-routes/aliexpress-payment-queue'),
   'product-intake': require('./_lib/admin-routes/product-intake'),
   'products': require('./_lib/admin-routes/products'),
   'session': require('./_lib/admin-routes/session'),
@@ -16,6 +17,7 @@ const handlers = {
   'cj-worker-orders': require('./_lib/admin-routes/cj-worker-orders'),
   'paypal-test': require('./_lib/admin-routes/paypal-test'),
   'paypal-refund': require('./_lib/admin-routes/paypal-refund'),
+  'paypal-credentials': require('./_lib/admin-routes/paypal-credentials'),
   'launch-readiness': require('./_lib/admin-routes/launch-readiness')
 };
 

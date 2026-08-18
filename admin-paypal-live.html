@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>PayPal Live · אלוף הכלים</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f4f6;color:#151b23;font-family:Arial,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:760px;margin:32px auto;padding:0 16px}.card{background:#fff;border:1px solid #dfe4e8;border-radius:18px;padding:22px;box-shadow:0 18px 50px #0000000d}h1{margin:0 0 8px;font-size:28px}.muted{color:#687582;font-size:13px;line-height:1.65}.status{margin:16px 0;padding:13px 14px;border-radius:11px;background:#eef2f5;line-height:1.55}.good{background:#e8f7ee;color:#12653a}.bad{background:#fff0ee;color:#a52218}.warn{background:#fff6d9;color:#7b5b00}.field{display:flex;flex-direction:column;gap:6px;margin:12px 0}.field label{font-size:13px;font-weight:900}.field input,.field select{width:100%;border:1px solid #cbd3da;border-radius:10px;padding:12px;font:inherit;background:#fff;direction:ltr}.check{display:flex;align-items:flex-start;gap:9px;margin:14px 0;padding:12px;border:1px solid #e0e5e9;border-radius:10px;background:#fafbfc;font-size:13px;line-height:1.55}.check input{width:18px;height:18px;flex:0 0 auto}.btn{width:100%;border:0;border-radius:11px;padding:14px;background:#ffc928;color:#17120b;font-size:16px;font-weight:950;cursor:pointer}.btn:disabled{opacity:.55}.links{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.link{display:inline-block;text-decoration:none;background:#111923;color:#fff;border-radius:9px;padding:9px 12px;font-size:13px;font-weight:850}.danger{font-size:12px;color:#7a3030;line-height:1.6;margin-top:14px}.code{direction:ltr;font-family:monospace}
+</style>
+</head>
+<body>
+<main class="wrap"><section class="card">
+<h1>הגדרת PayPal Live</h1>
+<p class="muted">הפרטים נשלחים רק לשרת. ה־Secret לא מוחזר לדפדפן אחרי שמירה ולא מוצג בסטטוס. לפני שמירה השרת מבקש Access Token ישירות מ־PayPal בסביבה שבחרת.</p>
+<div id="status" class="status">בודק מצב נוכחי…</div>
+<form id="form">
+  <div class="field"><label>סביבה</label><select id="environment"><option value="live" selected>Live</option><option value="sandbox">Sandbox</option></select></div>
+  <div class="field"><label>Client ID</label><input id="clientId" type="text" autocomplete="off" spellcheck="false" required minlength="20" maxlength="500"></div>
+  <div class="field"><label>Client Secret</label><input id="secret" type="password" autocomplete="new-password" spellcheck="false" required minlength="20" maxlength="500"></div>
+  <label class="check"><input id="confirmLive" type="checkbox"><span>אני מאשר שאלו פרטי <b>Live</b> אמיתיים של אפליקציית PayPal ולא פרטי Sandbox. הבדיקה עצמה לא מחייבת כסף.</span></label>
+  <button class="btn" id="save" type="submit">אמת מול PayPal ושמור</button>
+</form>
+<div class="links"><a class="link" href="/launch-checklist.html">Launch Readiness</a><a class="link" href="/admin">חזרה לניהול</a></div>
+<p class="danger">שמירת Live credentials אינה פותחת את המכירות אוטומטית. מתג המכירות נשאר כבוי עד שכל שערי ההשקה עברו.</p>
+</section></main>
+<script>
+const statusEl=document.getElementById('status');
+const form=document.getElementById('form');
+const save=document.getElementById('save');
+function status(text,kind=''){statusEl.textContent=text;statusEl.className='status '+kind;}
+async function req(options={}){const r=await fetch('/api/admin?route=paypal-credentials',options);const d=await r.json().catch(()=>({}));if(!r.ok||d.ok!==true){const e=new Error(String(d.error||'request_failed'));e.status=r.status;throw e;}return d;}
+function describe(d){if(!d.configured)return 'PayPal עדיין לא מוגדר.';const env=d.environment==='live'?'LIVE':'Sandbox';return `PayPal מוגדר · ${env} · מקור: ${d.source==='stored'?'הגדרת אדמין':'סביבת שרת'}${d.updatedAt?' · עודכן '+new Date(d.updatedAt).toLocaleString('he-IL'):''}`;}
+async function boot(){try{const d=await req();status(describe(d),d.liveReady?'good':d.configured?'warn':'bad');}catch(e){status(e.status===401?'צריך להתחבר לאדמין לפני הגדרת PayPal.':'לא ניתן לקרוא מצב PayPal: '+e.message,'bad');}}
+document.getElementById('environment').addEventListener('change',(e)=>{document.getElementById('confirmLive').disabled=e.target.value!=='live';if(e.target.value!=='live')document.getElementById('confirmLive').checked=false;});
+form.addEventListener('submit',async(e)=>{e.preventDefault();save.disabled=true;status('מאמת את הפרטים ישירות מול PayPal…');try{const environment=document.getElementById('environment').value;const d=await req({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({environment,clientId:document.getElementById('clientId').value.trim(),secret:document.getElementById('secret').value.trim(),confirmLive:environment!=='live'||document.getElementById('confirmLive').checked})});document.getElementById('secret').value='';document.getElementById('clientId').value='';status('הפרטים אומתו ונשמרו ✅ · '+describe(d),'good');}catch(err){const map={paypal_credentials_invalid:'PayPal דחה את ה־Client ID/Secret בסביבה שנבחרה.',paypal_live_confirmation_required:'יש לסמן אישור שמדובר בפרטי Live.',paypal_credentials_incomplete:'Client ID או Secret חסרים/קצרים מדי.',paypal_validation_unreachable:'לא הצלחנו להגיע לשרת האימות של PayPal.'};status(map[err.message]||('השמירה נכשלה: '+err.message),'bad');}finally{save.disabled=false;}});
+boot();
+</script>
+</body>
+</html>

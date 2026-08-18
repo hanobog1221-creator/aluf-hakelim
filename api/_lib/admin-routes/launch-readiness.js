@@ -1,5 +1,5 @@
 const { requireAdmin, config, dbHeaders } = require('../admin');
-const { readProviderCredentials } = require('../provider-credentials');
+const { readProviderCredentials, readPayPalRuntimeCredentials } = require('../provider-credentials');
 const { sandboxMode, autoPayEnabled, getBalanceUsd } = require('../cj-fulfillment');
 const { aliExpressCreateEnabled, aliExpressAutoPayAuthorized } = require('../aliexpress-fulfillment');
 
@@ -13,12 +13,6 @@ const ALIEXPRESS_CRON = { jobname: 'aliexpress-catalog-hourly', schedule: '12 * 
 
 function clean(value, max = 200) { return String(value ?? '').trim().slice(0, max); }
 function bool(value) { return value === true; }
-function paypalEnvironment(stored) {
-  const raw = clean(process.env.PAYPAL_ENVIRONMENT || process.env.PAYPAL_ENV || stored?.environment || 'sandbox', 20).toLowerCase();
-  return raw === 'live' ? 'live' : 'sandbox';
-}
-function hasPayPalClientId(stored) { return Boolean(clean(process.env.PAYPAL_CLIENT_ID || stored?.client_id, 500)); }
-function hasPayPalSecret(stored) { return Boolean(clean(process.env.PAYPAL_CLIENT_SECRET || stored?.client_secret, 500)); }
 function hasCjApiKey(stored) { return Boolean(clean(process.env.CJ_API_KEY || stored?.api_key, 500)); }
 function hasTracking(order) {
   if (clean(order?.tracking_number, 300)) return true;
@@ -41,7 +35,7 @@ module.exports = async function handler(req, res) {
   try {
     const { supabaseUrl } = config();
     const headers = dbHeaders();
-    const [settingsRows, readinessRows, orders, attempts, cronRows, refundRequests, refundExpenses, paypalStored, cjStored] = await Promise.all([
+    const [settingsRows, readinessRows, orders, attempts, cronRows, refundRequests, refundExpenses, paypalRuntime, cjStored] = await Promise.all([
       dbJson(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils,payment_quote_ttl_minutes,business_legal_name,business_tax_id,business_type,business_address,business_phone,support_email&limit=1`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,name,active,supplier,ready_for_paid_order,blockers,last_sync_at,shipping_last_checked_at&order=id.asc`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/orders?select=order_id,status,payment_status,fulfillment_status,supplier_order_id,tracking_number,tracking_numbers,created_at,updated_at&order=created_at.desc&limit=60`, { headers }),
@@ -49,7 +43,7 @@ module.exports = async function handler(req, res) {
       dbJson(`${supabaseUrl}/rest/v1/rpc/get_launch_cron_status`, { method: 'POST', headers: dbHeaders({ 'Content-Type': 'application/json' }), body: '{}' }),
       dbJson(`${supabaseUrl}/rest/v1/payment_refund_requests?provider=eq.paypal&status=eq.completed&select=request_id,order_id,requested_amount,currency,provider_refund_id,status,created_at&order=created_at.desc&limit=30`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/business_expenses?source=eq.paypal_refund&category=eq.refund&select=order_id,amount,currency,source_key,created_at&order=created_at.desc&limit=60`, { headers }),
-      readProviderCredentials('paypal').catch(() => null),
+      readPayPalRuntimeCredentials().catch(() => null),
       readProviderCredentials('cj').catch(() => null)
     ]);
 
@@ -105,8 +99,8 @@ module.exports = async function handler(req, res) {
     );
     const workersReady = aliExpressWorkerReady && cjWorkersReady;
 
-    const ppEnv = paypalEnvironment(paypalStored);
-    const paypalConfigured = hasPayPalClientId(paypalStored) && hasPayPalSecret(paypalStored);
+    const ppEnv = clean(paypalRuntime?.environment || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox';
+    const paypalConfigured = paypalRuntime?.configured === true;
     const paypalLiveReady = paypalConfigured && ppEnv === 'live';
 
     const cjConfigured = hasCjApiKey(cjStored);
@@ -193,6 +187,7 @@ module.exports = async function handler(req, res) {
         refundE2EOrderId: refundE2ERequest?.order_id || null,
         paypalConfigured,
         paypalEnvironment: ppEnv,
+        paypalCredentialSource: paypalRuntime?.source || 'none',
         paypalLiveReady
       },
       fulfillment: {
