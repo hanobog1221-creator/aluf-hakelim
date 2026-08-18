@@ -24,7 +24,8 @@ function sampleOrder() {
         id: 'impact',
         qty: 2,
         supplierProductId: '1005010616492119',
-        supplierSkuId: '14:70221'
+        supplierSkuId: '12000059637959044',
+        supplierSkuAttr: '14:70221'
       }
     ],
     shipping_quote: {
@@ -50,7 +51,7 @@ test('builds one real supplier request per supplier identity', () => {
   order.items[0].supplierId = 'store-a';
   order.items.push({
     id: 'socket', qty: 1, supplierId: 'store-b',
-    supplierProductId: '1005012906553288', supplierSkuId: '14:123'
+    supplierProductId: '1005012906553288', supplierSkuId: '12000059733222329', supplierSkuAttr: '14:123'
   });
   order.shipping_quote.lines.push({ id: 'socket', serviceName: 'AliExpress Standard Shipping' });
   const groups = buildPlaceOrderRequests(order);
@@ -63,7 +64,7 @@ test('missing seller identity falls back to one safe request per product', () =>
   const order = sampleOrder();
   order.items.push({
     id: 'socket', qty: 1,
-    supplierProductId: '1005012906553288', supplierSkuId: '14:123'
+    supplierProductId: '1005012906553288', supplierSkuId: '12000059733222329', supplierSkuAttr: '14:123'
   });
   order.shipping_quote.lines.push({ id: 'socket', serviceName: 'AliExpress Standard Shipping' });
   const groups = buildPlaceOrderRequests(order);
@@ -73,6 +74,12 @@ test('missing seller identity falls back to one safe request per product', () =>
     'product:1005012906553288'
   ]);
   assert.equal(groups.every((group) => group.request.product_items.length === 1), true);
+});
+
+test('numeric SKU ID cannot replace the SKU attribute path required by placeorder', () => {
+  const order = sampleOrder();
+  delete order.items[0].supplierSkuAttr;
+  assert.throws(() => buildPlaceOrderRequest(order), /invalid_supplier_sku_attr_impact/);
 });
 
 test('buildPlaceOrderRequest requires an exact shipping service', () => {
