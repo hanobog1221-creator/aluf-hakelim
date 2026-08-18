@@ -28,7 +28,7 @@ function statusHe(v){return ({draft:'טיוטה',payment_pending:'ממתין ל�
 async function api(url,options={}){const r=await fetch(url,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await r.json().catch(()=>({}));if(r.status===401){showLogin();throw new Error('unauthorized')}if(!r.ok||!data.ok)throw new Error(data.error||'request_failed');return data}
 const protectedNavIds=['logoutBtn','suppliersLink','fulfillmentLink','accountingLink','refundsLink','toolsLink','storeLink'];
 function showLogin(){$('#loginBox').classList.remove('hidden');$('#app').classList.add('hidden');protectedNavIds.forEach(id=>$('#'+id).classList.add('hidden'))}
-function showApp(){$('#loginBox').classList.add('hidden');$('#app').classList.remove('hidden');protectedNavIds.forEach(id=>$('#'+id).classList.remove('hidden'))}
+function showApp(){$('#loginBox').classList.add('hidden');$('#app').classList.remove('hidden');protectedNavIds.forEach(id=>$('#'+id).classList.remove('hidden'));window.dispatchEvent(new Event('ah-admin-authenticated'))}
 async function login(){const btn=$('#loginBtn');btn.disabled=true;$('#loginError').classList.remove('show');try{await api('/api/admin/login',{method:'POST',body:JSON.stringify({username:$('#username').value,password:$('#password').value})});$('#password').value='';await loadAll();showApp()}catch(e){if(e.message!=='unauthorized')$('#loginError').classList.add('show')}finally{btn.disabled=false}}
 async function logout(){try{await api('/api/admin/logout',{method:'POST',body:'{}'})}catch{}showLogin()}
 async function loadAll(){const [p,o]=await Promise.all([api('/api/admin/products'),api('/api/admin/orders?limit=200')]);state.products=p.products||[];state.orders=o.orders||[];renderAll()}
@@ -47,6 +47,7 @@ async function saveOrder(id){const card=document.querySelector(`[data-order="${C
 document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));btn.classList.add('active');const tab=btn.dataset.tab;$('#productsTab').classList.toggle('hidden',tab!=='products');$('#ordersTab').classList.toggle('hidden',tab!=='orders')}));
 $('#loginBtn').addEventListener('click',login);$('#password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});$('#logoutBtn').addEventListener('click',logout);$('#newProductBtn').addEventListener('click',()=>$('#newProductBox').classList.toggle('open'));$('#createProductBtn').addEventListener('click',createProduct);$('#resolveSupplierBtn').addEventListener('click',()=>resolveNewSupplierLink(false));$('#npSupplierUrl').addEventListener('blur',()=>{if(!$('#npProductId').value.trim())resolveNewSupplierLink(true)});$('#refreshOrdersBtn').addEventListener('click',()=>refreshOrders().catch(()=>{}));loadAll().then(showApp).catch(()=>showLogin());
 </script>
+<script src="/admin-payment-alert.js"></script>
 <script src="/admin-enhancements.js"></script>
 </body>
 </html>
