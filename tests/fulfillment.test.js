@@ -16,7 +16,8 @@ function baseOrder(overrides = {}) {
       supplier: 'aliexpress',
       fulfillmentReady: true,
       supplierProductId: '1005010616492119',
-      supplierSkuId: '14:12345',
+      supplierSkuId: '12000059637959044',
+      supplierSkuAttr: '14:12345',
       qty: 1,
       price: 100
     }],
@@ -39,7 +40,8 @@ function baseProduct(overrides = {}) {
     max_order_quantity: 20,
     supplier: 'aliexpress',
     supplier_product_id: '1005010616492119',
-    supplier_sku_id: '14:12345',
+    supplier_sku_id: '12000059637959044',
+    supplier_sku_attr: '14:12345',
     fulfillment_ready: true,
     supplier_price_ils: 50,
     supplier_shipping: 5,
@@ -68,6 +70,20 @@ test('global sales switch blocks fulfillment even for an already-paid order', ()
   const result = validateFulfillmentOrder(baseOrder(), state(baseProduct(), { sales_enabled: false }));
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'sales_disabled');
+});
+
+test('blocks an AliExpress order that did not snapshot a verified SKU attribute path', () => {
+  const order = baseOrder();
+  delete order.items[0].supplierSkuAttr;
+  const result = validateFulfillmentOrder(order, state());
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'supplier_sku_attr_not_verified');
+});
+
+test('blocks when the AliExpress SKU attribute mapping changed after checkout', () => {
+  const result = validateFulfillmentOrder(baseOrder(), state(baseProduct({ supplier_sku_attr: '14:DIFFERENT' })));
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'supplier_mapping_changed');
 });
 
 test('blocks unknown supplier stock', () => {
