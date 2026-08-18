@@ -10,7 +10,9 @@
     if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
 
     if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    const visibleProducts = data.products.filter((product) => product.available !== false && product.purchaseReady === true);
+    // Keep every active catalog item visible while supplier verification is pending.
+    // Purchase controls below remain fail-closed until purchaseReady is true.
+    const visibleProducts = data.products.filter((product) => product.available !== false);
     products.splice(0, products.length, ...visibleProducts);
     const store = data.store || {};
 
