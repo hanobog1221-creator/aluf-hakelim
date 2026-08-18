@@ -322,7 +322,7 @@ module.exports = async function handler(req, res) {
     const uniqueIds = [...new Set(requested.map((item) => item.id))];
     const idFilter = uniqueIds.join(',');
     const productResponse = await fetch(
-      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,max_order_quantity,supplier,supplier_id,supplier_url,supplier_product_id,supplier_sku_id,variant_label,alternative_suppliers,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
+      `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,currency,active,max_order_quantity,supplier,supplier_id,supplier_url,supplier_product_id,supplier_sku_id,supplier_sku_attr,variant_label,alternative_suppliers,fulfillment_ready,supplier_in_stock,supplier_shipping_available,supplier_shipping,shipping_currency,last_sync_at,supplier_ship_from_country&id=in.(${encodeURIComponent(idFilter)})`,
       { headers: serverHeaders({}, serviceKey) }
     );
 
@@ -342,12 +342,14 @@ module.exports = async function handler(req, res) {
         return res.status(409).json({ ok: false, error: 'product_unavailable', productId: item.id });
       }
 
+      const isAliExpress = String(product.supplier || '').trim().toLowerCase() === 'aliexpress';
       if (!quoteOnly && (
         product.fulfillment_ready !== true ||
         product.supplier_in_stock !== true ||
         product.supplier_shipping_available !== true ||
         !product.supplier_product_id ||
-        !product.supplier_sku_id
+        !product.supplier_sku_id ||
+        (isAliExpress && !product.supplier_sku_attr)
       )) {
         return res.status(409).json({ ok: false, error: 'product_not_purchase_ready', productId: item.id });
       }
@@ -377,6 +379,7 @@ module.exports = async function handler(req, res) {
         supplierUrl: product.supplier_url || null,
         supplierProductId: product.supplier_product_id || null,
         supplierSkuId: product.supplier_sku_id || null,
+        supplierSkuAttr: product.supplier_sku_attr || null,
         supplierShipFromCountry: product.supplier_ship_from_country || 'CN',
         fulfillmentReady: Boolean(product.fulfillment_ready),
         supplierStockKnown: product.supplier_in_stock !== null,
