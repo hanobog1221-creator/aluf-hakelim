@@ -59,6 +59,22 @@ test('builds one real supplier request per supplier identity', () => {
   assert.equal(groups.every((group) => group.request.product_items.length === 1), true);
 });
 
+test('missing seller identity falls back to one safe request per product', () => {
+  const order = sampleOrder();
+  order.items.push({
+    id: 'socket', qty: 1,
+    supplierProductId: '1005012906553288', supplierSkuId: '14:123'
+  });
+  order.shipping_quote.lines.push({ id: 'socket', serviceName: 'AliExpress Standard Shipping' });
+  const groups = buildPlaceOrderRequests(order);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((group) => group.supplierId), [
+    'product:1005010616492119',
+    'product:1005012906553288'
+  ]);
+  assert.equal(groups.every((group) => group.request.product_items.length === 1), true);
+});
+
 test('buildPlaceOrderRequest requires an exact shipping service', () => {
   const order = sampleOrder();
   order.shipping_quote.lines = [];
@@ -135,4 +151,3 @@ test('normalizeOrderIds deduplicates and rejects invalid IDs', () => {
     ['100001', '200002']
   );
 });
-
