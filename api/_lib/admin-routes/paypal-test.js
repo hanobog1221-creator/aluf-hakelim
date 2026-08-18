@@ -1,13 +1,12 @@
 const crypto = require('crypto');
 const { requireAdmin, config, dbHeaders, audit } = require('../admin');
 const { quoteCjFreight } = require('../shipping');
-const { readProviderCredentials } = require('../provider-credentials');
+const { readPayPalRuntimeCredentials } = require('../provider-credentials');
 
 const TERMS_VERSION = '2026-08-17-import-compliance';
 const ADMIN_NOTE = 'ADMIN PAYPAL SANDBOX TEST - NO LIVE SALE';
 
 function clean(value, max = 200) { return String(value ?? '').trim().slice(0, max); }
-function paypalEnvironment(value) { return clean(value || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox'; }
 
 async function dbGet(path) {
   const { supabaseUrl } = config();
@@ -17,8 +16,8 @@ async function dbGet(path) {
 }
 
 async function paypalEnv() {
-  const stored = await readProviderCredentials('paypal').catch(() => null);
-  return paypalEnvironment(process.env.PAYPAL_ENVIRONMENT || process.env.PAYPAL_ENV || stored?.environment || 'sandbox');
+  const runtime = await readPayPalRuntimeCredentials();
+  return runtime?.environment === 'live' ? 'live' : 'sandbox';
 }
 
 async function readyCjProduct() {
