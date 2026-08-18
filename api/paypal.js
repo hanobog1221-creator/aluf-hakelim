@@ -80,11 +80,19 @@ async function handleCreate(req,res,body){
   const returnPath=sandboxTest?'/admin-paypal-test.html':'/';
   const returnUrl=`${origin}${returnPath}?paypal=approved&storeOrderId=${encodeURIComponent(orderId)}`;
   const cancelUrl=`${origin}${returnPath}?paypal=cancelled&storeOrderId=${encodeURIComponent(orderId)}`;
-  const created=await paypalRequest(cfg,'/v2/checkout/orders',{method:'POST',requestId:`create-${orderId}`,body:{
-    intent:'CAPTURE',
-    purchase_units:[{reference_id:orderId,custom_id:orderId,invoice_id:orderId,description:sandboxTest?'Aluf Hakelim sandbox test':'Aluf Hakelim order',amount:{currency_code:cfg.currency,value}}],
-    payment_source:{paypal:{experience_context:{return_url:returnUrl,cancel_url:cancelUrl,user_action:'PAY_NOW',shipping_preference:'NO_SHIPPING',locale:'he-IL'}}
-  }});
+  const created=await paypalRequest(cfg,'/v2/checkout/orders',{
+    method:'POST',
+    requestId:`create-${orderId}`,
+    body:{
+      intent:'CAPTURE',
+      purchase_units:[{reference_id:orderId,custom_id:orderId,invoice_id:orderId,description:sandboxTest?'Aluf Hakelim sandbox test':'Aluf Hakelim order',amount:{currency_code:cfg.currency,value}}],
+      payment_source:{
+        paypal:{
+          experience_context:{return_url:returnUrl,cancel_url:cancelUrl,user_action:'PAY_NOW',shipping_preference:'NO_SHIPPING',locale:'he-IL'}
+        }
+      }
+    }
+  });
   if(!created?.id)throw new Error('paypal_order_id_missing');
   const approveUrl=approvalLink(created,cfg.environment);if(!approveUrl)throw new Error('paypal_approval_url_missing');
   await markPaymentPending(orderId,created.id);
