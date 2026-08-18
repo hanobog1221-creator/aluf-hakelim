@@ -18,16 +18,30 @@ function skuRows(result) {
   );
 }
 
-function skuLabel(sku) {
-  const props = toArray(
+function skuProperties(sku) {
+  return toArray(
     sku?.ae_sku_property_dtos?.ae_sku_property_d_t_o ||
     sku?.aeop_s_k_u_propertys?.aeop_sku_property ||
     sku?.aeop_s_k_u_property_list?.aeop_sku_property ||
     []
   );
-  return props.map((p) =>
+}
+
+function skuLabel(sku) {
+  return skuProperties(sku).map((p) =>
     p?.property_value_definition_name || p?.sku_property_value || p?.property_value_id || ''
   ).filter(Boolean).join(' / ');
+}
+
+function skuAttributePath(sku) {
+  const direct = String(sku?.sku_attr ?? sku?.id ?? '').trim();
+  if (direct && direct.length <= 1000) return direct;
+  const pairs = skuProperties(sku).map((p) => {
+    const propertyId = String(p?.sku_property_id ?? p?.property_id ?? '').trim();
+    const valueId = String(p?.property_value_id ?? p?.sku_property_value_id ?? '').trim();
+    return propertyId && valueId ? `${propertyId}:${valueId}` : '';
+  }).filter(Boolean);
+  return pairs.length ? pairs.join(';').slice(0, 1000) : null;
 }
 
 function normalizedSku(sku) {
@@ -38,8 +52,10 @@ function normalizedSku(sku) {
     : (Number.isFinite(stockCount) ? stockCount > 0 : null);
   const priceRaw = sku?.offer_sale_price ?? sku?.sku_price;
   const price = priceRaw == null ? null : Number(priceRaw);
+  const idRaw = sku?.sku_id ?? sku?.s_k_u_id ?? sku?.id;
   return {
-    id: (sku?.sku_id ?? sku?.id) == null ? null : String(sku.sku_id ?? sku.id),
+    id: idRaw == null ? null : String(idRaw),
+    attr: skuAttributePath(sku),
     label: skuLabel(sku),
     inStock,
     stock: Number.isFinite(stockCount) ? stockCount : null,
@@ -150,10 +166,13 @@ async function updateProduct(product, snapshot) {
 
   const now = new Date().toISOString();
   const skuVerified = Boolean(selected);
+  const skuAttrVerified = Boolean(selected?.attr);
   const shippingAvailable = Boolean(freight);
-  const ready = Boolean(product.active === true && skuVerified && selected.inStock === true && shippingAvailable && supplierPriceIls != null);
+  const ready = Boolean(product.active === true && skuVerified && skuAttrVerified && selected.inStock === true && shippingAvailable && supplierPriceIls != null);
+  const supplierError = selectedMissing ? 'selected_sku_missing' : (!skuAttrVerified ? 'selected_sku_attr_missing' : null);
   const update = {
     supplier_sku_id: selected?.id || selectedId || null,
+    supplier_sku_attr: selected?.attr || null,
     variant_label: selected?.label || product.variant_label || null,
     supplier_in_stock: selectedMissing ? false : inStock,
     supplier_stock: selected?.stock ?? null,
@@ -161,10 +180,10 @@ async function updateProduct(product, snapshot) {
     supplier_currency: source?.currency || null,
     supplier_price_ils: supplierPriceIls,
     last_sync_at: now,
-    supplier_sync_error: selectedMissing ? 'selected_sku_missing' : null,
+    supplier_sync_error: supplierError,
     shipping_sync_error: shippingError,
-    sku_verified_at: skuVerified ? now : null,
-    sku_verified_by: skuVerified ? 'supplier_sync' : null,
+    sku_verified_at: skuVerified && skuAttrVerified ? now : null,
+    sku_verified_by: skuVerified && skuAttrVerified ? 'supplier_sync' : null,
     fulfillment_ready: ready,
     updated_at: now
   };
@@ -226,7 +245,7 @@ async function syncAllActiveAliExpressProducts() {
     try {
       const snapshot = await callProduct(product.supplier_product_id);
       const saved = await updateProduct(product, snapshot);
-      results.push({ id: product.id, ok: true, ready: saved.ready, inStock: saved.update.supplier_in_stock, shippingAvailable: saved.update.supplier_shipping_available });
+      results.push({ id: product.id, ok: true, ready: saved.ready, inStock: saved.update.supplier_in_stock, shippingAvailable: saved.update.supplier_shipping_available, skuAttrReady: Boolean(saved.update.supplier_sku_attr) });
     } catch (error) {
       const message = await markError(product, error);
       results.push({ id: product.id, ok: false, error: message });
