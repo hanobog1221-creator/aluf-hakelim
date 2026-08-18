@@ -1,3 +1,5 @@
+const NO_SKU_ATTR = '__NO_ATTR__';
+
 function clean(value, max = 200) {
   const text = String(value || '').trim();
   return text ? text.slice(0, max) : null;
@@ -37,22 +39,26 @@ function buildPlaceOrderRequest(order, shippingQuoteOverride = null) {
 
   const productItems = items.map((item) => {
     const productId = String(item.supplierProductId || '');
-    const skuAttr = String(item.supplierSkuAttr || '').trim();
+    const storedSkuAttr = String(item.supplierSkuAttr || '').trim();
     const qty = Number(item.qty || 0);
     if (!/^\d{8,20}$/.test(productId)) throw new Error(`invalid_supplier_product_id_${item.id}`);
-    if (!skuAttr || skuAttr.length > 1000) throw new Error(`invalid_supplier_sku_attr_${item.id}`);
+    if (!storedSkuAttr || storedSkuAttr.length > 1000) throw new Error(`invalid_supplier_sku_attr_${item.id}`);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new Error(`invalid_supplier_quantity_${item.id}`);
 
     const shipping = shippingByProduct.get(String(item.id));
     const serviceName = clean(shipping?.serviceName, 120);
     if (!serviceName) throw new Error(`shipping_service_missing_${item.id}`);
 
-    return {
+    const productItem = {
       product_count: qty,
       product_id: Number(productId),
-      sku_attr: skuAttr,
       logistics_service_name: serviceName
     };
+    // AliExpress documents sku_attr as optional. The sentinel is only persisted after
+    // the catalog API verifies a single SKU, an explicit empty sku_attr field and no
+    // SKU properties. In that case omitting sku_attr is the faithful supplier request.
+    if (storedSkuAttr !== NO_SKU_ATTR) productItem.sku_attr = storedSkuAttr;
+    return productItem;
   });
 
   return {
@@ -77,8 +83,6 @@ function supplierGroupKey(item) {
   if (supplierId) return { key: `supplier:${supplierId}`, supplierId };
   const productId = String(item?.supplierProductId || '').trim();
   if (!/^\d{8,20}$/.test(productId)) throw new Error(`supplier_identity_missing_${item?.id || 'item'}`);
-  // When the seller identity is unavailable, never combine different products.
-  // A per-product request is safer than accidentally mixing separate AliExpress sellers.
   return { key: `product:${productId}`, supplierId: `product:${productId}` };
 }
 
@@ -108,7 +112,7 @@ function safePreview(request) {
     },
     product_items: request.product_items.map((item) => ({
       product_id: item.product_id,
-      sku_attr: item.sku_attr,
+      sku_attr: item.sku_attr ?? null,
       product_count: item.product_count,
       logistics_service_name: item.logistics_service_name
     }))
@@ -140,53 +144,24 @@ function parsePlaceOrderResponse(json) {
     const errorCode = clean(result.error_code ?? result.errorCode, 120);
     const errorMessage = clean(result.error_msg ?? result.errorMsg, 500);
 
-    if (success && orderIds.length) {
-      return { outcome: 'created', orderIds, errorCode, errorMessage, shouldReconcile: false };
-    }
-    if (errorCode === 'REPEATED_ORDER_ERROR') {
-      return { outcome: 'ambiguous', orderIds, errorCode, errorMessage, shouldReconcile: true };
-    }
-    if (success && !orderIds.length) {
-      return {
-        outcome: 'ambiguous',
-        orderIds: [],
-        errorCode: errorCode || 'success_without_order_ids',
-        errorMessage,
-        shouldReconcile: true
-      };
-    }
-    return {
-      outcome: 'failed',
-      orderIds,
-      errorCode: errorCode || 'place_order_failed',
-      errorMessage,
-      shouldReconcile: false
-    };
+    if (success && orderIds.length) return { outcome: 'created', orderIds, errorCode, errorMessage, shouldReconcile: false };
+    if (errorCode === 'REPEATED_ORDER_ERROR') return { outcome: 'ambiguous', orderIds, errorCode, errorMessage, shouldReconcile: true };
+    if (success && !orderIds.length) return { outcome: 'ambiguous', orderIds: [], errorCode: errorCode || 'success_without_order_ids', errorMessage, shouldReconcile: true };
+    return { outcome: 'failed', orderIds, errorCode: errorCode || 'place_order_failed', errorMessage, shouldReconcile: false };
   }
 
   if (apiError) {
     const errorCode = clean(apiError.sub_code ?? apiError.subCode ?? apiError.code, 120) || 'api_error';
     const errorMessage = clean(apiError.sub_msg ?? apiError.subMsg ?? apiError.msg, 500);
     const repeated = errorCode === 'REPEATED_ORDER_ERROR' || errorMessage === 'REPEATED_ORDER_ERROR';
-    return {
-      outcome: repeated ? 'ambiguous' : 'failed',
-      orderIds: [],
-      errorCode,
-      errorMessage,
-      shouldReconcile: repeated
-    };
+    return { outcome: repeated ? 'ambiguous' : 'failed', orderIds: [], errorCode, errorMessage, shouldReconcile: repeated };
   }
 
-  return {
-    outcome: 'ambiguous',
-    orderIds: [],
-    errorCode: 'unexpected_place_order_response',
-    errorMessage: null,
-    shouldReconcile: true
-  };
+  return { outcome: 'ambiguous', orderIds: [], errorCode: 'unexpected_place_order_response', errorMessage: null, shouldReconcile: true };
 }
 
 module.exports = {
+  NO_SKU_ATTR,
   buildPlaceOrderRequest,
   buildPlaceOrderRequests,
   safePreview,
