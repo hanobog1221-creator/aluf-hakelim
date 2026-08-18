@@ -4,7 +4,7 @@ const { aliExpressLiveAutomationReady } = require('./_lib/aliexpress-fulfillment
 const { enabled: manualAliExpressEnabled } = require('./_lib/manual-aliexpress-fulfillment');
 const { fulfillPaidOrder } = require('./_lib/paid-order-fulfillment');
 const { paypalSettlement } = require('./_lib/paypal-finance');
-const { readProviderCredentials } = require('./_lib/provider-credentials');
+const { readPayPalRuntimeCredentials } = require('./_lib/provider-credentials');
 
 function clean(value, max = 200) { return String(value ?? '').trim().slice(0, max); }
 function normalizedPayPalEnvironment(value) { return clean(value || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox'; }
@@ -28,10 +28,10 @@ function approvalLink(created, environment) {
   }
 }
 async function paypalConfig() {
-  const stored = await readProviderCredentials('paypal').catch(() => null);
-  const clientId = clean(process.env.PAYPAL_CLIENT_ID || stored?.client_id, 300);
-  const secret = clean(process.env.PAYPAL_CLIENT_SECRET || stored?.client_secret, 300);
-  const environment = normalizedPayPalEnvironment(process.env.PAYPAL_ENVIRONMENT || process.env.PAYPAL_ENV || stored?.environment || 'sandbox');
+  const runtime = await readPayPalRuntimeCredentials();
+  const clientId = clean(runtime?.clientId, 500);
+  const secret = clean(runtime?.secret, 500);
+  const environment = normalizedPayPalEnvironment(runtime?.environment || 'sandbox');
   if (!clientId || !secret) throw new Error('paypal_not_configured');
   return { clientId, secret, environment, baseUrl: environment === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com', currency: 'ILS' };
 }
@@ -83,7 +83,7 @@ async function handleCreate(req,res,body){
   const created=await paypalRequest(cfg,'/v2/checkout/orders',{method:'POST',requestId:`create-${orderId}`,body:{
     intent:'CAPTURE',
     purchase_units:[{reference_id:orderId,custom_id:orderId,invoice_id:orderId,description:sandboxTest?'Aluf Hakelim sandbox test':'Aluf Hakelim order',amount:{currency_code:cfg.currency,value}}],
-    payment_source:{paypal:{experience_context:{return_url:returnUrl,cancel_url:cancelUrl,user_action:'PAY_NOW',shipping_preference:'NO_SHIPPING',locale:'he-IL'}}}
+    payment_source:{paypal:{experience_context:{return_url:returnUrl,cancel_url:cancelUrl,user_action:'PAY_NOW',shipping_preference:'NO_SHIPPING',locale:'he-IL'}}
   }});
   if(!created?.id)throw new Error('paypal_order_id_missing');
   const approveUrl=approvalLink(created,cfg.environment);if(!approveUrl)throw new Error('paypal_approval_url_missing');
@@ -121,5 +121,3 @@ module.exports=async function handler(req,res){
     return res.status(400).json({ok:false,error:'invalid_action'});
   }catch(error){console.error('PayPal checkout failed:',error.message);const code=clean(error.message||error,220);return res.status(error.status&&error.status>=400&&error.status<600?error.status:500).json({ok:false,error:code||'paypal_failed'});}
 };
-
-
