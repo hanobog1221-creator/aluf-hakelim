@@ -1,5 +1,5 @@
 const { requireAdmin } = require('../admin');
-const { selectedPaymentProvider, providerStatuses } = require('../payment-providers');
+const { selectedPaymentProvider, providerStatuses, routeBCandidates } = require('../payment-providers');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -12,6 +12,7 @@ module.exports = async function handler(req, res) {
       ok: true,
       selected: selectedPaymentProvider(),
       providers: await providerStatuses(),
+      routeBCandidates: routeBCandidates(),
       realSalesEnabledByThisRoute: false
     });
   } catch (error) {
