@@ -72,18 +72,27 @@ function buildPlaceOrderRequest(order, shippingQuoteOverride = null) {
   };
 }
 
+function supplierGroupKey(item) {
+  const supplierId = String(item?.supplierId || '').trim();
+  if (supplierId) return { key: `supplier:${supplierId}`, supplierId };
+  const productId = String(item?.supplierProductId || '').trim();
+  if (!/^\d{8,20}$/.test(productId)) throw new Error(`supplier_identity_missing_${item?.id || 'item'}`);
+  // When the seller identity is unavailable, never combine different products.
+  // A per-product request is safer than accidentally mixing separate AliExpress sellers.
+  return { key: `product:${productId}`, supplierId: `product:${productId}` };
+}
+
 function buildPlaceOrderRequests(order, shippingQuoteOverride = null) {
   const items = Array.isArray(order?.items) ? order.items : [];
   const groups = new Map();
   for (const item of items) {
-    const supplierId = String(item.supplierId || '').trim();
-    if (!supplierId) throw new Error(`supplier_identity_missing_${item.id}`);
-    if (!groups.has(supplierId)) groups.set(supplierId, []);
-    groups.get(supplierId).push(item);
+    const identity = supplierGroupKey(item);
+    if (!groups.has(identity.key)) groups.set(identity.key, { supplierId: identity.supplierId, items: [] });
+    groups.get(identity.key).items.push(item);
   }
-  return [...groups.entries()].map(([supplierId, supplierItems]) => ({
-    supplierId,
-    request: buildPlaceOrderRequest({ ...order, items: supplierItems }, shippingQuoteOverride)
+  return [...groups.values()].map((group) => ({
+    supplierId: group.supplierId,
+    request: buildPlaceOrderRequest({ ...order, items: group.items }, shippingQuoteOverride)
   }));
 }
 
@@ -184,4 +193,3 @@ module.exports = {
   parsePlaceOrderResponse,
   normalizeOrderIds
 };
-
