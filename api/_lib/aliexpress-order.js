@@ -37,10 +37,10 @@ function buildPlaceOrderRequest(order, shippingQuoteOverride = null) {
 
   const productItems = items.map((item) => {
     const productId = String(item.supplierProductId || '');
-    const skuAttr = String(item.supplierSkuId || '');
+    const skuAttr = String(item.supplierSkuAttr || '').trim();
     const qty = Number(item.qty || 0);
     if (!/^\d{8,20}$/.test(productId)) throw new Error(`invalid_supplier_product_id_${item.id}`);
-    if (!skuAttr || skuAttr.length > 500) throw new Error(`invalid_supplier_sku_${item.id}`);
+    if (!skuAttr || skuAttr.length > 1000) throw new Error(`invalid_supplier_sku_attr_${item.id}`);
     if (!Number.isInteger(qty) || qty < 1 || qty > 20) throw new Error(`invalid_supplier_quantity_${item.id}`);
 
     const shipping = shippingByProduct.get(String(item.id));
