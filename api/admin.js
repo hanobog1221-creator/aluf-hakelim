@@ -6,6 +6,7 @@ const handlers = {
   'orders': require('./_lib/admin-routes/orders'),
   'aliexpress-manual': require('./_lib/admin-routes/aliexpress-manual'),
   'aliexpress-tracking': require('./_lib/admin-routes/aliexpress-tracking'),
+  'aliexpress-payment-queue': require('./_lib/admin-routes/aliexpress-payment-queue'),
   'product-intake': require('./_lib/admin-routes/product-intake'),
   'products': require('./_lib/admin-routes/products'),
   'session': require('./_lib/admin-routes/session'),
