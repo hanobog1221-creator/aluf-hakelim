@@ -1,13 +1,15 @@
 const { requireAdmin, config, dbHeaders } = require('../admin');
 const { readProviderCredentials } = require('../provider-credentials');
 const { sandboxMode, autoPayEnabled, getBalanceUsd } = require('../cj-fulfillment');
+const { aliExpressCreateEnabled, aliExpressAutoPayAuthorized } = require('../aliexpress-fulfillment');
 
-const EXPECTED_CRONS = new Map([
+const EXPECTED_CJ_CRONS = new Map([
   ['cj-sourcing-hourly', '5 * * * *'],
   ['cj-catalog-hourly', '20 * * * *'],
   ['cj-sourcing-daily-retry', '35 0 * * *'],
   ['cj-orders-every-30m', '10,40 * * * *']
 ]);
+const ALIEXPRESS_CRON = { jobname: 'aliexpress-catalog-hourly', schedule: '12 * * * *' };
 
 function clean(value, max = 200) { return String(value ?? '').trim().slice(0, max); }
 function bool(value) { return value === true; }
@@ -44,9 +46,7 @@ module.exports = async function handler(req, res) {
       dbJson(`${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,name,active,supplier,ready_for_paid_order,blockers,last_sync_at,shipping_last_checked_at&order=id.asc`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/orders?select=order_id,status,payment_status,fulfillment_status,supplier_order_id,tracking_number,tracking_numbers,created_at,updated_at&order=created_at.desc&limit=60`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/supplier_order_attempts?select=order_id,provider,status,provider_sandbox,provider_payment_completed,supplier_order_ids,created_at&order=created_at.desc&limit=60`, { headers }),
-      dbJson(`${supabaseUrl}/rest/v1/rpc/get_launch_cron_status`, {
-        method: 'POST', headers: dbHeaders({ 'Content-Type': 'application/json' }), body: '{}'
-      }),
+      dbJson(`${supabaseUrl}/rest/v1/rpc/get_launch_cron_status`, { method: 'POST', headers: dbHeaders({ 'Content-Type': 'application/json' }), body: '{}' }),
       dbJson(`${supabaseUrl}/rest/v1/payment_refund_requests?provider=eq.paypal&status=eq.completed&select=request_id,order_id,requested_amount,currency,provider_refund_id,status,created_at&order=created_at.desc&limit=30`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/business_expenses?source=eq.paypal_refund&category=eq.refund&select=order_id,amount,currency,source_key,created_at&order=created_at.desc&limit=60`, { headers }),
       readProviderCredentials('paypal').catch(() => null),
@@ -57,13 +57,13 @@ module.exports = async function handler(req, res) {
     const activeRows = readinessRows.filter((row) => bool(row.active));
     const readyRows = activeRows.filter((row) => bool(row.ready_for_paid_order));
     const blockedRows = activeRows.filter((row) => !bool(row.ready_for_paid_order));
+    const activeAliRows = activeRows.filter((row) => clean(row.supplier, 30).toLowerCase() === 'aliexpress');
+    const activeCjRows = activeRows.filter((row) => clean(row.supplier, 30).toLowerCase() === 'cj');
     const aliBlockedRows = blockedRows.filter((row) => clean(row.supplier, 30).toLowerCase() === 'aliexpress');
     const nonAliBlockedRows = blockedRows.filter((row) => clean(row.supplier, 30).toLowerCase() !== 'aliexpress');
 
     const attemptByOrder = new Map();
-    for (const attempt of attempts) {
-      if (!attemptByOrder.has(String(attempt.order_id))) attemptByOrder.set(String(attempt.order_id), attempt);
-    }
+    for (const attempt of attempts) if (!attemptByOrder.has(String(attempt.order_id))) attemptByOrder.set(String(attempt.order_id), attempt);
     const sandboxOrders = orders.filter((order) => /^AH-SBX-PAY-/i.test(String(order.order_id || '')));
     const sandboxE2EOrder = sandboxOrders.find((order) => {
       const attempt = attemptByOrder.get(String(order.order_id));
@@ -75,16 +75,13 @@ module.exports = async function handler(req, res) {
         && ['paid', 'shipped', 'delivered'].includes(String(attempt?.status || '').toLowerCase());
     }) || null;
     const trackingOrder = orders.find((order) => /^AH-SBX-/i.test(String(order.order_id || ''))
-      && ['shipped', 'completed'].includes(String(order.status || '').toLowerCase())
-      && hasTracking(order)) || null;
+      && ['shipped', 'completed'].includes(String(order.status || '').toLowerCase()) && hasTracking(order)) || null;
 
     const refundExpenseByKey = new Map(refundExpenses.map((row) => [clean(row.source_key, 200), row]));
     const refundE2ERequest = refundRequests.find((row) => {
       const refundId = clean(row.provider_refund_id, 200);
       const expense = refundExpenseByKey.get(refundId);
-      return /^AH-SBX-PAY-/i.test(String(row.order_id || ''))
-        && refundId
-        && expense
+      return /^AH-SBX-PAY-/i.test(String(row.order_id || '')) && refundId && expense
         && String(expense.order_id) === String(row.order_id)
         && clean(row.currency, 3).toUpperCase() === 'ILS'
         && clean(expense.currency, 3).toUpperCase() === 'ILS'
@@ -95,27 +92,34 @@ module.exports = async function handler(req, res) {
     const cronState = cronRows.map((row) => ({
       jobname: clean(row.jobname, 80),
       schedule: clean(row.schedule, 80),
-      active: row.active === true,
-      expected: EXPECTED_CRONS.get(clean(row.jobname, 80)) || null
+      active: row.active === true
     }));
-    const workersReady = EXPECTED_CRONS.size === cronState.length
-      && cronState.every((row) => row.active && row.expected === row.schedule);
+    const aliCron = cronState.find((row) => row.jobname === ALIEXPRESS_CRON.jobname) || null;
+    const aliExpressWorkerReady = Boolean(aliCron?.active && aliCron.schedule === ALIEXPRESS_CRON.schedule);
+    const cjWorkersReady = activeCjRows.length === 0 || (
+      EXPECTED_CJ_CRONS.size === cronState.filter((row) => EXPECTED_CJ_CRONS.has(row.jobname)).length
+      && [...EXPECTED_CJ_CRONS.entries()].every(([jobname, schedule]) => {
+        const row = cronState.find((item) => item.jobname === jobname);
+        return row?.active === true && row.schedule === schedule;
+      })
+    );
+    const workersReady = aliExpressWorkerReady && cjWorkersReady;
 
     const ppEnv = paypalEnvironment(paypalStored);
     const paypalConfigured = hasPayPalClientId(paypalStored) && hasPayPalSecret(paypalStored);
     const paypalLiveReady = paypalConfigured && ppEnv === 'live';
+
     const cjConfigured = hasCjApiKey(cjStored);
     const cjSandbox = sandboxMode();
     const cjAutoPay = autoPayEnabled();
     let cjBalanceUsd = null;
     let cjBalanceOk = false;
-    if (cjConfigured) {
-      try {
-        cjBalanceUsd = await getBalanceUsd();
-        cjBalanceOk = Number(cjBalanceUsd) > 0;
-      } catch {}
+    if (activeCjRows.length && cjConfigured) {
+      try { cjBalanceUsd = await getBalanceUsd(); cjBalanceOk = Number(cjBalanceUsd) > 0; } catch {}
     }
-    const cjLiveReady = cjConfigured && !cjSandbox && cjAutoPay && cjBalanceOk;
+    const cjLiveReady = activeCjRows.length === 0 || (cjConfigured && !cjSandbox && cjAutoPay && cjBalanceOk);
+    const aliExpressOrderCreationReady = activeAliRows.length === 0 || aliExpressCreateEnabled();
+    const aliExpressAutoPay = aliExpressAutoPayAuthorized();
 
     const minimumProfit = Number(settings.minimum_profit_ils);
     const quoteTtl = Number(settings.payment_quote_ttl_minutes);
@@ -129,34 +133,35 @@ module.exports = async function handler(req, res) {
       && clean(settings.business_phone, 60)
     );
 
-    const engineeringReady = readyRows.length > 0
-      && nonAliBlockedRows.length === 0
+    const fullCatalogReady = activeRows.length > 0 && blockedRows.length === 0;
+    const engineeringReady = fullCatalogReady
       && Boolean(sandboxE2EOrder)
       && Boolean(trackingOrder)
       && Boolean(refundE2ERequest)
       && workersReady
-      && guardsReady;
-    const liveProvidersReady = paypalLiveReady && cjLiveReady;
+      && guardsReady
+      && aliExpressOrderCreationReady;
+    const liveProvidersReady = paypalLiveReady && aliExpressOrderCreationReady && cjLiveReady;
     const canEnableSales = engineeringReady && liveProvidersReady && businessReady;
-    const fullCatalogReady = activeRows.length > 0 && blockedRows.length === 0;
     const aliOnlyCatalogBlocker = aliBlockedRows.length > 0 && nonAliBlockedRows.length === 0;
 
     const blockers = [];
     if (!readyRows.length) blockers.push('no_purchase_ready_products');
-    if (nonAliBlockedRows.length) blockers.push('non_aliexpress_product_blockers');
-    if (!sandboxE2EOrder) blockers.push('paypal_to_cj_sandbox_e2e_not_verified');
+    if (blockedRows.length) blockers.push('catalog_product_blockers');
+    if (!sandboxE2EOrder) blockers.push('paypal_sandbox_e2e_not_verified');
     if (!trackingOrder) blockers.push('tracking_e2e_not_verified');
     if (!refundE2ERequest) blockers.push('paypal_refund_e2e_not_verified');
-    if (!workersReady) blockers.push('automation_workers_not_ready');
+    if (!aliExpressWorkerReady && activeAliRows.length) blockers.push('aliexpress_catalog_worker_not_ready');
+    if (!cjWorkersReady && activeCjRows.length) blockers.push('cj_automation_workers_not_ready');
     if (!guardsReady) blockers.push('checkout_guards_not_ready');
+    if (!aliExpressOrderCreationReady) blockers.push('aliexpress_order_creation_disabled');
     if (!paypalLiveReady) blockers.push('paypal_live_credentials_required');
-    if (!cjLiveReady) {
+    if (activeCjRows.length && !cjLiveReady) {
       if (cjSandbox) blockers.push('cj_live_mode_required');
       if (!cjAutoPay) blockers.push('cj_autopay_required');
       if (!cjBalanceOk) blockers.push('cj_positive_balance_required');
     }
     if (!businessReady) blockers.push('business_identity_required_for_live_sales');
-    if (aliBlockedRows.length) blockers.push('aliexpress_catalog_permission_or_sync_pending');
     if (settings.sales_enabled !== true) blockers.push('sales_switch_off');
 
     return res.status(200).json({
@@ -175,6 +180,8 @@ module.exports = async function handler(req, res) {
         active: activeRows.length,
         ready: readyRows.length,
         blocked: blockedRows.length,
+        activeAliExpress: activeAliRows.length,
+        activeCj: activeCjRows.length,
         aliexpressBlocked: aliBlockedRows.map((row) => ({ id: row.id, name: row.name, blockers: Array.isArray(row.blockers) ? row.blockers : [] })),
         nonAliexpressBlocked: nonAliBlockedRows.map((row) => ({ id: row.id, name: row.name, supplier: row.supplier, blockers: Array.isArray(row.blockers) ? row.blockers : [] })),
         readyProducts: readyRows.map((row) => ({ id: row.id, name: row.name, supplier: row.supplier }))
@@ -191,6 +198,10 @@ module.exports = async function handler(req, res) {
       fulfillment: {
         trackingE2EVerified: Boolean(trackingOrder),
         trackingE2EOrderId: trackingOrder?.order_id || null,
+        aliExpressOrderCreationReady,
+        aliExpressAutoPay,
+        activeAliExpressProducts: activeAliRows.length,
+        activeCjProducts: activeCjRows.length,
         cjConfigured,
         cjSandbox,
         cjAutoPay,
@@ -198,7 +209,7 @@ module.exports = async function handler(req, res) {
         cjBalanceOk,
         cjLiveReady
       },
-      automation: { workersReady, jobs: cronState },
+      automation: { workersReady, aliExpressWorkerReady, cjWorkersReady, jobs: cronState },
       guards: {
         minimumProfitIls: Number.isFinite(minimumProfit) ? minimumProfit : null,
         paymentQuoteTtlMinutes: Number.isInteger(quoteTtl) ? quoteTtl : null,

@@ -16,23 +16,24 @@
 const app=document.getElementById('app');
 const labels={
  no_purchase_ready_products:'אין אף מוצר מוכן להזמנה',
- non_aliexpress_product_blockers:'יש חסימה במוצר שאינו AliExpress',
- paypal_to_cj_sandbox_e2e_not_verified:'בדיקת PayPal → CJ בסנדבוקס לא הושלמה',
+ catalog_product_blockers:'יש מוצר פעיל שאינו מוכן להזמנה',
+ paypal_sandbox_e2e_not_verified:'בדיקת PayPal בסנדבוקס לא הושלמה',
  tracking_e2e_not_verified:'בדיקת Tracking מקצה לקצה לא הושלמה',
- automation_workers_not_ready:'אחד מעובדי האוטומציה/cron אינו פעיל',
+ paypal_refund_e2e_not_verified:'בדיקת החזר PayPal מקצה לקצה לא הושלמה',
+ aliexpress_catalog_worker_not_ready:'סנכרון AliExpress האוטומטי אינו פעיל',
+ cj_automation_workers_not_ready:'עובדי CJ אינם מוכנים למרות שיש מוצרי CJ פעילים',
  checkout_guards_not_ready:'הגנות רווח/תוקף משלוח אינן מוכנות',
+ aliexpress_order_creation_disabled:'יצירת הזמנה אוטומטית ב-AliExpress כבויה',
  paypal_live_credentials_required:'נדרשים פרטי PayPal LIVE',
  cj_live_mode_required:'CJ עדיין במצב Sandbox',
  cj_autopay_required:'CJ AutoPay עדיין כבוי',
  cj_positive_balance_required:'נדרשת יתרה חיובית ב-CJ לפני הזמנות חיות',
- business_identity_required_for_live_sales:'חסרים פרטי עסק מלאים לפני מכירות חיות',
- aliexpress_catalog_permission_or_sync_pending:'מוצרי AliExpress ממתינים להרשאה/סנכרון',
+ business_identity_required_for_live_sales:'חסרים פרטי העסק הנדרשים לפני מכירות חיות',
  sales_switch_off:'מתג המכירות הראשי כבוי בכוונה'
 };
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function row(level,title,text){const s=level==='ok'?'✓':level==='bad'?'!':'•';return `<div class="row ${level}"><span class="dot">${s}</span><div><b>${esc(title)}</b><div class="muted">${esc(text)}</div></div></div>`}
 function yes(v){return v?'ok':'bad'}
-function money(v){return v==null?'לא ידוע':`$${Number(v).toFixed(2)}`}
 async function load(){
  try{
   const r=await fetch('/api/admin?route=launch-readiness',{headers:{accept:'application/json'},cache:'no-store'});
@@ -42,45 +43,47 @@ async function load(){
 }
 function render(d){
  const p=d.phase||{}, c=d.catalog||{}, pay=d.payments||{}, f=d.fulfillment||{}, a=d.automation||{}, g=d.guards||{}, b=d.business||{};
- let status='עדיין יש חסימות לפני השקה';let level='bad';
- if(p.salesEnabled&&p.canEnableSales){status='החנות במצב LIVE ומוכנה';level='ok'}
- else if(p.canEnableSales){status='הכול מוכן — אפשר לפתוח את מתג המכירות';level='ok'}
- else if(p.engineeringReady){status='המערכת מוכנה הנדסית — נשארו חיבורי LIVE / פרטי עסק / AliExpress';level='warn'}
+ let status='עדיין יש חסימות לפני השקה';
+ if(p.salesEnabled&&p.canEnableSales)status='החנות במצב LIVE ומוכנה';
+ else if(p.canEnableSales)status='הכול מוכן — אפשר לפתוח את מתג המכירות';
+ else if(p.engineeringReady)status='המערכת מוכנה טכנית — נשארו PayPal LIVE ופרטי העסק';
  const blockers=(d.blockers||[]).map(x=>labels[x]||x);
  app.innerHTML=`
  <section class="hero"><h1>מוכנות להשקה</h1><div class="heroStatus">${esc(status)}</div><div class="chips">
   <span class="chip ${p.engineeringReady?'ok':'bad'}">הנדסה ${p.engineeringReady?'מוכנה':'לא מלאה'}</span>
-  <span class="chip ${p.liveProvidersReady?'ok':'warn'}">ספקי LIVE ${p.liveProvidersReady?'מוכנים':'טרם הופעלו'}</span>
-  <span class="chip ${p.businessReady?'ok':'warn'}">פרטי עסק ${p.businessReady?'מלאים':'חסרים'}</span>
-  <span class="chip ${p.fullCatalogReady?'ok':(p.aliOnlyCatalogBlocker?'warn':'bad')}">קטלוג ${p.fullCatalogReady?'מלא':(p.aliOnlyCatalogBlocker?'Ali בלבד מעכב':'חסום')}</span>
+  <span class="chip ${p.liveProvidersReady?'ok':'warn'}">תשלום/ספק LIVE ${p.liveProvidersReady?'מוכנים':'טרם הושלמו'}</span>
+  <span class="chip ${p.businessReady?'ok':'warn'}">פרטי עסק ${p.businessReady?'מלאים':'ממתינים'}</span>
+  <span class="chip ${p.fullCatalogReady?'ok':'bad'}">קטלוג ${p.fullCatalogReady?'מוכן':'חסום'}</span>
  </div><div class="stamp">נבדק: ${esc(new Date(d.checkedAt).toLocaleString('he-IL'))}</div><div class="actions"><button class="btn yellow" onclick="load()">רענן בדיקה</button><a class="btn" href="/admin-paypal-test.html">בדיקת PayPal Sandbox</a><a class="btn" href="/">פתח חנות</a></div></section>
  <div class="grid">
-  <section class="card"><h2>תשלום מקצה לקצה</h2>
-   ${row(yes(pay.sandboxE2EVerified),'PayPal Sandbox → CJ',pay.sandboxE2EVerified?`עבר בהצלחה (${pay.sandboxE2EOrderId})`:'טרם אומת')}
-   ${row(pay.paypalLiveReady?'ok':'warn','PayPal LIVE',pay.paypalLiveReady?'פרטי LIVE מוגדרים.':`כרגע: ${pay.paypalEnvironment||'לא ידוע'} — לפני כסף אמיתי נדרשים פרטי LIVE.`)}
+  <section class="card"><h2>תשלום</h2>
+   ${row(yes(pay.sandboxE2EVerified),'PayPal Sandbox',pay.sandboxE2EVerified?`בדיקת חיוב עברה בהצלחה (${pay.sandboxE2EOrderId})`:'טרם אומת')}
+   ${row(pay.refundE2EVerified?'ok':'bad','החזר PayPal',pay.refundE2EVerified?`נבדק בהצלחה (${pay.refundE2EOrderId})`:'טרם אומת')}
+   ${row(pay.paypalLiveReady?'ok':'warn','PayPal LIVE',pay.paypalLiveReady?'פרטי LIVE מוגדרים.':`כרגע: ${pay.paypalEnvironment||'לא ידוע'} — נדרשים פרטי LIVE לפני כסף אמיתי.`)}
   </section>
-  <section class="card"><h2>CJ והזמנה אוטומטית</h2>
-   ${row(f.trackingE2EVerified?'ok':'bad','Tracking אוטומטי',f.trackingE2EVerified?`נבדק בהזמנה ${f.trackingE2EOrderId}`:'טרם הוכח מקצה לקצה')}
-   ${row(f.cjConfigured?'ok':'bad','חיבור CJ',f.cjConfigured?'API מחובר.':'API לא מוגדר.')}
-   ${row(f.cjLiveReady?'ok':'warn','מצב חי',f.cjLiveReady?'Live + AutoPay + יתרה חיובית מוכנים.':`Sandbox: ${f.cjSandbox?'כן':'לא'} · AutoPay: ${f.cjAutoPay?'כן':'לא'} · יתרה: ${money(f.cjBalanceUsd)}`)}
+  <section class="card"><h2>AliExpress והזמנה אוטומטית</h2>
+   ${row(f.aliExpressOrderCreationReady?'ok':'bad','יצירת הזמנה אצל הספק',f.aliExpressOrderCreationReady?'אחרי תשלום מאומת המערכת יכולה ליצור הזמנת AliExpress אוטומטית.':'המסלול האוטומטי כבוי.')}
+   ${row(a.aliExpressWorkerReady?'ok':'bad','סנכרון קטלוג שעתי',a.aliExpressWorkerReady?'מלאי, מחיר ומשלוח מתרעננים אוטומטית.':'Cron AliExpress חסר או בתזמון שגוי.')}
+   ${row(f.trackingE2EVerified?'ok':'bad','Tracking',f.trackingE2EVerified?`מנגנון המעקב נבדק (${f.trackingE2EOrderId})`:'טרם הוכח מקצה לקצה')}
+   ${row(f.aliExpressAutoPay?'ok':'warn','תשלום ספק אוטומטי',f.aliExpressAutoPay?'הוגדר AutoPay חיצוני ב-AliExpress.':'לא מסומן כמאומת; הזמנה אצל AliExpress תיווצר אך תשלום הספק ימתין לאישור/AutoPay.')}
   </section>
   <section class="card"><h2>קטלוג</h2>
    ${row(c.ready>0?'ok':'bad','מוצרים מוכנים',`${c.ready||0} מתוך ${c.active||0} מוצרים פעילים מוכנים להזמנה.`)}
-   ${row((c.nonAliexpressBlocked||[]).length===0?'ok':'bad','חסימות שאינן AliExpress',(c.nonAliexpressBlocked||[]).length===0?'אין.':'יש מוצרים אחרים שעדיין חסומים.')}
-   ${row((c.aliexpressBlocked||[]).length===0?'ok':'warn','AliExpress',(c.aliexpressBlocked||[]).length?`${c.aliexpressBlocked.length} מוצרים מחכים להרשאה/סנכרון.`:'כל מוצרי AliExpress מוכנים.')}
+   ${row(c.blocked===0?'ok':'bad','חסימות מוצר',c.blocked===0?'אין מוצרים פעילים חסומים.':`${c.blocked} מוצרים פעילים חסומים.`)}
+   ${row((c.activeCj||0)===0?'ok':'warn','תלות ב-CJ',(c.activeCj||0)===0?'אין מוצרי CJ פעילים — ההשקה AliExpress-first.':`${c.activeCj} מוצרי CJ עדיין פעילים.`)}
    <div class="products">${(c.readyProducts||[]).map(x=>`<div class="product">✓ ${esc(x.name)} · ${esc(x.supplier)}</div>`).join('')}</div>
   </section>
   <section class="card"><h2>אוטומציה והגנות</h2>
-   ${row(a.workersReady?'ok':'bad','4 עבודות Cron',a.workersReady?'Sourcing, Catalog, Retry ו-Tracking פעילים בתזמון הנכון.':'אחת מעבודות הרקע חסרה/כבויה/בתזמון שגוי.')}
+   ${row(a.workersReady?'ok':'bad','עבודות רקע נדרשות',a.workersReady?'כל ה-Cron הנדרשים לספקים הפעילים עובדים בתזמון הנכון.':'חסרה עבודת רקע נדרשת.')}
    ${row(g.ready?'ok':'bad','הגנות Checkout',g.ready?`רווח מינימלי ₪${Number(g.minimumProfitIls).toFixed(2)} · הצעת משלוח ${g.paymentQuoteTtlMinutes} דקות.`:'הגדרות ההגנה אינן תקינות.')}
   </section>
   <section class="card"><h2>עסק ומכירות</h2>
-   ${row(b.ready?'ok':'warn','זהות עסקית',b.ready?'הפרטים הנדרשים להפעלה חיה קיימים.':'חסר מספר מס/סוג עסק תקין או פרט עסקי נדרש.')}
+   ${row(b.ready?'ok':'warn','זהות עסקית',b.ready?'הפרטים הנדרשים להפעלה חיה קיימים.':'ממתין להשלמת פרטי העסק לפני פתיחת מכירות.')}
    ${row(p.salesEnabled?'ok':'warn','מתג מכירות',p.salesEnabled?'פתוח.':'כבוי בכוונה עד השלמת LIVE.')}
-   ${row(p.canEnableSales?'ok':'warn','מותר לפתוח מכירות',p.canEnableSales?'כל שערי ה-LIVE עברו.':'עדיין לא — המערכת תישאר fail-closed.')}
+   ${row(p.canEnableSales?'ok':'warn','מותר לפתוח מכירות',p.canEnableSales?'כל שערי ה-LIVE עברו.':'עדיין לא — המערכת נשארת fail-closed.')}
   </section>
   <section class="card"><h2>מה עדיין נשאר</h2>
-   ${blockers.length?blockers.map((x,i)=>row(x.includes('AliExpress')||x.includes('Ali')||x.includes('LIVE')||x.includes('CJ')||x.includes('עסק')||x.includes('מתג')?'warn':'bad',`#${i+1}`,x)).join(''):row('ok','אין חסימות','כל הבדיקות עברו.')}
+   ${blockers.length?blockers.map((x,i)=>row(x.includes('PayPal')||x.includes('עסק')||x.includes('מתג')||x.includes('AutoPay')?'warn':'bad',`#${i+1}`,x)).join(''):row('ok','אין חסימות','כל הבדיקות עברו.')}
   </section>
  </div>`;
 }
