@@ -1,6 +1,6 @@
 const { loadOrderForFulfillment } = require('./fulfillment');
 const { fulfillCjOrder } = require('./cj-fulfillment');
-const { preflightAliExpressOrder } = require('./aliexpress-fulfillment');
+const { fulfillAliExpressOrder } = require('./aliexpress-fulfillment');
 const { enabled: manualAliExpressEnabled, queueManualAliExpressOrder } = require('./manual-aliexpress-fulfillment');
 
 function providerSet(order) {
@@ -18,14 +18,15 @@ async function fulfillPaidOrder(orderId) {
   const provider = [...providers][0];
   if (provider === 'cj') return fulfillCjOrder(orderId);
   if (provider === 'aliexpress') {
-    const preflight = await preflightAliExpressOrder(orderId);
-    if (preflight.manualFulfillmentEligible && manualAliExpressEnabled()) {
-      return queueManualAliExpressOrder(order, preflight);
+    const result = await fulfillAliExpressOrder(orderId);
+    // Manual queueing is only a fallback before any live AliExpress order request.
+    // Once a request was sent, a second/manual recreation could duplicate the order.
+    if (result.manualFulfillmentEligible && result.liveSupplierRequestSent !== true && manualAliExpressEnabled()) {
+      return queueManualAliExpressOrder(order, result);
     }
-    return preflight;
+    return result;
   }
   return { ok: false, skipped: true, reason: 'unsupported_supplier', provider };
 }
 
 module.exports = { providerSet, fulfillPaidOrder };
-
