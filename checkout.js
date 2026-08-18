@@ -57,7 +57,7 @@
     if(btn) btn.disabled=true;
     if(status) status.textContent='יוצר תשלום מאובטח ב-PayPal…';
     try {
-      const out=await jsonRequest('/api/paypal?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId})});
+      const out=await jsonRequest('/api/payment?action=create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:order.orderId})});
       if(!safePayPalApproval(out.approveUrl,out.environment)) throw new Error('paypal_approval_url_invalid');
       try{sessionStorage.setItem('alufPendingPayPalOrder',String(order.orderId||''));}catch{}
       if(status) status.textContent='מעביר ל-PayPal…';
@@ -94,7 +94,7 @@
     }
     bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><h2>מאמת תשלום…</h2><div class="ahOrderId">${orderId}</div><p id="ahReturnStatus" class="ahPayPalStatus">מבצע Capture מאובטח מול PayPal.</p></div>`;
     try {
-      const out=await jsonRequest('/api/paypal?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId,paypalOrderId})});
+      const out=await jsonRequest('/api/payment?action=capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId,paypalOrderId})});
       try{localStorage.removeItem('alufCart');sessionStorage.removeItem('alufPendingPayPalOrder')}catch{}
       if(typeof renderCart==='function') renderCart();
       bodyBox.innerHTML=`<div class="ahCheckoutSuccess"><div style="font-size:46px">✓</div><h2>התשלום הושלם</h2><p>ההזמנה אומתה בשרת והועברה למנגנון הטיפול.</p><div class="ahOrderId">${String(out.orderId||orderId)}</div><p class="ahMuted">PayPal Capture: <span dir="ltr">${String(out.captureId||'')}</span></p><button class="ahCheckoutSubmit" id="ahDone">סגור</button></div>`;

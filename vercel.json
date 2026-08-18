@@ -13,7 +13,8 @@
     { "source": "/profitability", "destination": "/admin-profitability.html", "permanent": false },
     { "source": "/fulfillment", "destination": "/admin-fulfillment.html", "permanent": false },
     { "source": "/policies", "destination": "/policies.html", "permanent": false },
-    { "source": "/launch-checklist", "destination": "/launch-checklist.html", "permanent": false }
+    { "source": "/launch-checklist", "destination": "/launch-checklist.html", "permanent": false },
+    { "source": "/payment-settings", "destination": "/admin-payments.html", "permanent": false }
   ],
   "rewrites": [
     { "source": "/api/aliexpress/order-preflight", "destination": "/api/aliexpress/product-v2?action=order-preflight" },
@@ -25,6 +26,7 @@
     { "source": "/api/admin/aliexpress-tracking", "destination": "/api/admin?route=aliexpress-tracking" },
     { "source": "/api/admin/product-intake", "destination": "/api/admin?route=product-intake" },
     { "source": "/api/admin/products", "destination": "/api/admin?route=products" },
+    { "source": "/api/admin/payment-providers", "destination": "/api/admin?route=payment-providers" },
     { "source": "/api/admin/session", "destination": "/api/admin?route=session" },
     { "source": "/api/admin/supplier-capture", "destination": "/api/admin?route=supplier-capture" },
     { "source": "/api/admin/login", "destination": "/api/admin?route=session&action=login" },

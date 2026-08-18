@@ -2,6 +2,7 @@ const { requireAdmin, config, dbHeaders } = require('../admin');
 const { readProviderCredentials, readPayPalRuntimeCredentials } = require('../provider-credentials');
 const { sandboxMode, autoPayEnabled, getBalanceUsd } = require('../cj-fulfillment');
 const { aliExpressCreateEnabled, aliExpressAutoPayAuthorized } = require('../aliexpress-fulfillment');
+const { selectedPaymentProvider, providerStatuses } = require('../payment-providers');
 
 const EXPECTED_CJ_CRONS = new Map([
   ['cj-sourcing-hourly', '5 * * * *'],
@@ -102,6 +103,10 @@ module.exports = async function handler(req, res) {
     const ppEnv = clean(paypalRuntime?.environment || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox';
     const paypalConfigured = paypalRuntime?.configured === true;
     const paypalLiveReady = paypalConfigured && ppEnv === 'live';
+    const paymentProvider = selectedPaymentProvider();
+    const paymentProviders = await providerStatuses();
+    const activePaymentProvider = paymentProviders.find((provider) => provider.id === paymentProvider);
+    const paymentProviderLiveReady = activePaymentProvider?.enabled === true && activePaymentProvider?.live === true;
 
     const cjConfigured = hasCjApiKey(cjStored);
     const cjSandbox = sandboxMode();
@@ -135,7 +140,7 @@ module.exports = async function handler(req, res) {
       && workersReady
       && guardsReady
       && aliExpressOrderCreationReady;
-    const liveProvidersReady = paypalLiveReady && aliExpressOrderCreationReady && cjLiveReady;
+    const liveProvidersReady = paymentProviderLiveReady && aliExpressOrderCreationReady && cjLiveReady;
     const canEnableSales = engineeringReady && liveProvidersReady && businessReady;
     const aliOnlyCatalogBlocker = aliBlockedRows.length > 0 && nonAliBlockedRows.length === 0;
 
@@ -149,7 +154,7 @@ module.exports = async function handler(req, res) {
     if (!cjWorkersReady && activeCjRows.length) blockers.push('cj_automation_workers_not_ready');
     if (!guardsReady) blockers.push('checkout_guards_not_ready');
     if (!aliExpressOrderCreationReady) blockers.push('aliexpress_order_creation_disabled');
-    if (!paypalLiveReady) blockers.push('paypal_live_credentials_required');
+    if (!paymentProviderLiveReady) blockers.push('payment_provider_live_credentials_required');
     if (activeCjRows.length && !cjLiveReady) {
       if (cjSandbox) blockers.push('cj_live_mode_required');
       if (!cjAutoPay) blockers.push('cj_autopay_required');
@@ -188,7 +193,10 @@ module.exports = async function handler(req, res) {
         paypalConfigured,
         paypalEnvironment: ppEnv,
         paypalCredentialSource: paypalRuntime?.source || 'none',
-        paypalLiveReady
+        paypalLiveReady,
+        selectedProvider: paymentProvider,
+        selectedProviderLiveReady: paymentProviderLiveReady,
+        providers: paymentProviders
       },
       fulfillment: {
         trackingE2EVerified: Boolean(trackingOrder),

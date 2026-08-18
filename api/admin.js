@@ -18,6 +18,7 @@ const handlers = {
   'paypal-test': require('./_lib/admin-routes/paypal-test'),
   'paypal-refund': require('./_lib/admin-routes/paypal-refund'),
   'paypal-credentials': require('./_lib/admin-routes/paypal-credentials'),
+  'payment-providers': require('./_lib/admin-routes/payment-providers'),
   'launch-readiness': require('./_lib/admin-routes/launch-readiness')
 };
 

@@ -373,7 +373,7 @@
   function ensureTopLinks() {
     const topActions = document.querySelector('.topActions');
     if (!topActions) return;
-    const links = [['accountingLink','/accounting','חשבונות'],['expensesLink','/expenses','הוצאות'],['launchChecklistLink','/launch-checklist','מוכנות להשקה']];
+    const links = [['accountingLink','/accounting','חשבונות'],['expensesLink','/expenses','הוצאות'],['paymentSettingsLink','/payment-settings','ספקי תשלום'],['launchChecklistLink','/launch-checklist','מוכנות להשקה']];
     for (const [id, href, label] of links) {
       if (document.getElementById(id)) continue;
       const link = document.createElement('a');
