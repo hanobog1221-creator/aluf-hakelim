@@ -10,9 +10,20 @@
     if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
 
     if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    // Keep every active catalog item visible while supplier verification is pending.
-    // Purchase controls below remain fail-closed until purchaseReady is true.
-    const visibleProducts = data.products.filter((product) => product.available !== false);
+    // Keep managed products plus the storefront's existing catalog visible while
+    // supplier verification is pending. Missing legacy items are display-only;
+    // purchase controls below remain fail-closed until the API marks them ready.
+    const managedProducts = data.products.filter((product) => product.available !== false);
+    const managedIds = new Set(managedProducts.map((product) => String(product.id)));
+    const pendingLegacyProducts = products
+      .filter((product) => !managedIds.has(String(product.id)))
+      .map((product) => ({
+        ...product,
+        available: true,
+        purchaseReady: false,
+        shippingAvailable: null
+      }));
+    const visibleProducts = [...managedProducts, ...pendingLegacyProducts];
     products.splice(0, products.length, ...visibleProducts);
     const store = data.store || {};
 

@@ -6,8 +6,14 @@ const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '..', 'catalog-loader.js'), 'utf8');
 
 test('active products remain visible while supplier verification is pending', () => {
-  assert.match(source, /filter\(\(product\) => product\.available !== false\)/);
+  assert.match(source, /data\.products\.filter\(\(product\) => product\.available !== false\)/);
   assert.doesNotMatch(source, /product\.available !== false && product\.purchaseReady === true/);
+});
+
+test('legacy storefront items stay visible but fail closed when absent from the managed catalog', () => {
+  assert.match(source, /pendingLegacyProducts/);
+  assert.match(source, /purchaseReady: false/);
+  assert.match(source, /shippingAvailable: null/);
 });
 
 test('purchases remain blocked until supplier verification is complete', () => {
