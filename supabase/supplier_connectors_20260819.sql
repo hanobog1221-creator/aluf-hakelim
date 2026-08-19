@@ -16,7 +16,7 @@ create table if not exists public.supplier_connector_credentials (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint supplier_connector_provider_check check (provider in ('hypersku','banggood','eprolo','wiio')),
+  constraint supplier_connector_provider_check check (provider in ('cj','hypersku','banggood','eprolo','wiio')),
   constraint supplier_connector_base_url_check check (base_url is null or base_url ~* '^https://'),
   constraint supplier_connector_metadata_object check (jsonb_typeof(metadata) = 'object'),
   constraint supplier_connector_activation_check check (enabled is false or (api_verified is true and order_verified is true))
@@ -24,6 +24,7 @@ create table if not exists public.supplier_connector_credentials (
 
 insert into public.supplier_connector_credentials(provider,enabled,api_verified,order_verified,last_error)
 values
+  ('cj',false,false,false,'api_credentials_required'),
   ('hypersku',false,false,false,'api_credentials_required'),
   ('banggood',false,false,false,'dropship_api_credentials_required'),
   ('eprolo',false,false,false,'api_document_and_credentials_required'),

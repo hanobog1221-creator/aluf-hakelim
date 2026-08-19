@@ -1,5 +1,6 @@
-const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
-const { ensureAccessToken } = require('../_lib/cj');
+const { requireAdmin, config, dbHeaders, audit } = require('../admin');
+const { ensureAccessToken } = require('../cj');
+const { readProviderCredentials } = require('../provider-credentials');
 
 function boolEnv(name, fallback = false) {
   const raw = String(process.env[name] || '').trim().toLowerCase();
@@ -35,7 +36,8 @@ module.exports = async function handler(req, res) {
   if (!await requireAdmin(req, res)) return;
 
   try {
-    const configured = Boolean(String(process.env.CJ_API_KEY || '').trim());
+    const stored = await readProviderCredentials('cj').catch(() => null);
+    const configured = Boolean(String(process.env.CJ_API_KEY || stored?.api_key || '').trim());
     let connected = await readConnected();
 
     if (req.method === 'POST' && String(req.query?.test || '') === '1') {
