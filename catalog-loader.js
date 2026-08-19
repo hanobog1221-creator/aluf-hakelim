@@ -21,8 +21,8 @@
         ...product,
         available: true,
         purchaseReady: false,
-        inStock: false,
-        stockStatus: 'out_of_stock',
+        inStock: null,
+        stockStatus: 'checking',
         shippingAvailable: null
       }));
     const visibleProducts = [...managedProducts, ...pendingLegacyProducts];
@@ -87,7 +87,11 @@
       id = String(id);
       if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
       saveFavorites();
-      decorateProductCards(document.querySelector('.cat.active')?.dataset?.filter || 'all');
+      if (window.catalogState?.favoritesOnly && typeof window.renderProducts === 'function') {
+        window.renderProducts(document.querySelector('.cat.active')?.dataset?.filter || 'all');
+      } else {
+        decorateProductCards(document.querySelector('.cat.active')?.dataset?.filter || 'all');
+      }
       return favorites.has(id);
     }
     function productUrl(product) {
@@ -158,10 +162,9 @@
     }
 
     function decorateProductCards(filter = 'all') {
-      const visible = products.filter((p) => filter === 'all' || (Array.isArray(p.cat) && p.cat.includes(filter)));
       const cards = Array.from(document.querySelectorAll('#productGrid .product'));
-      cards.forEach((card, index) => {
-        const product = visible[index];
+      cards.forEach((card) => {
+        const product = productFor(card.dataset.productId);
         if (!product) return;
         card.style.position = 'relative';
         const priceRow = card.querySelector('.priceRow');

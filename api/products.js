@@ -8,7 +8,17 @@ const RETAINED_CATALOG_IDS = new Set([
   'ae-1005012832500138',
   'ae-1005007178140659',
   'ae-1005009577109019',
-  'ae-1005009926657110'
+  'ae-1005009926657110',
+  'cj-detail-brush',
+  'cj-car-mop',
+  'cj-magnetic-ring',
+  'cj-k5-bits',
+  'cj-microfiber-towel',
+  'cj-wash-mitt',
+  'cj-silicone-squeegee',
+  'cj-tire-gauge',
+  'cj-phone-holder',
+  'cj-kw310-obd'
 ]);
 const REMOVED_CATALOG_IDS = new Set(['battery588']);
 

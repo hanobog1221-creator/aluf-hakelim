@@ -20,10 +20,25 @@ test('legacy storefront items stay visible but fail closed when absent from the 
 });
 
 test('the storefront fallback preserves every known catalog product and cache-busts the loader', () => {
-  for (const id of ['socket', 'ratchet', 'impact', 'washer', 'ae-1005012832500138', 'ae-1005007178140659', 'ae-1005009577109019', 'ae-1005009926657110']) {
+  for (const id of ['socket', 'ratchet', 'impact', 'washer', 'ae-1005012832500138', 'ae-1005007178140659', 'ae-1005009577109019', 'ae-1005009926657110', 'cj-detail-brush', 'cj-car-mop', 'cj-magnetic-ring', 'cj-k5-bits', 'cj-microfiber-towel', 'cj-wash-mitt', 'cj-silicone-squeegee', 'cj-tire-gauge', 'cj-phone-holder', 'cj-kw310-obd']) {
     assert.match(storefront, new RegExp(`id:'${id}'`));
   }
   assert.match(storefront, /catalog-loader\.js\?v=\d{8}-\d+/);
+});
+
+test('advanced catalog search and filters are present', () => {
+  for (const id of ['productSearch', 'priceRange', 'productSort', 'supplierFilter', 'readyOnly', 'favoritesOnly']) {
+    assert.match(storefront, new RegExp(`id="${id}"`));
+  }
+  for (const category of ['cleaning', 'diagnostics', 'gadgets']) {
+    assert.match(storefront, new RegExp(`data-filter="${category}"`));
+  }
+  assert.match(storefront, /data-product-id=/);
+});
+
+test('unverified fallback products stay in checking state rather than being mislabeled out of stock', () => {
+  assert.match(source, /inStock: null/);
+  assert.match(source, /stockStatus: 'checking'/);
 });
 
 test('requested hidden products are restored while the failed battery bundle is removed', () => {
@@ -39,7 +54,7 @@ test('known products stay visible and show an explicit out-of-stock state', () =
   assert.match(productsApi, /supplier_in_stock/);
   assert.match(productsApi, /const outOfStock = row\.supplier_in_stock === false/);
   assert.match(productsApi, /stockStatus = outOfStock \? 'out_of_stock'/);
-  assert.match(source, /stockStatus: 'out_of_stock'/);
+  assert.match(source, /product\.stockStatus === 'out_of_stock'/);
   assert.match(source, /אזל מהמלאי — אפשר לשלוח קישור חלופי/);
   assert.match(source, /המוצר אזל מהמלאי ולא ניתן להזמין אותו כרגע/);
 });
