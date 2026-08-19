@@ -20,7 +20,7 @@ test('legacy storefront items stay visible but fail closed when absent from the 
 });
 
 test('the storefront fallback preserves every known catalog product and cache-busts the loader', () => {
-  for (const id of ['socket', 'ratchet', 'impact', 'washer', 'ae-1005012832500138', 'ae-1005009577109019']) {
+  for (const id of ['socket', 'ratchet', 'impact', 'washer', 'ae-1005012832500138', 'ae-1005007178140659', 'ae-1005009577109019', 'ae-1005009926657110']) {
     assert.match(storefront, new RegExp(`id:'${id}'`));
   }
   assert.match(storefront, /catalog-loader\.js\?v=\d{8}-\d+/);
