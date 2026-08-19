@@ -1,6 +1,7 @@
 const { requireAdmin, config, dbHeaders, audit } = require('../admin');
 const { CONNECTOR_IDS, connectorDefinition, publicConnectorStatus } = require('../supplier-connectors');
 const { ensureAccessToken } = require('../cj');
+const { runCjSandboxVerification } = require('../cj-sandbox-verification');
 
 function clean(value, max = 500) { return String(value ?? '').trim().slice(0, max); }
 
@@ -20,7 +21,7 @@ module.exports = async function handler(req, res) {
   try {
     const { supabaseUrl } = config();
     if (req.method === 'GET') {
-      const rows = await dbJson(`${supabaseUrl}/rest/v1/supplier_connector_credentials?select=provider,enabled,api_key,client_id,client_secret,api_verified,order_verified,last_error,updated_at`, { headers: dbHeaders() });
+      const rows = await dbJson(`${supabaseUrl}/rest/v1/supplier_connector_credentials?select=provider,enabled,api_key,client_id,client_secret,api_verified,order_verified,last_error,metadata,updated_at`, { headers: dbHeaders() });
       const byProvider = new Map((rows || []).map((row) => [row.provider, row]));
       return res.status(200).json({ ok: true, connectors: CONNECTOR_IDS.map((id) => publicConnectorStatus(byProvider.get(id), id)) });
     }
@@ -29,6 +30,24 @@ module.exports = async function handler(req, res) {
     const provider = clean(body.provider, 40).toLowerCase();
     const definition = connectorDefinition(provider);
     if (!definition) return res.status(400).json({ ok: false, error: 'unsupported_supplier_connector' });
+    if (clean(body.action, 30).toLowerCase() === 'verify_sandbox') {
+      if (!definition.sandboxVerificationSupported || provider !== 'cj') return res.status(409).json({ ok: false, error: 'supplier_sandbox_verification_not_supported' });
+      const mappedProducts = await dbJson(`${supabaseUrl}/rest/v1/products?fulfillment_provider=eq.cj&fulfillment_variant_id=not.is.null&select=fulfillment_variant_id&order=fulfillment_verified_at.desc.nullslast&limit=5`, { headers: dbHeaders() }).catch(() => []);
+      const result = await runCjSandboxVerification({ preferredVids: (mappedProducts || []).map((row) => clean(row.fulfillment_variant_id, 160)).filter(Boolean) });
+      const verifiedAt = new Date().toISOString();
+      const metadata = {
+        verification_mode: 'sandbox', live_order_verified: false, charged: false,
+        sandbox_order_id: result.orderId, sandbox_tracking_number: result.trackingNumber,
+        product: result.product, shipping: result.shipping, verified_at: verifiedAt
+      };
+      const verified = await dbJson(`${supabaseUrl}/rest/v1/supplier_connector_credentials?provider=eq.${encodeURIComponent(provider)}`, {
+        method: 'PATCH',
+        headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
+        body: JSON.stringify({ order_verified: true, order_verified_at: verifiedAt, enabled: false, last_error: null, metadata, updated_at: verifiedAt })
+      });
+      await audit('supplier_connector_sandbox_verified', 'supplier_connector', provider, { charged: false, realFulfillmentCreated: false, product: result.product, shipping: result.shipping });
+      return res.status(200).json({ ok: true, connector: publicConnectorStatus(verified?.[0] || { metadata }, provider), verification: result });
+    }
     if (clean(body.action, 30).toLowerCase() === 'verify') {
       if (!definition.apiVerificationSupported) return res.status(409).json({ ok: false, error: 'supplier_api_verification_requires_provider_documentation' });
       if (provider === 'cj') await ensureAccessToken({ force: true });

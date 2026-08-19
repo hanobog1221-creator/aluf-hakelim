@@ -3,7 +3,7 @@ const CONNECTORS = Object.freeze({
     id: 'cj', name: 'CJdropshipping', hosts: ['cjdropshipping.com'], access: 'self_service_api_key',
     documentationUrl: 'https://developers.cjdropshipping.com/en/api/api2/api/auth.html',
     registrationUrl: 'https://cjdropshipping.com/register.html',
-    supportsIsrael: true, credentialFields: ['api_key'], apiVerificationSupported: true
+    supportsIsrael: true, credentialFields: ['api_key'], apiVerificationSupported: true, sandboxVerificationSupported: true
   }),
   hypersku: Object.freeze({
     id: 'hypersku', name: 'HyperSKU', hosts: ['hypersku.com'], access: 'open_api_approval',
@@ -44,12 +44,18 @@ function publicConnectorStatus(row, id) {
   const configured = hasCredential(row);
   const apiVerified = row?.api_verified === true;
   const orderVerified = row?.order_verified === true;
+  const verificationMode = String(row?.metadata?.verification_mode || '').trim().toLowerCase() || null;
+  const sandboxVerified = orderVerified && verificationMode === 'sandbox';
+  const liveOrderVerified = orderVerified && !sandboxVerified;
   return {
     ...definition,
     configured,
     apiVerified,
     orderVerified,
-    enabled: row?.enabled === true && configured && apiVerified && orderVerified,
+    sandboxVerified,
+    liveOrderVerified,
+    verificationMode,
+    enabled: row?.enabled === true && configured && apiVerified && liveOrderVerified,
     updatedAt: row?.updated_at || null,
     lastError: String(row?.last_error || '').trim().slice(0, 220) || null
   };

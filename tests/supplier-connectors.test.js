@@ -18,6 +18,16 @@ test('fails closed until credentials, API and a real order are verified', () => 
   assert.equal(publicConnectorStatus({ api_key: 'key', enabled: true, api_verified: true, order_verified: true }, 'hypersku').enabled, true);
 });
 
+test('sandbox verification is visible but can never enable live supplier ordering', () => {
+  const status = publicConnectorStatus({
+    api_key: 'key', enabled: true, api_verified: true, order_verified: true,
+    metadata: { verification_mode: 'sandbox', live_order_verified: false }
+  }, 'cj');
+  assert.equal(status.sandboxVerified, true);
+  assert.equal(status.liveOrderVerified, false);
+  assert.equal(status.enabled, false);
+});
+
 test('does not expose stored credential values in public status', () => {
   const status = publicConnectorStatus({ api_key: 'top-secret', client_secret: 'secret', enabled: false }, 'banggood');
   assert.equal(status.configured, true);
