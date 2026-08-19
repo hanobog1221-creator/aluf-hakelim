@@ -37,6 +37,7 @@ test('requested hidden products are restored while the failed battery bundle is 
 test('known products stay visible and show an explicit out-of-stock state', () => {
   assert.match(productsApi, /RETAINED_CATALOG_IDS/);
   assert.match(productsApi, /supplier_in_stock/);
+  assert.match(productsApi, /const outOfStock = row\.supplier_in_stock === false/);
   assert.match(productsApi, /stockStatus = outOfStock \? 'out_of_stock'/);
   assert.match(source, /stockStatus: 'out_of_stock'/);
   assert.match(source, /אזל מהמלאי — אפשר לשלוח קישור חלופי/);

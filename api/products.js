@@ -85,7 +85,7 @@ module.exports = async function handler(req, res) {
       const fullReadiness = readiness.get(id) === true;
       const purchaseReady = row.active === true && fullReadiness;
       const storefrontVisible = row.active === true || RETAINED_CATALOG_IDS.has(id);
-      const outOfStock = row.supplier_in_stock === false || row.active !== true;
+      const outOfStock = row.supplier_in_stock === false;
       const stockStatus = outOfStock ? 'out_of_stock' : (purchaseReady ? 'available' : 'checking');
 
       return {
