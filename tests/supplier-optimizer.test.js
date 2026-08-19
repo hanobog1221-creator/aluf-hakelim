@@ -52,20 +52,20 @@ test('requires AliExpress SKU attributes before automatic selection', () => {
   assert.ok(result.evaluated[0].blockers.includes('supplier_sku_attr_missing'));
 });
 
-test('sets a whole-shekel price that preserves at least 25 ILS before configured fees', () => {
-  assert.equal(requiredSellingPrice(40.2, 25), 82);
+test('sets a whole-shekel price that preserves at least 20 ILS before configured fees', () => {
+  assert.equal(requiredSellingPrice(40.2, 20), 74);
 });
 
 test('pricing includes fee and reserve configuration while shipping is charged separately', () => {
-  const pricing = pricingForOffer(offer(), 25, { paymentFeePercent: 4, paymentFeeFixedIls: 1, reserveIls: 2 });
+  const pricing = pricingForOffer(offer(), 20, { paymentFeePercent: 4, paymentFeeFixedIls: 1, reserveIls: 2 });
   assert.equal(pricing.customerShipping, 12);
-  assert.ok(pricing.projectedNetProfit >= 25);
+  assert.ok(pricing.projectedNetProfit >= 20);
   assert.ok(pricing.incomeTaxReserve > 0);
   assert.ok(pricing.insuranceReserve > 0);
 });
 
-test('keeps 25 ILS after the configured 40 percent tax and insurance reserve', () => {
-  const pricing = pricingForOffer(offer(), 25, { taxReservePercent: 22, insuranceReservePercent: 18 });
-  assert.ok(pricing.projectedNetProfit >= 25);
+test('keeps 20 ILS after the configured 40 percent tax and insurance reserve', () => {
+  const pricing = pricingForOffer(offer(), 20, { taxReservePercent: 22, insuranceReservePercent: 18 });
+  assert.ok(pricing.projectedNetProfit >= 20);
   assert.equal(Number((pricing.incomeTaxReserve + pricing.insuranceReserve).toFixed(2)), Number((pricing.preTaxProfit * 0.4).toFixed(2)));
 });

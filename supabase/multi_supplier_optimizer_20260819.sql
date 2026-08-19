@@ -19,7 +19,7 @@ alter table public.site_settings add constraint site_settings_pricing_costs_nonn
 check (pricing_fee_fixed_ils >= 0 and pricing_reserve_ils >= 0);
 
 update public.site_settings
-set minimum_profit_ils = greatest(coalesce(minimum_profit_ils, 25), 25)
+set minimum_profit_ils = coalesce(minimum_profit_ils, 20)
 where id = 'primary';
 
 create table if not exists public.supplier_offers (
@@ -144,7 +144,7 @@ select
     and p.selling_price - p.supplier_price_ils
       - ((p.selling_price + coalesce(p.supplier_shipping,0)) * coalesce(s.pricing_fee_percent,0) / 100)
       - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
-      >= greatest(25, coalesce(p.minimum_profit, s.minimum_profit_ils, 25))
+      >= greatest(20, coalesce(p.minimum_profit, s.minimum_profit_ils, 20))
     and (p.auto_fulfill_max_cost is null or (p.supplier_shipping is not null and p.supplier_price_ils + p.supplier_shipping <= p.auto_fulfill_max_cost))
   ) as ready_for_paid_order,
   array_remove(array[
@@ -165,7 +165,7 @@ select
     case when p.supplier_price_ils is not null and p.selling_price - p.supplier_price_ils
       - ((p.selling_price + coalesce(p.supplier_shipping,0)) * coalesce(s.pricing_fee_percent,0) / 100)
       - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
-      < greatest(25, coalesce(p.minimum_profit, s.minimum_profit_ils, 25)) then 'minimum_profit_not_met' end,
+      < greatest(20, coalesce(p.minimum_profit, s.minimum_profit_ils, 20)) then 'minimum_profit_not_met' end,
     case when p.auto_fulfill_max_cost is not null and (p.supplier_price_ils is null or p.supplier_shipping is null) then 'supplier_cost_unknown_for_auto_limit' end,
     case when p.auto_fulfill_max_cost is not null and p.supplier_price_ils is not null and p.supplier_shipping is not null and p.supplier_price_ils + p.supplier_shipping > p.auto_fulfill_max_cost then 'supplier_cost_above_auto_limit' end
   ], null) as blockers

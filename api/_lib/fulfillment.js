@@ -114,7 +114,7 @@ function validateFulfillmentOrder(order, supplierState = null, options = {}) {
         if (Number.isFinite(maxSupplierCost) && totalSupplierCost > maxSupplierCost) return { ok: false, reason: 'supplier_cost_above_auto_limit', productId: item.id, totalSupplierCost, maxSupplierCost };
       }
       const productMinProfitRaw = current.minimum_profit, productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw), configuredMinimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
-      const minimumProfit = Number.isFinite(configuredMinimumProfit) ? Math.max(25, configuredMinimumProfit) : null;
+      const minimumProfit = Number.isFinite(configuredMinimumProfit) ? Math.max(20, configuredMinimumProfit) : null;
       if (!Number.isFinite(minimumProfit)) return { ok: false, reason: 'minimum_profit_not_configured', productId: item.id };
       const paymentFeePercent = Number(supplierState?.settings?.pricing_fee_percent || 0);
       const paymentFeeFixed = Number(supplierState?.settings?.pricing_fee_fixed_ils || 0);

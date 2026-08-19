@@ -16,7 +16,7 @@ check (
 update public.site_settings
 set pricing_tax_reserve_percent = 22,
     pricing_insurance_reserve_percent = 18,
-    minimum_profit_ils = greatest(coalesce(minimum_profit_ils,25),25),
+    minimum_profit_ils = coalesce(minimum_profit_ils,20),
     supplier_optimizer_enabled = true,
     updated_at = now()
 where id = 'primary';
@@ -52,7 +52,7 @@ select
       - ((p.supplier_price_ils + coalesce(p.supplier_shipping,0)) * 1.05)
       - 15 - 2.45 - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
     ) * (1 - (coalesce(s.pricing_tax_reserve_percent,22) + coalesce(s.pricing_insurance_reserve_percent,18)) / 100)
-      >= greatest(25,coalesce(p.minimum_profit,s.minimum_profit_ils,25))
+      >= greatest(20,coalesce(p.minimum_profit,s.minimum_profit_ils,20))
     and (p.auto_fulfill_max_cost is null or (p.supplier_shipping is not null and p.supplier_price_ils + p.supplier_shipping <= p.auto_fulfill_max_cost))
   ) as ready_for_paid_order,
   array_remove(array[
@@ -77,7 +77,7 @@ select
       - ((p.supplier_price_ils + coalesce(p.supplier_shipping,0)) * 1.05)
       - 15 - 2.45 - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
     ) * (1 - (coalesce(s.pricing_tax_reserve_percent,22) + coalesce(s.pricing_insurance_reserve_percent,18)) / 100)
-      < greatest(25,coalesce(p.minimum_profit,s.minimum_profit_ils,25)) then 'minimum_net_profit_not_met' end,
+      < greatest(20,coalesce(p.minimum_profit,s.minimum_profit_ils,20)) then 'minimum_net_profit_not_met' end,
     case when p.auto_fulfill_max_cost is not null and (p.supplier_price_ils is null or p.supplier_shipping is null) then 'supplier_cost_unknown_for_auto_limit' end,
     case when p.auto_fulfill_max_cost is not null and p.supplier_price_ils is not null and p.supplier_shipping is not null and p.supplier_price_ils + p.supplier_shipping > p.auto_fulfill_max_cost then 'supplier_cost_above_auto_limit' end
   ],null) as blockers

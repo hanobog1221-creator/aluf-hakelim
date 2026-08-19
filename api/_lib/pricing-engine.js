@@ -1,6 +1,6 @@
 const DEFAULT_POLICY = Object.freeze({
   enabled: true,
-  targetNetProfitIls: 25,
+  targetNetProfitIls: 20,
   vatRate: 0.18,
   serviceFeeRate: 0.05,
   processingFeeRate: 0.03,

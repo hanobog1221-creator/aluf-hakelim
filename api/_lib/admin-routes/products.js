@@ -230,7 +230,7 @@ module.exports = async function handler(req, res) {
             : (current.whatsapp_message || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.'),
           support_email: hasOwn(body, 'support_email') ? cleanText(body.support_email, 160) : (current.support_email || null),
           support_hours: hasOwn(body, 'support_hours') ? cleanText(body.support_hours, 240) : (current.support_hours || null),
-          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? Math.max(25, cleanNumber(body.minimum_profit_ils, true) ?? 25) : Math.max(25, Number(current.minimum_profit_ils ?? 25)),
+          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? Math.max(20, cleanNumber(body.minimum_profit_ils, true) ?? 20) : Math.max(20, Number(current.minimum_profit_ils ?? 20)),
           supplier_optimizer_enabled: hasOwn(body, 'supplier_optimizer_enabled') ? body.supplier_optimizer_enabled === true : current.supplier_optimizer_enabled === true,
           supplier_quote_ttl_minutes: hasOwn(body, 'supplier_quote_ttl_minutes')
             ? cleanIntegerRange(body.supplier_quote_ttl_minutes, 15, 1440, 480, 'invalid_supplier_quote_ttl')

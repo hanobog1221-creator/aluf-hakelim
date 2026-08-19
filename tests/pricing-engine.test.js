@@ -8,9 +8,9 @@ const {
   roundRetailUp
 } = require('../api/_lib/pricing-engine');
 
-test('defaults to a 25 ILS target after a 40 percent tax and insurance reserve', () => {
+test('defaults to a 20 ILS target after a 40 percent tax and insurance reserve', () => {
   const policy = pricingPolicy({});
-  assert.equal(policy.targetNetProfitIls, 25);
+  assert.equal(policy.targetNetProfitIls, 20);
   assert.equal(policy.taxReserveRate, 0.40);
   assert.equal(policy.vatRate, 0.18);
   assert.equal(policy.serviceFeeRate + policy.processingFeeRate, 0.08);
@@ -25,7 +25,7 @@ test('price quote includes VAT, provider fees, advertising, supplier buffer and 
   const quote = quoteProductPrice({ supplierPriceIls: 100, supplierShippingIls: 0 });
   assert.equal(quote.ready, true);
   assert.ok(quote.recommendedProductPrice > 192.90);
-  assert.ok(quote.estimatedNetProfit >= 25);
+  assert.ok(quote.estimatedNetProfit >= 20);
   assert.equal(quote.cancellationReserve, 2.45);
   assert.equal(quote.advertisingCost, 15);
   assert.equal(quote.supplierBuffer, 5);

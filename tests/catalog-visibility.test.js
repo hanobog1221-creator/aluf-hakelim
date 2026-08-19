@@ -26,6 +26,17 @@ test('the storefront fallback preserves every known catalog product and cache-bu
   assert.match(storefront, /catalog-loader\.js\?v=\d{8}-\d+/);
 });
 
+test('CJ catalog images are self-hosted and present on disk', () => {
+  const ids = ['cj-detail-brush', 'cj-car-mop', 'cj-magnetic-ring', 'cj-k5-bits', 'cj-microfiber-towel', 'cj-wash-mitt', 'cj-silicone-squeegee', 'cj-tire-gauge', 'cj-phone-holder', 'cj-kw310-obd'];
+  for (const id of ids) {
+    assert.match(storefront, new RegExp(`img:'/assets/products/${id}\\.jpg'`));
+    const image = path.join(__dirname, '..', 'assets', 'products', `${id}.jpg`);
+    assert.ok(fs.existsSync(image), `${id} image is missing`);
+    assert.ok(fs.statSync(image).size > 10_000, `${id} image is unexpectedly small`);
+  }
+  assert.doesNotMatch(storefront, /img:'https:\/\/placehold\.co/);
+});
+
 test('advanced catalog search and filters are present', () => {
   for (const id of ['productSearch', 'priceRange', 'productSort', 'supplierFilter', 'readyOnly', 'favoritesOnly']) {
     assert.match(storefront, new RegExp(`id="${id}"`));
