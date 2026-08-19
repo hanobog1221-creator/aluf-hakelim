@@ -285,8 +285,9 @@ module.exports = async function handler(req, res) {
         results.push({ kind: 'refresh', id: product.id, error: clean(error.message, 220) });
       }
     }
+    const requestedBatch = Math.max(1, Math.min(DISCOVERY_BATCH, Number(req.query?.batch || DISCOVERY_BATCH)));
     const discovery = products.filter((product) => product.active === true).length < DISCOVERY_TARGET
-      ? await discoverProducts(products, settings)
+      ? await discoverProducts(products, settings, requestedBatch)
       : { added: [], rejected: [] };
     return res.status(200).json({ ok: true, minimumNetProfitIls: Math.max(DEFAULT_MINIMUM_PROFIT_ILS, Number(settings.minimum_profit_ils || DEFAULT_MINIMUM_PROFIT_ILS)), discoveryTarget: DISCOVERY_TARGET, discovery, results, ready: results.filter((result) => result.ready).length, errors: results.filter((result) => result.error).length });
   } catch (error) {
