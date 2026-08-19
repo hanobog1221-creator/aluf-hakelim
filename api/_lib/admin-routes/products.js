@@ -1,5 +1,14 @@
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 
+const SUPPLIER_HOSTS = {
+  aliexpress: ['aliexpress.com'],
+  cj: ['cjdropshipping.com'],
+  alibaba: ['alibaba.com'],
+  banggood: ['banggood.com'],
+  hypersku: ['hypersku.com'],
+  eprolo: ['eprolo.com']
+};
+
 function cleanText(value, max, nullable = true) {
   if (value === null || value === undefined || value === '') return nullable ? null : '';
   const text = String(value).trim();
@@ -70,19 +79,33 @@ function cleanTaxId(value) {
 }
 
 function cleanSupplierProductId(value) {
-  const text = cleanText(value, 100);
+  const text = cleanText(value, 200);
   if (!text) return null;
-  if (!/^\d{8,20}$/.test(text)) throw new Error('invalid_supplier_product_id');
+  if (!/^[A-Za-z0-9:_-]{2,200}$/.test(text)) throw new Error('invalid_supplier_product_id');
   return text;
 }
 
-function cleanSupplierUrl(value) {
+function cleanPercent(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n >= 100) throw new Error('invalid_percentage');
+  return Number(n.toFixed(4));
+}
+
+function cleanSupplier(value) {
+  const supplier = String(value || '').trim().toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(SUPPLIER_HOSTS, supplier)) throw new Error('invalid_supplier');
+  return supplier;
+}
+
+function cleanSupplierUrl(value, supplier = 'aliexpress') {
   const text = cleanText(value, 2000);
   if (!text) return null;
   let url;
   try { url = new URL(text); } catch { throw new Error('invalid_supplier_url'); }
   const host = url.hostname.toLowerCase();
-  if (url.protocol !== 'https:' || !(host === 'aliexpress.com' || host.endsWith('.aliexpress.com'))) {
+  const allowed = SUPPLIER_HOSTS[cleanSupplier(supplier)] || [];
+  if (url.protocol !== 'https:' || !allowed.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
     throw new Error('invalid_supplier_url');
   }
   return text;
@@ -103,10 +126,11 @@ function cleanAlternativeSuppliers(value) {
     const supplierId = cleanSupplierId(candidate.supplier_id);
     if (!supplierId || seen.has(supplierId)) throw new Error('invalid_alternative_suppliers');
     seen.add(supplierId);
+    const supplier = cleanSupplier(candidate.supplier || 'aliexpress');
     const row = {
       supplier_id: supplierId,
-      supplier: 'aliexpress',
-      supplier_url: cleanSupplierUrl(candidate.supplier_url),
+      supplier,
+      supplier_url: cleanSupplierUrl(candidate.supplier_url, supplier),
       supplier_product_id: cleanSupplierProductId(candidate.supplier_product_id),
       supplier_sku_id: cleanText(candidate.supplier_sku_id, 100),
       variant_label: cleanText(candidate.variant_label, 200),
@@ -188,7 +212,14 @@ module.exports = async function handler(req, res) {
             : (current.whatsapp_message || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.'),
           support_email: hasOwn(body, 'support_email') ? cleanText(body.support_email, 160) : (current.support_email || null),
           support_hours: hasOwn(body, 'support_hours') ? cleanText(body.support_hours, 240) : (current.support_hours || null),
-          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? cleanNumber(body.minimum_profit_ils, true) : (current.minimum_profit_ils ?? null),
+          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? Math.max(25, cleanNumber(body.minimum_profit_ils, true) ?? 25) : Math.max(25, Number(current.minimum_profit_ils ?? 25)),
+          supplier_optimizer_enabled: hasOwn(body, 'supplier_optimizer_enabled') ? body.supplier_optimizer_enabled === true : current.supplier_optimizer_enabled === true,
+          supplier_quote_ttl_minutes: hasOwn(body, 'supplier_quote_ttl_minutes')
+            ? cleanIntegerRange(body.supplier_quote_ttl_minutes, 15, 1440, 480, 'invalid_supplier_quote_ttl')
+            : cleanIntegerRange(current.supplier_quote_ttl_minutes, 15, 1440, 480, 'invalid_supplier_quote_ttl'),
+          pricing_fee_percent: hasOwn(body, 'pricing_fee_percent') ? cleanPercent(body.pricing_fee_percent) : cleanPercent(current.pricing_fee_percent, 0),
+          pricing_fee_fixed_ils: hasOwn(body, 'pricing_fee_fixed_ils') ? cleanNumber(body.pricing_fee_fixed_ils) : Number(current.pricing_fee_fixed_ils || 0),
+          pricing_reserve_ils: hasOwn(body, 'pricing_reserve_ils') ? cleanNumber(body.pricing_reserve_ils) : Number(current.pricing_reserve_ils || 0),
           payment_quote_ttl_minutes: hasOwn(body, 'payment_quote_ttl_minutes')
             ? cleanIntegerRange(body.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl')
             : cleanIntegerRange(current.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl'),
@@ -226,6 +257,7 @@ module.exports = async function handler(req, res) {
           whatsapp_enabled: row.whatsapp_enabled,
           support_email_set: Boolean(row.support_email),
           minimum_profit_ils: row.minimum_profit_ils,
+          supplier_optimizer_enabled: row.supplier_optimizer_enabled,
           payment_quote_ttl_minutes: row.payment_quote_ttl_minutes,
           business_details_set: Boolean(row.business_legal_name && row.business_tax_id && row.business_type)
         });
@@ -288,6 +320,7 @@ module.exports = async function handler(req, res) {
       if (!/^[A-Za-z0-9_-]{2,80}$/.test(id)) return res.status(400).json({ ok: false, error: 'invalid_product_id' });
       if (name.length < 2) return res.status(400).json({ ok: false, error: 'invalid_name' });
 
+      const supplier = cleanSupplier(body.supplier || 'aliexpress');
       const row = {
         id,
         name,
@@ -304,9 +337,9 @@ module.exports = async function handler(req, res) {
         specs: [],
         sort_order: Number.isInteger(Number(body.sort_order)) ? Number(body.sort_order) : 0,
         max_order_quantity: cleanQuantityLimit(body.max_order_quantity, 20),
-        supplier: 'aliexpress',
+        supplier,
         supplier_id: cleanSupplierId(body.supplier_id),
-        supplier_url: cleanSupplierUrl(body.supplier_url),
+        supplier_url: cleanSupplierUrl(body.supplier_url, supplier),
         supplier_product_id: cleanSupplierProductId(body.supplier_product_id),
         supplier_sku_id: cleanText(body.supplier_sku_id, 100),
         variant_label: cleanText(body.variant_label, 200),
@@ -356,7 +389,9 @@ module.exports = async function handler(req, res) {
       if ('description' in body) update.description = cleanText(body.description, 1200);
       if ('badge' in body) update.badge = cleanText(body.badge, 100);
       if ('kind' in body) update.kind = cleanText(body.kind, 200);
-      if ('supplier_url' in body) update.supplier_url = cleanSupplierUrl(body.supplier_url);
+      const nextSupplier = 'supplier' in body ? cleanSupplier(body.supplier) : cleanSupplier(existing.supplier || 'aliexpress');
+      if ('supplier' in body) update.supplier = nextSupplier;
+      if ('supplier_url' in body) update.supplier_url = cleanSupplierUrl(body.supplier_url, nextSupplier);
       if ('supplier_id' in body) update.supplier_id = cleanSupplierId(body.supplier_id);
       if ('supplier_product_id' in body) update.supplier_product_id = cleanSupplierProductId(body.supplier_product_id);
       if ('supplier_sku_id' in body) update.supplier_sku_id = cleanText(body.supplier_sku_id, 100);
@@ -386,7 +421,7 @@ module.exports = async function handler(req, res) {
       if ('categories' in body) update.categories = cleanCategories(body.categories);
 
       const publicCaptureAt = 'public_capture_at' in body ? cleanDate(body.public_capture_at) : null;
-      const supplierChanged = ['supplier_id','supplier_url','supplier_product_id','supplier_sku_id','variant_label','alternative_suppliers'].some((key) => key in update && JSON.stringify(update[key]) !== JSON.stringify(existing[key]));
+      const supplierChanged = ['supplier','supplier_id','supplier_url','supplier_product_id','supplier_sku_id','variant_label','alternative_suppliers'].some((key) => key in update && JSON.stringify(update[key]) !== JSON.stringify(existing[key]));
       if (supplierChanged) {
         update.fulfillment_ready = false;
         if (!publicCaptureAt) update.last_sync_at = null;
@@ -432,10 +467,13 @@ module.exports = async function handler(req, res) {
     if (message.includes('invalid_alternative_suppliers')) return res.status(400).json({ ok: false, error: 'invalid_alternative_suppliers' });
     if (message.includes('unverifiable_alternative_supplier')) return res.status(400).json({ ok: false, error: 'unverifiable_alternative_supplier' });
     if (message.includes('invalid_payment_quote_ttl')) return res.status(400).json({ ok: false, error: 'invalid_payment_quote_ttl' });
+    if (message.includes('invalid_supplier_quote_ttl')) return res.status(400).json({ ok: false, error: 'invalid_supplier_quote_ttl' });
     if (message.includes('invalid_number')) return res.status(400).json({ ok: false, error: 'invalid_number' });
+    if (message.includes('invalid_percentage')) return res.status(400).json({ ok: false, error: 'invalid_percentage' });
     if (message.includes('invalid_currency')) return res.status(400).json({ ok: false, error: 'invalid_currency' });
     if (message.includes('invalid_supplier_product_id')) return res.status(400).json({ ok: false, error: 'invalid_supplier_product_id' });
     if (message.includes('invalid_supplier_url')) return res.status(400).json({ ok: false, error: 'invalid_supplier_url' });
+    if (message.includes('invalid_supplier')) return res.status(400).json({ ok: false, error: 'invalid_supplier' });
     if (message.includes('invalid_image_url')) return res.status(400).json({ ok: false, error: 'invalid_image_url' });
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }

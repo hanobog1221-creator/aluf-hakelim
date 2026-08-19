@@ -22,7 +22,7 @@ async function loadCurrentSupplierState(order) {
   const ids = [...new Set((Array.isArray(order.items) ? order.items : []).map((item) => String(item.id || '')).filter(Boolean))];
   const [productsResponse, settingsResponse] = await Promise.all([
     ids.length ? fetch(`${supabaseUrl}/rest/v1/products?select=id,name,active,max_order_quantity,supplier,supplier_id,supplier_product_id,supplier_sku_id,supplier_sku_attr,alternative_suppliers,fulfillment_ready,fulfillment_provider,fulfillment_product_id,fulfillment_variant_id,fulfillment_sku,fulfillment_origin_country,fulfillment_logistic_name,fulfillment_provider_status,fulfillment_verified_at,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,last_sync_at,shipping_last_checked_at,minimum_profit,auto_fulfill_max_cost&id=in.(${encodeURIComponent(ids.join(','))})`, { headers }) : Promise.resolve({ ok: true, json: async () => [] }),
-    fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils&limit=1`, { headers })
+    fetch(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils,pricing_fee_percent,pricing_fee_fixed_ils,pricing_reserve_ils&limit=1`, { headers })
   ]);
   if (!productsResponse.ok) throw new Error(`supplier_state_read_${productsResponse.status}`);
   if (!settingsResponse.ok) throw new Error(`store_settings_read_${settingsResponse.status}`);
@@ -112,9 +112,15 @@ function validateFulfillmentOrder(order, supplierState = null, options = {}) {
         const maxSupplierCost = Number(maxSupplierCostRaw), totalSupplierCost = Number((supplierPrice + (Number.isFinite(supplierShipping) ? supplierShipping : 0)).toFixed(2));
         if (Number.isFinite(maxSupplierCost) && totalSupplierCost > maxSupplierCost) return { ok: false, reason: 'supplier_cost_above_auto_limit', productId: item.id, totalSupplierCost, maxSupplierCost };
       }
-      const productMinProfitRaw = current.minimum_profit, productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw), minimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
+      const productMinProfitRaw = current.minimum_profit, productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw), configuredMinimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
+      const minimumProfit = Number.isFinite(configuredMinimumProfit) ? Math.max(25, configuredMinimumProfit) : null;
       if (!Number.isFinite(minimumProfit)) return { ok: false, reason: 'minimum_profit_not_configured', productId: item.id };
-      const profitPerUnit = Number((salePrice - supplierPrice).toFixed(2));
+      const paymentFeePercent = Number(supplierState?.settings?.pricing_fee_percent || 0);
+      const paymentFeeFixed = Number(supplierState?.settings?.pricing_fee_fixed_ils || 0);
+      const pricingReserve = Number(supplierState?.settings?.pricing_reserve_ils || 0);
+      const feeBase = salePrice + (Number.isFinite(supplierShipping) ? supplierShipping : 0);
+      const estimatedPaymentFee = Number((feeBase * paymentFeePercent / 100 + paymentFeeFixed / items.length).toFixed(2));
+      const profitPerUnit = Number((salePrice - supplierPrice - estimatedPaymentFee - pricingReserve).toFixed(2));
       if (profitPerUnit < minimumProfit) return { ok: false, reason: 'minimum_profit_not_met', productId: item.id, profitPerUnit, minimumProfit };
     }
   }

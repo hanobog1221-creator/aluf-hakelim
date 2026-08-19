@@ -11,6 +11,7 @@ const handlers = {
   'products': require('./_lib/admin-routes/products'),
   'session': require('./_lib/admin-routes/session'),
   'supplier-capture': require('./_lib/admin-routes/supplier-capture'),
+  'supplier-optimizer': require('./_lib/admin-routes/supplier-optimizer'),
   'cj-worker-sourcing': require('./_lib/admin-routes/cj-worker-sourcing'),
   'cj-worker-catalog': require('./_lib/admin-routes/cj-worker-catalog'),
   'cj-worker-status': require('./_lib/admin-routes/cj-worker-status'),

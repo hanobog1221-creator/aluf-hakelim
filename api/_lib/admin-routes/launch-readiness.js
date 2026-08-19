@@ -11,6 +11,7 @@ const EXPECTED_CJ_CRONS = new Map([
   ['cj-orders-every-30m', '10,40 * * * *']
 ]);
 const ALIEXPRESS_CRON = { jobname: 'aliexpress-catalog-hourly', schedule: '12 * * * *' };
+const SUPPLIER_OPTIMIZER_CRON = { jobname: 'supplier-optimizer-hourly', schedule: '25 * * * *' };
 
 function clean(value, max = 200) { return String(value ?? '').trim().slice(0, max); }
 function bool(value) { return value === true; }
@@ -37,7 +38,7 @@ module.exports = async function handler(req, res) {
     const { supabaseUrl } = config();
     const headers = dbHeaders();
     const [settingsRows, readinessRows, orders, attempts, cronRows, refundRequests, refundExpenses, paypalRuntime, cjStored] = await Promise.all([
-      dbJson(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils,payment_quote_ttl_minutes,business_legal_name,business_tax_id,business_type,business_address,business_phone,support_email&limit=1`, { headers }),
+      dbJson(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils,supplier_optimizer_enabled,payment_quote_ttl_minutes,business_legal_name,business_tax_id,business_type,business_address,business_phone,support_email&limit=1`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,name,active,supplier,ready_for_paid_order,blockers,last_sync_at,shipping_last_checked_at&order=id.asc`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/orders?select=order_id,status,payment_status,fulfillment_status,supplier_order_id,tracking_number,tracking_numbers,created_at,updated_at&order=created_at.desc&limit=60`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/supplier_order_attempts?select=order_id,provider,status,provider_sandbox,provider_payment_completed,supplier_order_ids,created_at&order=created_at.desc&limit=60`, { headers }),
@@ -91,6 +92,9 @@ module.exports = async function handler(req, res) {
     }));
     const aliCron = cronState.find((row) => row.jobname === ALIEXPRESS_CRON.jobname) || null;
     const aliExpressWorkerReady = Boolean(aliCron?.active && aliCron.schedule === ALIEXPRESS_CRON.schedule);
+    const optimizerCron = cronState.find((row) => row.jobname === SUPPLIER_OPTIMIZER_CRON.jobname) || null;
+    const supplierOptimizerWorkerReady = settings.supplier_optimizer_enabled !== true
+      || Boolean(optimizerCron?.active && optimizerCron.schedule === SUPPLIER_OPTIMIZER_CRON.schedule);
     const cjWorkersReady = activeCjRows.length === 0 || (
       EXPECTED_CJ_CRONS.size === cronState.filter((row) => EXPECTED_CJ_CRONS.has(row.jobname)).length
       && [...EXPECTED_CJ_CRONS.entries()].every(([jobname, schedule]) => {
@@ -98,7 +102,7 @@ module.exports = async function handler(req, res) {
         return row?.active === true && row.schedule === schedule;
       })
     );
-    const workersReady = aliExpressWorkerReady && cjWorkersReady;
+    const workersReady = aliExpressWorkerReady && cjWorkersReady && supplierOptimizerWorkerReady;
 
     const ppEnv = clean(paypalRuntime?.environment || 'sandbox', 20).toLowerCase() === 'live' ? 'live' : 'sandbox';
     const paypalConfigured = paypalRuntime?.configured === true;
@@ -212,7 +216,7 @@ module.exports = async function handler(req, res) {
         cjBalanceOk,
         cjLiveReady
       },
-      automation: { workersReady, aliExpressWorkerReady, cjWorkersReady, jobs: cronState },
+      automation: { workersReady, aliExpressWorkerReady, cjWorkersReady, supplierOptimizerWorkerReady, jobs: cronState },
       guards: {
         minimumProfitIls: Number.isFinite(minimumProfit) ? minimumProfit : null,
         paymentQuoteTtlMinutes: Number.isInteger(quoteTtl) ? quoteTtl : null,

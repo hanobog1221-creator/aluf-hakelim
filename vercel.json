@@ -8,6 +8,7 @@
     { "source": "/expenses", "destination": "/admin-expenses.html", "permanent": false },
     { "source": "/refunds", "destination": "/admin-refunds.html", "permanent": false },
     { "source": "/suppliers", "destination": "/admin-suppliers.html", "permanent": false },
+    { "source": "/supplier-optimizer", "destination": "/admin-supplier-optimizer.html", "permanent": false },
     { "source": "/supplier-connection", "destination": "/admin-cj.html", "permanent": false },
     { "source": "/product-intake", "destination": "/admin-product-intake.html", "permanent": false },
     { "source": "/profitability", "destination": "/admin-profitability.html", "permanent": false },
@@ -26,6 +27,8 @@
     { "source": "/api/admin/aliexpress-tracking", "destination": "/api/admin?route=aliexpress-tracking" },
     { "source": "/api/admin/product-intake", "destination": "/api/admin?route=product-intake" },
     { "source": "/api/admin/products", "destination": "/api/admin?route=products" },
+    { "source": "/api/admin/supplier-optimizer", "destination": "/api/admin?route=supplier-optimizer" },
+    { "source": "/api/supplier-optimizer-worker", "destination": "/api/admin?route=supplier-optimizer" },
     { "source": "/api/admin/payment-providers", "destination": "/api/admin?route=payment-providers" },
     { "source": "/api/admin/session", "destination": "/api/admin?route=session" },
     { "source": "/api/admin/supplier-capture", "destination": "/api/admin?route=supplier-capture" },
@@ -155,6 +158,16 @@
     },
     {
       "source": "/admin-fulfillment.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/admin-supplier-optimizer.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },

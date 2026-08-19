@@ -2,6 +2,7 @@ const { callTopApi } = require('./aliexpress');
 const { quoteAliExpressFreight, convertToIls } = require('./shipping');
 const { NO_SKU_ATTR } = require('./aliexpress-order');
 const { serverConfig, serverHeaders } = require('./supabase-server');
+const { recordSupplierOfferSafely } = require('./supplier-offers-store');
 
 const PRODUCT_METHOD = 'aliexpress.ds.product.get';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -101,6 +102,7 @@ async function updateProduct(product,snapshot) {
   const response=await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`,{method:'PATCH',headers:serverHeaders({'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify(update)});
   if(!response.ok) throw new Error(`product_sync_save_${response.status}_${(await response.text()).slice(0,180)}`);
   await writeHistory(product,{inStock:update.supplier_in_stock,stock:update.supplier_stock,price:update.supplier_price,currency:update.supplier_currency,priceIls:update.supplier_price_ils,shippingAvailable:update.supplier_shipping_available??null,shippingIls:Object.prototype.hasOwnProperty.call(update,'supplier_shipping')?update.supplier_shipping:null,error:update.supplier_sync_error||update.shipping_sync_error||null});
+  await recordSupplierOfferSafely({productId:product.id,provider:'aliexpress',supplierId:product.supplier_id||`aliexpress:${product.supplier_product_id||snapshot.productId}`,supplierUrl:product.supplier_url,supplierProductId:product.supplier_product_id||snapshot.productId,supplierSkuId:update.supplier_sku_id,supplierSkuAttr:update.supplier_sku_attr,variantLabel:update.variant_label,productPriceIls:update.supplier_price_ils,shippingPriceIls:update.supplier_shipping,inStock:update.supplier_in_stock,stockQuantity:update.supplier_stock,shippingAvailable:update.supplier_shipping_available,equivalenceVerified:skuVerified&&skuAttrVerified,equivalenceVerifiedAt:update.sku_verified_at,fulfillmentSupported:true,providerSnapshot:{source:'aliexpress_catalog_sync'},lastSyncAt:update.last_sync_at,shippingLastCheckedAt:update.shipping_last_checked_at,syncError:update.supplier_sync_error||update.shipping_sync_error||null});
   return {ready,update};
 }
 async function markError(product,error){const{supabaseUrl}=serverConfig();const message=String(error.code||error.message||error).slice(0,300);await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`,{method:'PATCH',headers:serverHeaders({'Content-Type':'application/json',Prefer:'return=minimal'}),body:JSON.stringify({supplier_sync_error:message,fulfillment_ready:false,updated_at:new Date().toISOString()})}).catch(()=>{});await writeHistory(product,{error:message});return message;}
