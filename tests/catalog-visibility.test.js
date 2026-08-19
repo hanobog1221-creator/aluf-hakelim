@@ -34,6 +34,15 @@ test('requested hidden products are restored while the failed battery bundle is 
   assert.doesNotMatch(suppliers, /battery588/);
 });
 
+test('known products stay visible and show an explicit out-of-stock state', () => {
+  assert.match(productsApi, /RETAINED_CATALOG_IDS/);
+  assert.match(productsApi, /supplier_in_stock/);
+  assert.match(productsApi, /stockStatus = outOfStock \? 'out_of_stock'/);
+  assert.match(source, /stockStatus: 'out_of_stock'/);
+  assert.match(source, /אזל מהמלאי — אפשר לשלוח קישור חלופי/);
+  assert.match(source, /המוצר אזל מהמלאי ולא ניתן להזמין אותו כרגע/);
+});
+
 test('purchases remain blocked until supplier verification is complete', () => {
   assert.match(source, /product\.purchaseReady !== true/);
   assert.match(source, /addButton\.disabled = true/);

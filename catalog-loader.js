@@ -10,9 +10,9 @@
     if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
 
     if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    // Keep managed products plus the storefront's existing catalog visible while
-    // supplier verification is pending. Missing legacy items are display-only;
-    // purchase controls below remain fail-closed until the API marks them ready.
+    // Keep managed products plus the storefront's existing catalog visible even
+    // when a supplier runs out of stock. Only an explicit removal may delete a
+    // product; purchase controls remain fail-closed until the API marks it ready.
     const managedProducts = data.products.filter((product) => product.available !== false);
     const managedIds = new Set(managedProducts.map((product) => String(product.id)));
     const pendingLegacyProducts = products
@@ -21,6 +21,8 @@
         ...product,
         available: true,
         purchaseReady: false,
+        inStock: false,
+        stockStatus: 'out_of_stock',
         shippingAvailable: null
       }));
     const visibleProducts = [...managedProducts, ...pendingLegacyProducts];
@@ -29,7 +31,7 @@
 
     const style = document.createElement('style');
     style.textContent = `
-      .ahShippingLine{font-size:13px;font-weight:850;color:#344454;margin:2px 0 8px}.ahShippingLine.pending{color:#8b6500}
+      .ahShippingLine{font-size:13px;font-weight:850;color:#344454;margin:2px 0 8px}.ahShippingLine.pending{color:#8b6500}.ahShippingLine.out{color:#b4232e}.stock.out{color:#b4232e}.product .add:disabled{opacity:.58;cursor:not-allowed}
       .ahSalesNotice{max-width:1180px;margin:10px auto 0;padding:10px 14px;background:#fff8d8;border:1px solid #efd36d;border-radius:11px;font-size:13px;font-weight:850;color:#6e5200;text-align:center}
       .ahWaFloat{position:fixed;left:18px;bottom:18px;z-index:145;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#073b1a;padding:12px 16px;font-weight:950;box-shadow:0 10px 28px #0003;text-decoration:none}
       .ahWaFloat svg{width:24px;height:24px;display:block;flex:0 0 auto}.ahWaProduct{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;text-align:center;border:1px solid #20b858;border-radius:10px;padding:11px 13px;font-weight:900;color:#126832;background:#effdf4;text-decoration:none}.ahWaProduct svg{width:20px;height:20px;flex:0 0 auto}
@@ -46,6 +48,7 @@
     }
 
     function shippingText(product) {
+      if (product.stockStatus === 'out_of_stock' || product.inStock === false) return 'אזל מהמלאי — אפשר לשלוח קישור חלופי';
       if (product.purchaseReady !== true) {
         if (product.shippingAvailable === false) return 'אין אפשרות משלוח כרגע';
         return 'זמינות ומשלוח בבדיקה';
@@ -117,6 +120,7 @@
     }
 
     function blockedPurchaseMessage(product) {
+      if (product && (product.stockStatus === 'out_of_stock' || product.inStock === false)) return 'המוצר אזל מהמלאי ולא ניתן להזמין אותו כרגע';
       if (!product || product.purchaseReady !== true) return 'המוצר עדיין בבדיקת זמינות ולא ניתן להזמין אותו כרגע';
       return '';
     }
@@ -169,7 +173,20 @@
             priceRow.parentNode.insertBefore(line, priceRow);
           }
           line.classList.toggle('pending', product.purchaseReady !== true);
+          line.classList.toggle('out', product.stockStatus === 'out_of_stock' || product.inStock === false);
           line.textContent = '🚚 ' + shippingText(product);
+        }
+
+        const stock = card.querySelector('.stock');
+        const outOfStock = product.stockStatus === 'out_of_stock' || product.inStock === false;
+        if (stock) {
+          stock.classList.toggle('out', outOfStock);
+          stock.textContent = outOfStock ? '✕ אזל מהמלאי' : (product.purchaseReady === true ? '✓ זמין להזמנה' : '◷ זמינות בבדיקה');
+        }
+        const addButton = card.querySelector('.add');
+        if (addButton) {
+          addButton.disabled = product.purchaseReady !== true;
+          addButton.textContent = outOfStock ? 'אזל מהמלאי' : (product.purchaseReady === true ? 'הוסף לסל 🛒' : 'זמינות בבדיקה');
         }
 
         let actions = card.querySelector('.ahCardActions');
@@ -214,7 +231,8 @@
         const priceRow = modalInfo?.querySelector('.priceRow');
         if (!modalInfo || !priceRow) return;
         const line = document.createElement('div');
-        line.className = 'ahShippingLine' + (product.purchaseReady !== true ? ' pending' : '');
+        const outOfStock = product.stockStatus === 'out_of_stock' || product.inStock === false;
+        line.className = 'ahShippingLine' + (product.purchaseReady !== true ? ' pending' : '') + (outOfStock ? ' out' : '');
         line.textContent = '🚚 ' + shippingText(product);
         priceRow.parentNode.insertBefore(line, priceRow);
 
