@@ -30,6 +30,22 @@ async function intakeCounts() {
   return counts;
 }
 
+async function growCatalog() {
+  const { supabaseUrl } = config();
+  const tokenResponse = await fetch(`${supabaseUrl}/rest/v1/cj_worker_credentials?id=eq.primary&select=worker_token&limit=1`, { headers: dbHeaders() });
+  if (!tokenResponse.ok) throw new Error(`cj_worker_token_read_${tokenResponse.status}`);
+  const workerToken = String((await tokenResponse.json())[0]?.worker_token || '').trim();
+  if (!workerToken) throw new Error('cj_worker_token_missing');
+  const response = await fetch('https://aluf-hakelim-v2-ready.vercel.app/api/cj-worker-catalog?batch=2', {
+    headers: { Accept: 'application/json', 'x-cj-worker-token': workerToken }
+  });
+  const raw = await response.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
+  if (!response.ok) throw new Error(data?.error || `cj_catalog_worker_${response.status}`);
+  return data;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -40,7 +56,11 @@ module.exports = async function handler(req, res) {
     const configured = Boolean(String(process.env.CJ_API_KEY || stored?.api_key || '').trim());
     let connected = await readConnected();
 
-    if (req.method === 'POST' && String(req.query?.test || '') === '1') {
+    if (req.method === 'POST' && String(req.query?.grow || '') === '1') {
+      const catalog = await growCatalog();
+      await audit('cj_catalog_grow', 'provider', 'cj', { added: catalog?.discovery?.added?.length || 0, rejected: catalog?.discovery?.rejected?.length || 0 });
+      return res.status(200).json({ ok: true, catalog });
+    } else if (req.method === 'POST' && String(req.query?.test || '') === '1') {
       await ensureAccessToken({ force: !connected });
       connected = true;
       await audit('cj_connection_test', 'provider', 'cj', { connected: true });
