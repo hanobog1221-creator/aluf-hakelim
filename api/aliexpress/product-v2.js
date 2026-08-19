@@ -4,6 +4,7 @@ const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { quoteAliExpressFreight, convertToIls, quoteCartShipping } = require('../_lib/shipping');
 const { getFulfillmentCandidate } = require('../_lib/fulfillment');
 const { buildPlaceOrderRequests, safePreview } = require('../_lib/aliexpress-order');
+const { autoPriceUpdate } = require('../_lib/pricing-engine');
 
 const PRODUCT_METHOD = 'aliexpress.ds.product.get';
 const VERIFIED_CAPTURE_MAX_AGE_MS = 8 * 60 * 60 * 1000;
@@ -227,6 +228,12 @@ async function updateProduct(product, snapshot) {
     update.supplier_shipping_available = null;
   }
 
+  const pricing = autoPriceUpdate(product, {
+    supplierPriceIls: update.supplier_price_ils,
+    supplierShippingIls: freight ? update.supplier_shipping : null
+  });
+  Object.assign(update, pricing.update);
+
   const response = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
     method: 'PATCH',
     headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
@@ -249,7 +256,7 @@ async function updateProduct(product, snapshot) {
     error: update.supplier_sync_error || null
   });
 
-  return { selectedSku: selected, skuVerified, ready, update, freight };
+  return { selectedSku: selected, skuVerified, ready, update, freight, pricing: pricing.quote };
 }
 
 function hasFreshVerifiedPdp(product) {

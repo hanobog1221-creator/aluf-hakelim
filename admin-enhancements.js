@@ -56,7 +56,10 @@
     const customerTotal = shippingKnown ? Number((selling + shipping).toFixed(2)) : null;
     const profit = supplierTotal != null && customerTotal != null ? Number((customerTotal - supplierTotal).toFixed(2)) : null;
     const margin = profit != null && customerTotal > 0 ? Number((profit / customerTotal * 100).toFixed(1)) : null;
-    return { selling, supplierPrice, shipping, shippingKnown, supplierTotal, customerTotal, profit, margin };
+    const quote = product.pricing_quote || {};
+    const recommendedPrice = quote.ready ? numberOrNull(quote.recommendedProductPrice) : null;
+    const estimatedNetProfit = quote.ready ? numberOrNull(quote.estimatedNetProfit) : null;
+    return { selling, supplierPrice, shipping, shippingKnown, supplierTotal, customerTotal, profit, margin, quote, recommendedPrice, estimatedNetProfit };
   }
 
   function productBlockers(product) {
@@ -130,11 +133,11 @@
   }
 
   function exportProducts() {
-    const header = ['מזהה','שם','מחיר מכירה','משלוח','מחיר ללקוח כולל משלוח','עלות מוצר','עלות כוללת משלוח','רווח משוער','מקסימום יחידות להזמנה','פעיל','Product ID','SKU ID','וריאנט','מוכן לאוטומציה'];
+    const header = ['מזהה','שם','מחיר מכירה','מחיר אוטומטי','נטו משוער','משלוח','מחיר ללקוח כולל משלוח','עלות מוצר','עלות כוללת משלוח','מקסימום יחידות להזמנה','פעיל','Product ID','SKU ID','וריאנט','מוכן לאוטומציה'];
     const lines = [header.map(csvCell).join(',')];
     for (const p of state.products) {
       const f = productFinancials(p);
-      lines.push([p.id,p.name,p.selling_price,f.shippingKnown ? f.shipping : '',f.customerTotal ?? '',f.supplierPrice ?? '',f.supplierTotal ?? '',f.profit ?? '',p.max_order_quantity || 20,p.active ? 'כן' : 'לא',p.supplier_product_id || '',p.supplier_sku_id || '',p.variant_label || '',p.fulfillment_ready ? 'כן' : 'לא'].map(csvCell).join(','));
+      lines.push([p.id,p.name,p.selling_price,f.recommendedPrice ?? '',f.estimatedNetProfit ?? '',f.shippingKnown ? f.shipping : '',f.customerTotal ?? '',f.supplierPrice ?? '',f.supplierTotal ?? '',p.max_order_quantity || 20,p.active ? 'כן' : 'לא',p.supplier_product_id || '',p.supplier_sku_id || '',p.variant_label || '',p.fulfillment_ready ? 'כן' : 'לא'].map(csvCell).join(','));
     }
     downloadCsv(`aluf-hakelim-products-${new Date().toISOString().slice(0,10)}.csv`, lines);
   }
@@ -264,8 +267,8 @@
         finance.className = 'ahFinance';
         const costText = product.supplier_shipping_available === false ? 'משלוח לא זמין' : moneyMaybe(f.supplierTotal);
         const sellText = product.supplier_shipping_available === false ? 'משלוח לא זמין' : moneyMaybe(f.customerTotal);
-        const profitClass = f.profit == null ? 'unknown' : (f.profit >= 0 ? 'ok' : 'bad');
-        finance.innerHTML = `<div class="ahFinanceBox ${f.supplierTotal == null ? 'unknown' : ''}"><small>העלות שלך כולל משלוח</small><b>${esc(costText)}</b></div><div class="ahFinanceBox ${f.customerTotal == null ? 'unknown' : ''}"><small>המחיר ללקוח כולל משלוח</small><b>${esc(sellText)}</b></div><div class="ahFinanceBox profit ${profitClass}"><small>רווח משוער לפני עמלות/מס</small><b>${f.profit == null ? 'ממתין לנתוני עלות' : money(f.profit)}</b></div><div class="ahFinanceBox"><small>משלוח</small><b>${product.supplier_shipping_available === false ? 'לא זמין' : (f.shippingKnown ? (f.shipping <= 0 ? 'חינם' : money(f.shipping)) : 'ממתין לסנכרון')}</b></div>`;
+        const profitClass = f.estimatedNetProfit == null ? 'unknown' : (f.estimatedNetProfit >= 20 ? 'ok' : 'bad');
+        finance.innerHTML = `<div class="ahFinanceBox ${f.supplierTotal == null ? 'unknown' : ''}"><small>העלות שלך כולל משלוח</small><b>${esc(costText)}</b></div><div class="ahFinanceBox ${f.recommendedPrice == null ? 'unknown' : ''}"><small>מחיר אוטומטי באתר</small><b>${f.recommendedPrice == null ? 'ממתין לסנכרון' : money(f.recommendedPrice)}</b></div><div class="ahFinanceBox profit ${profitClass}"><small>נטו אישי משוער</small><b>${f.estimatedNetProfit == null ? 'ממתין לנתוני עלות' : money(f.estimatedNetProfit)}</b></div><div class="ahFinanceBox"><small>משלוח</small><b>${product.supplier_shipping_available === false ? 'לא זמין' : (f.shippingKnown ? (f.shipping <= 0 ? 'חינם' : money(f.shipping)) : 'ממתין לסנכרון')}</b></div>`;
         body.insertBefore(finance, body.firstChild);
       }
 
