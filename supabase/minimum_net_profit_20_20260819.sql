@@ -31,3 +31,29 @@ begin
     execute 'grant select on public.product_fulfillment_readiness to service_role';
   end if;
 end $$;
+
+-- Grow the verified CJ catalog steadily without trying to process a hundred
+-- freight quotes inside one short serverless request.
+do $$
+declare
+  existing_job bigint;
+begin
+  select jobid into existing_job from cron.job where jobname = 'cj-catalog-hourly' limit 1;
+  if existing_job is not null then perform cron.unschedule(existing_job); end if;
+end $$;
+
+select cron.schedule(
+  'cj-catalog-hourly',
+  '*/10 * * * *',
+  $job$
+  select net.http_get(
+    url := 'https://aluf-hakelim-v2-ready.vercel.app/api/cj-worker-catalog',
+    params := '{}'::jsonb,
+    headers := jsonb_build_object(
+      'Accept','application/json',
+      'x-cj-worker-token',(select decrypted_secret from vault.decrypted_secrets where name='cj_worker_token' limit 1)
+    ),
+    timeout_milliseconds := 60000
+  );
+  $job$
+);

@@ -8,6 +8,8 @@ const { DEFAULT_MINIMUM_PROFIT_ILS, DEFAULT_TAX_RESERVE_PERCENT, DEFAULT_INSURAN
 
 const DISCOVERY_TARGET = 100;
 const DISCOVERY_BATCH = 6;
+const DISCOVERY_MAX_SELLING_PRICE_ILS = 149.90;
+const DISCOVERY_MAX_LANDED_COST_ILS = 75;
 const DISCOVERY_SEARCHES = [
   { keyword: 'car detailing brush', label: 'מברשת דיטיילינג לרכב', categories: ['car', 'cleaning'], kind: 'ניקוי ודיטיילינג · מברשות' },
   { keyword: 'microfiber car towel', label: 'מגבת מיקרופייבר לרכב', categories: ['car', 'cleaning'], kind: 'ניקוי ודיטיילינג · ייבוש והברקה' },
@@ -127,7 +129,7 @@ function imageProxyUrl(url) { return url ? `/api/cj-image?url=${encodeURICompone
 function safeProductId(pid) { return `cj-auto-${String(pid).replace(/[^a-z0-9-]/gi, '').slice(0, 64)}`; }
 
 async function searchProducts(search, page) {
-  const query = new URLSearchParams({ page: String(page), size: '20', keyWord: search.keyword, countryCode: 'CN' });
+  const query = new URLSearchParams({ page: String(page), size: '20', keyWord: search.keyword, countryCode: 'CN', endSellPrice: '20' });
   return listRows(await cj(`/product/listV2?${query.toString()}`));
 }
 async function variantsForProduct(pid) {
@@ -176,6 +178,8 @@ async function discoverProducts(products, settings, limit = DISCOVERY_BATCH) {
         });
         const result = await syncProduct(product, settings);
         if (!result.ready) throw new Error(result.costWithinLimit ? 'profit_or_stock_guard' : 'supplier_cost_above_auto_limit');
+        if (result.landedCost > DISCOVERY_MAX_LANDED_COST_ILS) throw new Error('landed_cost_too_high');
+        if (result.sellingPrice > DISCOVERY_MAX_SELLING_PRICE_ILS) throw new Error('customer_price_too_high');
         await patch('products', `id=eq.${encodeURIComponent(id)}`, { active: true });
         existingIds.add(id); existingSupplierIds.add(pid);
         added.push({ ...result, name: product.name, keyword: search.keyword });
@@ -230,7 +234,7 @@ async function syncProduct(product, settings, job = null) {
     provider_product_id: productId, provider_variant_id: variantId, provider_variant_sku: variantSku, provider_snapshot: snapshot,
     store_product_id: product.id, last_error: ready ? null : (costWithinLimit ? 'minimum_net_profit_not_met' : 'supplier_cost_above_auto_limit'), processed_at: now
   });
-  return { id: product.id, ready, stock, productPriceUsd, productPriceIls, shippingPriceUsd, shippingPriceIls, sellingPrice: pricing.sellingPrice, projectedNetProfit: pricing.projectedNetProfit, profitFloor, service: freight.logisticName, costWithinLimit, productId, variantId, variantSku };
+  return { id: product.id, ready, stock, productPriceUsd, productPriceIls, shippingPriceUsd, shippingPriceIls, landedCost, sellingPrice: pricing.sellingPrice, projectedNetProfit: pricing.projectedNetProfit, profitFloor, service: freight.logisticName, costWithinLimit, productId, variantId, variantSku };
 }
 
 module.exports = async function handler(req, res) {
