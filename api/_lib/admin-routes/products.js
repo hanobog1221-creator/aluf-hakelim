@@ -1,4 +1,15 @@
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
+const { pricingPolicy, quoteProductPrice, autoPriceUpdate } = require('../pricing-engine');
+
+function withPricingQuote(product) {
+  return {
+    ...product,
+    pricing_quote: quoteProductPrice({
+      supplierPriceIls: product?.supplier_price_ils,
+      supplierShippingIls: product?.supplier_shipping
+    })
+  };
+}
 
 const SUPPLIER_HOSTS = {
   aliexpress: ['aliexpress.com'],
@@ -191,7 +202,13 @@ module.exports = async function handler(req, res) {
       const products = await productsResponse.json();
       const settings = (await settingsResponse.json())[0] || null;
       const coupons = await couponsResponse.json();
-      return res.status(200).json({ ok: true, products, settings, coupons });
+      return res.status(200).json({
+        ok: true,
+        products: products.map(withPricingQuote),
+        settings,
+        coupons,
+        pricingPolicy: pricingPolicy()
+      });
     }
 
     if (req.method === 'POST') {
@@ -363,7 +380,7 @@ module.exports = async function handler(req, res) {
       }
       const product = (await response.json())[0] || null;
       await audit('product_create', 'product', id, {});
-      return res.status(201).json({ ok: true, product });
+      return res.status(201).json({ ok: true, product: product ? withPricingQuote(product) : null });
     }
 
     if (req.method === 'PATCH') {
@@ -433,6 +450,12 @@ module.exports = async function handler(req, res) {
         if (hasPublicShipping) update.shipping_last_checked_at = publicCaptureAt;
         update.fulfillment_ready = false;
       }
+      const supplierCostChanged = ['supplier_price_ils','supplier_shipping','supplier_shipping_available'].some((key) => key in update);
+      if (supplierCostChanged) {
+        const effective = { ...existing, ...update };
+        const pricing = autoPriceUpdate(effective);
+        Object.assign(update, pricing.update);
+      }
       update.updated_at = new Date().toISOString();
 
       const response = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(id)}`, {
@@ -449,7 +472,7 @@ module.exports = async function handler(req, res) {
         fields: Object.keys(update),
         source: body.source === 'aliexpress_public_page' ? 'aliexpress_public_page' : null
       });
-      return res.status(200).json({ ok: true, product });
+      return res.status(200).json({ ok: true, product: product ? withPricingQuote(product) : null });
     }
 
     res.setHeader('Allow', 'GET, POST, PATCH');
@@ -478,4 +501,3 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ ok: false, error: 'admin_products_failed' });
   }
 };
-
