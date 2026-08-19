@@ -37,15 +37,6 @@ const SUPPLIERS = {
     productId: '1005012629074137',
     skuId: null,
     readyForFulfillment: false
-  },
-  battery588: {
-    storeProductId: 'battery588',
-    supplier: 'aliexpress',
-    sourceUrl: 'https://a.aliexpress.com/_c3mUoejd',
-    variantLabel: 'Battery 1 Charger 1',
-    productId: '1005008055230578',
-    skuId: null,
-    readyForFulfillment: false
   }
 };
 

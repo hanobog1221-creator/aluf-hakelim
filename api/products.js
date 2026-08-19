@@ -1,5 +1,11 @@
 const { apiKeyHeaders } = require('./_lib/supabase-server');
 
+const RESTORED_CATALOG_IDS = new Set([
+  'ae-1005007178140659',
+  'ae-1005009926657110'
+]);
+const REMOVED_CATALOG_IDS = new Set(['battery588']);
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -20,7 +26,7 @@ module.exports = async function handler(req, res) {
 
     const [productsResponse, readinessResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_shipping_available&active=eq.true&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_shipping_available&or=(active.eq.true,id.in.(${[...RESTORED_CATALOG_IDS].join(',')}))&order=sort_order.asc`,
         { headers }
       ),
       fetch(
@@ -68,12 +74,14 @@ module.exports = async function handler(req, res) {
     const readinessRows = await readinessResponse.json();
     const readiness = new Map(readinessRows.map((row) => [String(row.id), row.ready_for_paid_order === true]));
     const rows = await productsResponse.json();
-    const products = rows.map((row) => {
-      const fullReadiness = readiness.get(String(row.id)) === true;
+    const products = rows.filter((row) => !REMOVED_CATALOG_IDS.has(String(row.id))).map((row) => {
+      const id = String(row.id);
+      const fullReadiness = readiness.get(id) === true;
       const purchaseReady = row.active === true && fullReadiness;
+      const storefrontVisible = row.active === true || RESTORED_CATALOG_IDS.has(id);
 
       return {
-        id: String(row.id),
+        id,
         name: String(row.name),
         price: Number(row.selling_price),
         old: row.old_price == null ? null : Number(row.old_price),
@@ -86,7 +94,7 @@ module.exports = async function handler(req, res) {
         desc: row.description || '',
         specs: Array.isArray(row.specs) ? row.specs : [],
         maxQty: Math.max(1, Math.min(20, Number(row.max_order_quantity || 20))),
-        available: row.active === true,
+        available: storefrontVisible,
         purchaseReady,
         shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true
       };
