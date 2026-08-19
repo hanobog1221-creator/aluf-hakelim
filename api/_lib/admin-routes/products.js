@@ -17,7 +17,8 @@ const SUPPLIER_HOSTS = {
   alibaba: ['alibaba.com'],
   banggood: ['banggood.com'],
   hypersku: ['hypersku.com'],
-  eprolo: ['eprolo.com']
+  eprolo: ['eprolo.com'],
+  wiio: ['wiio.io', 'wiio.com']
 };
 
 function cleanText(value, max, nullable = true) {

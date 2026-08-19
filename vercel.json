@@ -9,6 +9,7 @@
     { "source": "/refunds", "destination": "/admin-refunds.html", "permanent": false },
     { "source": "/suppliers", "destination": "/admin-suppliers.html", "permanent": false },
     { "source": "/supplier-optimizer", "destination": "/admin-supplier-optimizer.html", "permanent": false },
+    { "source": "/supplier-connectors", "destination": "/admin-supplier-connectors.html", "permanent": false },
     { "source": "/supplier-connection", "destination": "/admin-cj.html", "permanent": false },
     { "source": "/product-intake", "destination": "/admin-product-intake.html", "permanent": false },
     { "source": "/profitability", "destination": "/admin-profitability.html", "permanent": false },
@@ -28,6 +29,7 @@
     { "source": "/api/admin/product-intake", "destination": "/api/admin?route=product-intake" },
     { "source": "/api/admin/products", "destination": "/api/admin?route=products" },
     { "source": "/api/admin/supplier-optimizer", "destination": "/api/admin?route=supplier-optimizer" },
+    { "source": "/api/admin/supplier-connectors", "destination": "/api/admin?route=supplier-connectors" },
     { "source": "/api/supplier-optimizer-worker", "destination": "/api/admin?route=supplier-optimizer" },
     { "source": "/api/admin/payment-providers", "destination": "/api/admin?route=payment-providers" },
     { "source": "/api/admin/session", "destination": "/api/admin?route=session" },
@@ -168,6 +170,16 @@
     },
     {
       "source": "/admin-supplier-optimizer.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/admin-supplier-connectors.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-store" },
         { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
