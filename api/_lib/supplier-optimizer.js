@@ -1,5 +1,7 @@
 const DEFAULT_QUOTE_TTL_MS = 8 * 60 * 60 * 1000;
 const DEFAULT_MINIMUM_PROFIT_ILS = 25;
+const DEFAULT_TAX_RESERVE_PERCENT = 22;
+const DEFAULT_INSURANCE_RESERVE_PERCENT = 18;
 const AUTO_FULFILLMENT_PROVIDERS = new Set(['aliexpress', 'cj']);
 
 function money(value) {
@@ -84,11 +86,15 @@ function requiredSellingPrice(productPriceIls, minimumProfitIls = DEFAULT_MINIMU
   const percent = Number(options.paymentFeePercent || 0);
   const fixed = money(options.paymentFeeFixedIls || 0);
   const customerShipping = money(options.customerShippingIls || 0);
+  const taxPercent = Number(options.taxReservePercent ?? DEFAULT_TAX_RESERVE_PERCENT);
+  const insurancePercent = Number(options.insuranceReservePercent ?? DEFAULT_INSURANCE_RESERVE_PERCENT);
   if (productCost === null || productCost < 0) throw new Error('invalid_product_cost');
   if (minimumProfit === null || minimumProfit < 0) throw new Error('invalid_minimum_profit');
-  if (reserve === null || reserve < 0 || fixed === null || fixed < 0 || customerShipping === null || customerShipping < 0 || !Number.isFinite(percent) || percent < 0 || percent >= 100) throw new Error('invalid_pricing_costs');
+  if (reserve === null || reserve < 0 || fixed === null || fixed < 0 || customerShipping === null || customerShipping < 0 || !Number.isFinite(percent) || percent < 0 || percent >= 100 || !Number.isFinite(taxPercent) || taxPercent < 0 || !Number.isFinite(insurancePercent) || insurancePercent < 0 || taxPercent + insurancePercent >= 100) throw new Error('invalid_pricing_costs');
   const rate = percent / 100;
-  const raw = (productCost + minimumProfit + reserve + fixed + rate * customerShipping) / (1 - rate);
+  const netRetentionRate = 1 - (taxPercent + insurancePercent) / 100;
+  const preTaxProfitTarget = minimumProfit / netRetentionRate;
+  const raw = (productCost + preTaxProfitTarget + reserve + fixed + rate * customerShipping) / (1 - rate);
   const rounded = options.roundToWholeShekel === false ? Math.ceil(raw * 100) / 100 : Math.ceil(raw);
   return money(rounded);
 }
@@ -102,13 +108,18 @@ function pricingForOffer(offer, minimumProfitIls, options = {}) {
   const supplierCost = normalized.landedCost;
   const paymentFee = money(grossCollected * (Number(options.paymentFeePercent || 0) / 100) + Number(options.paymentFeeFixedIls || 0));
   const reserve = money(options.reserveIls || 0);
-  const projectedNetProfit = money(grossCollected - supplierCost - paymentFee - reserve);
-  return { sellingPrice, customerShipping, grossCollected, supplierCost, paymentFee, reserve, projectedNetProfit };
+  const preTaxProfit = money(grossCollected - supplierCost - paymentFee - reserve);
+  const incomeTaxReserve = money(preTaxProfit * Number(options.taxReservePercent ?? DEFAULT_TAX_RESERVE_PERCENT) / 100);
+  const insuranceReserve = money(preTaxProfit * Number(options.insuranceReservePercent ?? DEFAULT_INSURANCE_RESERVE_PERCENT) / 100);
+  const projectedNetProfit = money(preTaxProfit - incomeTaxReserve - insuranceReserve);
+  return { sellingPrice, customerShipping, grossCollected, supplierCost, paymentFee, reserve, preTaxProfit, incomeTaxReserve, insuranceReserve, projectedNetProfit };
 }
 
 module.exports = {
   DEFAULT_QUOTE_TTL_MS,
   DEFAULT_MINIMUM_PROFIT_ILS,
+  DEFAULT_TAX_RESERVE_PERCENT,
+  DEFAULT_INSURANCE_RESERVE_PERCENT,
   AUTO_FULFILLMENT_PROVIDERS,
   normalizeOffer,
   offerBlockers,

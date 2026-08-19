@@ -2,6 +2,8 @@ const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { requireWorker } = require('../cj-worker-auth');
 const {
   DEFAULT_MINIMUM_PROFIT_ILS,
+  DEFAULT_TAX_RESERVE_PERCENT,
+  DEFAULT_INSURANCE_RESERVE_PERCENT,
   AUTO_FULFILLMENT_PROVIDERS,
   selectBestOffer,
   pricingForOffer
@@ -94,7 +96,9 @@ function optimizerOptions(settings) {
     enabledProviders: AUTO_FULFILLMENT_PROVIDERS,
     paymentFeePercent: Number(settings.pricing_fee_percent || 0),
     paymentFeeFixedIls: Number(settings.pricing_fee_fixed_ils || 0),
-    reserveIls: Number(settings.pricing_reserve_ils || 0)
+    reserveIls: Number(settings.pricing_reserve_ils || 0),
+    taxReservePercent: Number(settings.pricing_tax_reserve_percent ?? DEFAULT_TAX_RESERVE_PERCENT),
+    insuranceReservePercent: Number(settings.pricing_insurance_reserve_percent ?? DEFAULT_INSURANCE_RESERVE_PERCENT)
   };
 }
 

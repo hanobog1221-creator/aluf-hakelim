@@ -237,6 +237,8 @@ module.exports = async function handler(req, res) {
           pricing_fee_percent: hasOwn(body, 'pricing_fee_percent') ? cleanPercent(body.pricing_fee_percent) : cleanPercent(current.pricing_fee_percent, 0),
           pricing_fee_fixed_ils: hasOwn(body, 'pricing_fee_fixed_ils') ? cleanNumber(body.pricing_fee_fixed_ils) : Number(current.pricing_fee_fixed_ils || 0),
           pricing_reserve_ils: hasOwn(body, 'pricing_reserve_ils') ? cleanNumber(body.pricing_reserve_ils) : Number(current.pricing_reserve_ils || 0),
+          pricing_tax_reserve_percent: hasOwn(body, 'pricing_tax_reserve_percent') ? cleanPercent(body.pricing_tax_reserve_percent) : cleanPercent(current.pricing_tax_reserve_percent, 22),
+          pricing_insurance_reserve_percent: hasOwn(body, 'pricing_insurance_reserve_percent') ? cleanPercent(body.pricing_insurance_reserve_percent) : cleanPercent(current.pricing_insurance_reserve_percent, 18),
           payment_quote_ttl_minutes: hasOwn(body, 'payment_quote_ttl_minutes')
             ? cleanIntegerRange(body.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl')
             : cleanIntegerRange(current.payment_quote_ttl_minutes, 5, 180, 30, 'invalid_payment_quote_ttl'),
@@ -247,6 +249,10 @@ module.exports = async function handler(req, res) {
           business_phone: hasOwn(body, 'business_phone') ? cleanText(body.business_phone, 40) : (current.business_phone || null),
           updated_at: new Date().toISOString()
         };
+
+        if (row.pricing_tax_reserve_percent + row.pricing_insurance_reserve_percent >= 100) {
+          return res.status(400).json({ ok: false, error: 'invalid_net_reserve_percentage' });
+        }
 
         if (row.support_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.support_email)) {
           return res.status(400).json({ ok: false, error: 'invalid_support_email' });
