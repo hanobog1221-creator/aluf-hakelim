@@ -136,11 +136,29 @@ async function variantsForProduct(pid) {
   const json = await cj(`/product/variant/query?pid=${encodeURIComponent(pid)}`);
   return Array.isArray(json.data) ? json.data : (Array.isArray(json.data?.list) ? json.data.list : []);
 }
-function cheapestVariant(rows) {
+function cheapestVariants(rows, limit = 2) {
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     const price = Number(row?.variantSellPrice), vid = clean(row?.vid, 160), sku = clean(row?.variantSku, 180);
     return vid && sku && Number.isFinite(price) && price >= 0;
-  }).sort((a, b) => Number(a.variantSellPrice) - Number(b.variantSellPrice))[0] || null;
+  }).sort((a, b) => Number(a.variantSellPrice) - Number(b.variantSellPrice)).slice(0, limit);
+}
+async function bestVariantQuote(rows) {
+  const quotes = [];
+  for (const variant of cheapestVariants(rows)) {
+    const variantId = clean(variant.vid, 160), variantSku = clean(variant.variantSku, 180);
+    const detail = await getVariant(variantId);
+    if (!detail) continue;
+    const origin = originCountry(detail), stock = inventoryTotal(detail);
+    if (stock <= 0) continue;
+    const freight = chooseFreight(await getFreight(variantId, origin));
+    if (!freight) continue;
+    const productPriceUsd = Number(detail.variantSellPrice), shippingPriceUsd = Number(freight.logisticPrice);
+    if (!Number.isFinite(productPriceUsd) || productPriceUsd < 0 || !Number.isFinite(shippingPriceUsd) || shippingPriceUsd < 0) continue;
+    const productPriceIls = await convertToIls(productPriceUsd, 'USD'), shippingPriceIls = await convertToIls(shippingPriceUsd, 'USD');
+    quotes.push({ variant, variantId, variantSku, detail, origin, stock, freight, productPriceUsd, shippingPriceUsd, productPriceIls, shippingPriceIls, landedCost: Number((productPriceIls + shippingPriceIls).toFixed(2)) });
+  }
+  quotes.sort((a, b) => a.landedCost - b.landedCost);
+  return quotes[0] || null;
 }
 
 async function discoverProducts(products, settings, limit = DISCOVERY_BATCH) {
@@ -156,10 +174,11 @@ async function discoverProducts(products, settings, limit = DISCOVERY_BATCH) {
     for (const row of rows) {
       if (added.length >= limit) break;
       const pid = productIdentity(row), title = productTitle(row);
-      if (!pid || existingSupplierIds.has(pid) || BLOCKED_DISCOVERY_WORDS.test(title)) continue;
+      if (!pid || existingSupplierIds.has(pid) || BLOCKED_DISCOVERY_WORDS.test(title) || BLOCKED_DISCOVERY_WORDS.test(JSON.stringify(row))) continue;
       try {
-        const variant = cheapestVariant(await variantsForProduct(pid));
-        if (!variant) throw new Error('no_priced_variant');
+        const verifiedQuote = await bestVariantQuote(await variantsForProduct(pid));
+        if (!verifiedQuote) throw new Error('no_stocked_variant_with_shipping_to_il');
+        const variant = verifiedQuote.variant;
         const id = safeProductId(pid);
         if (existingIds.has(id)) continue;
         const sku = clean(variant.variantSku, 180), vid = clean(variant.vid, 160);
@@ -176,7 +195,7 @@ async function discoverProducts(products, settings, limit = DISCOVERY_BATCH) {
           fulfillment_provider: 'cj', fulfillment_product_id: pid, fulfillment_variant_id: vid, fulfillment_sku: sku,
           fulfillment_provider_status: 'discovery_verifying', minimum_profit: minimumProfit({}, settings)
         });
-        const result = await syncProduct(product, settings);
+        const result = await syncProduct(product, settings, null, verifiedQuote);
         if (!result.ready) throw new Error(result.costWithinLimit ? 'profit_or_stock_guard' : 'supplier_cost_above_auto_limit');
         if (result.landedCost > DISCOVERY_MAX_LANDED_COST_ILS) throw new Error('landed_cost_too_high');
         if (result.sellingPrice > DISCOVERY_MAX_SELLING_PRICE_ILS) throw new Error('customer_price_too_high');
@@ -191,19 +210,20 @@ async function discoverProducts(products, settings, limit = DISCOVERY_BATCH) {
   return { added, rejected };
 }
 
-async function syncProduct(product, settings, job = null) {
+async function syncProduct(product, settings, job = null, verifiedQuote = null) {
   const variantId = clean(product.fulfillment_variant_id || job?.provider_variant_id, 160);
   const variantSku = clean(product.fulfillment_sku || job?.provider_variant_sku, 180);
   const productId = clean(product.fulfillment_product_id || job?.provider_product_id, 180);
   if (!variantId || !variantSku || !productId) throw new Error('cj_identity_incomplete');
-  const detail = await getVariant(variantId);
+  const quoteMatches = verifiedQuote && verifiedQuote.variantId === variantId && verifiedQuote.variantSku === variantSku;
+  const detail = quoteMatches ? verifiedQuote.detail : await getVariant(variantId);
   if (!detail) throw new Error('cj_variant_missing');
-  const origin = originCountry(detail), stock = inventoryTotal(detail);
-  const freight = chooseFreight(await getFreight(variantId, origin), product.fulfillment_logistic_name || job?.provider_snapshot?.selectedFreight?.logisticName);
+  const origin = quoteMatches ? verifiedQuote.origin : originCountry(detail), stock = quoteMatches ? verifiedQuote.stock : inventoryTotal(detail);
+  const freight = quoteMatches ? verifiedQuote.freight : chooseFreight(await getFreight(variantId, origin), product.fulfillment_logistic_name || job?.provider_snapshot?.selectedFreight?.logisticName);
   if (!freight) throw new Error('cj_shipping_to_il_unavailable');
-  const productPriceUsd = Number(detail.variantSellPrice), shippingPriceUsd = Number(freight.logisticPrice);
+  const productPriceUsd = quoteMatches ? verifiedQuote.productPriceUsd : Number(detail.variantSellPrice), shippingPriceUsd = quoteMatches ? verifiedQuote.shippingPriceUsd : Number(freight.logisticPrice);
   if (!Number.isFinite(productPriceUsd) || productPriceUsd < 0) throw new Error('cj_price_missing');
-  const productPriceIls = await convertToIls(productPriceUsd, 'USD'), shippingPriceIls = await convertToIls(shippingPriceUsd, 'USD');
+  const productPriceIls = quoteMatches ? verifiedQuote.productPriceIls : await convertToIls(productPriceUsd, 'USD'), shippingPriceIls = quoteMatches ? verifiedQuote.shippingPriceIls : await convertToIls(shippingPriceUsd, 'USD');
   const profitFloor = minimumProfit(product, settings);
   const pricing = pricingForOffer({ provider: 'cj', product_price_ils: productPriceIls, shipping_price_ils: shippingPriceIls }, profitFloor, pricingOptions(settings));
   const now = new Date().toISOString(), landedCost = Number((productPriceIls + shippingPriceIls).toFixed(2));
