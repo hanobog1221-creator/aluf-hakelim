@@ -1,4 +1,5 @@
 const { serverHeaders } = require('./supabase-server');
+const { pricingPolicy, quoteProductPrice } = require('./pricing-engine');
 
 const MAX_SUPPLIER_STATE_AGE_MS = 8 * 60 * 60 * 1000;
 const SUPPORTED_SUPPLIERS = new Set(['aliexpress', 'cj']);
@@ -125,6 +126,18 @@ function validateFulfillmentOrder(order, supplierState = null, options = {}) {
       const insuranceReservePercent = Number(supplierState?.settings?.pricing_insurance_reserve_percent ?? 18);
       const profitPerUnit = Number((preTaxProfit * (1 - (taxReservePercent + insuranceReservePercent) / 100)).toFixed(2));
       if (profitPerUnit < minimumProfit) return { ok: false, reason: 'minimum_profit_not_met', productId: item.id, profitPerUnit, minimumProfit };
+      const comprehensiveQuote = quoteProductPrice({
+        supplierPriceIls: supplierPrice,
+        supplierShippingIls: Number.isFinite(supplierShipping) ? supplierShipping : 0,
+        policy: {
+          ...pricingPolicy(),
+          targetNetProfitIls: minimumProfit,
+          taxReserveRate: (taxReservePercent + insuranceReservePercent) / 100
+        }
+      });
+      if (!comprehensiveQuote.ready || salePrice + 0.001 < comprehensiveQuote.recommendedProductPrice) {
+        return { ok: false, reason: 'minimum_profit_not_met', productId: item.id, profitPerUnit, minimumProfit, minimumSellingPrice: comprehensiveQuote.recommendedProductPrice || null };
+      }
     }
   }
   const customer = order.customer || {};

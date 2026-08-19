@@ -46,9 +46,11 @@ select
     and p.shipping_last_checked_at >= now() - make_interval(mins => least(1440,greatest(15,coalesce(s.supplier_quote_ttl_minutes,480))))
     and p.supplier_sync_error is null and p.shipping_sync_error is null
     and (
-      p.selling_price - p.supplier_price_ils
-      - ((p.selling_price + coalesce(p.supplier_shipping,0)) * coalesce(s.pricing_fee_percent,0) / 100)
-      - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
+      (p.selling_price + coalesce(p.supplier_shipping,0)) / 1.18
+      - ((p.selling_price + coalesce(p.supplier_shipping,0)) * 0.05)
+      - ((p.selling_price + coalesce(p.supplier_shipping,0)) * greatest(coalesce(s.pricing_fee_percent,0),3) / 100)
+      - ((p.supplier_price_ils + coalesce(p.supplier_shipping,0)) * 1.05)
+      - 15 - 2.45 - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
     ) * (1 - (coalesce(s.pricing_tax_reserve_percent,22) + coalesce(s.pricing_insurance_reserve_percent,18)) / 100)
       >= greatest(25,coalesce(p.minimum_profit,s.minimum_profit_ils,25))
     and (p.auto_fulfill_max_cost is null or (p.supplier_shipping is not null and p.supplier_price_ils + p.supplier_shipping <= p.auto_fulfill_max_cost))
@@ -69,9 +71,11 @@ select
     case when p.supplier_sync_error is not null then 'supplier_sync_error' end,
     case when p.shipping_sync_error is not null then 'shipping_sync_error' end,
     case when p.supplier_price_ils is not null and (
-      p.selling_price - p.supplier_price_ils
-      - ((p.selling_price + coalesce(p.supplier_shipping,0)) * coalesce(s.pricing_fee_percent,0) / 100)
-      - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
+      (p.selling_price + coalesce(p.supplier_shipping,0)) / 1.18
+      - ((p.selling_price + coalesce(p.supplier_shipping,0)) * 0.05)
+      - ((p.selling_price + coalesce(p.supplier_shipping,0)) * greatest(coalesce(s.pricing_fee_percent,0),3) / 100)
+      - ((p.supplier_price_ils + coalesce(p.supplier_shipping,0)) * 1.05)
+      - 15 - 2.45 - coalesce(s.pricing_fee_fixed_ils,0) - coalesce(s.pricing_reserve_ils,0)
     ) * (1 - (coalesce(s.pricing_tax_reserve_percent,22) + coalesce(s.pricing_insurance_reserve_percent,18)) / 100)
       < greatest(25,coalesce(p.minimum_profit,s.minimum_profit_ils,25)) then 'minimum_net_profit_not_met' end,
     case when p.auto_fulfill_max_cost is not null and (p.supplier_price_ils is null or p.supplier_shipping is null) then 'supplier_cost_unknown_for_auto_limit' end,

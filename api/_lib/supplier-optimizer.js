@@ -88,13 +88,22 @@ function requiredSellingPrice(productPriceIls, minimumProfitIls = DEFAULT_MINIMU
   const customerShipping = money(options.customerShippingIls || 0);
   const taxPercent = Number(options.taxReservePercent ?? DEFAULT_TAX_RESERVE_PERCENT);
   const insurancePercent = Number(options.insuranceReservePercent ?? DEFAULT_INSURANCE_RESERVE_PERCENT);
+  const vatRate = Number(options.vatRate || 0);
+  const serviceFeeRate = Number(options.serviceFeePercent || 0) / 100;
+  const supplierBufferRate = Number(options.supplierBufferPercent || 0) / 100;
+  const advertisingCost = money(options.advertisingCostIls || 0);
+  const cancellationReserve = money(options.cancellationReserveIls || 0);
   if (productCost === null || productCost < 0) throw new Error('invalid_product_cost');
   if (minimumProfit === null || minimumProfit < 0) throw new Error('invalid_minimum_profit');
-  if (reserve === null || reserve < 0 || fixed === null || fixed < 0 || customerShipping === null || customerShipping < 0 || !Number.isFinite(percent) || percent < 0 || percent >= 100 || !Number.isFinite(taxPercent) || taxPercent < 0 || !Number.isFinite(insurancePercent) || insurancePercent < 0 || taxPercent + insurancePercent >= 100) throw new Error('invalid_pricing_costs');
+  if (reserve === null || reserve < 0 || fixed === null || fixed < 0 || customerShipping === null || customerShipping < 0 || advertisingCost === null || advertisingCost < 0 || cancellationReserve === null || cancellationReserve < 0 || !Number.isFinite(percent) || percent < 0 || percent >= 100 || !Number.isFinite(taxPercent) || taxPercent < 0 || !Number.isFinite(insurancePercent) || insurancePercent < 0 || taxPercent + insurancePercent >= 100 || !Number.isFinite(vatRate) || vatRate < 0 || !Number.isFinite(serviceFeeRate) || serviceFeeRate < 0 || !Number.isFinite(supplierBufferRate) || supplierBufferRate < 0) throw new Error('invalid_pricing_costs');
   const rate = percent / 100;
   const netRetentionRate = 1 - (taxPercent + insurancePercent) / 100;
   const preTaxProfitTarget = minimumProfit / netRetentionRate;
-  const raw = (productCost + preTaxProfitTarget + reserve + fixed + rate * customerShipping) / (1 - rate);
+  const collectedRetentionRate = (1 / (1 + vatRate)) - rate - serviceFeeRate;
+  if (collectedRetentionRate <= 0) throw new Error('invalid_pricing_costs');
+  const landedCost = productCost + customerShipping;
+  const fixedCosts = landedCost + landedCost * supplierBufferRate + advertisingCost + cancellationReserve + reserve + fixed;
+  const raw = (fixedCosts + preTaxProfitTarget) / collectedRetentionRate - customerShipping;
   const rounded = options.roundToWholeShekel === false ? Math.ceil(raw * 100) / 100 : Math.ceil(raw);
   return money(rounded);
 }
@@ -107,12 +116,17 @@ function pricingForOffer(offer, minimumProfitIls, options = {}) {
   const grossCollected = money(sellingPrice + customerShipping);
   const supplierCost = normalized.landedCost;
   const paymentFee = money(grossCollected * (Number(options.paymentFeePercent || 0) / 100) + Number(options.paymentFeeFixedIls || 0));
+  const vat = money(grossCollected - grossCollected / (1 + Number(options.vatRate || 0)));
+  const serviceFee = money(grossCollected * Number(options.serviceFeePercent || 0) / 100);
+  const supplierBuffer = money(supplierCost * Number(options.supplierBufferPercent || 0) / 100);
+  const advertisingCost = money(options.advertisingCostIls || 0);
+  const cancellationReserve = money(options.cancellationReserveIls || 0);
   const reserve = money(options.reserveIls || 0);
-  const preTaxProfit = money(grossCollected - supplierCost - paymentFee - reserve);
+  const preTaxProfit = money(grossCollected - vat - serviceFee - supplierCost - supplierBuffer - advertisingCost - cancellationReserve - paymentFee - reserve);
   const incomeTaxReserve = money(preTaxProfit * Number(options.taxReservePercent ?? DEFAULT_TAX_RESERVE_PERCENT) / 100);
   const insuranceReserve = money(preTaxProfit * Number(options.insuranceReservePercent ?? DEFAULT_INSURANCE_RESERVE_PERCENT) / 100);
   const projectedNetProfit = money(preTaxProfit - incomeTaxReserve - insuranceReserve);
-  return { sellingPrice, customerShipping, grossCollected, supplierCost, paymentFee, reserve, preTaxProfit, incomeTaxReserve, insuranceReserve, projectedNetProfit };
+  return { sellingPrice, customerShipping, grossCollected, supplierCost, supplierBuffer, vat, serviceFee, advertisingCost, cancellationReserve, paymentFee, reserve, preTaxProfit, incomeTaxReserve, insuranceReserve, projectedNetProfit };
 }
 
 module.exports = {

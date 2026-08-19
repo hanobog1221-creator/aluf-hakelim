@@ -63,7 +63,9 @@ function state(product = baseProduct(), settings = { sales_enabled: true, minimu
 }
 
 test('allows a fully ready paid order when sales are enabled', () => {
-  assert.deepEqual(validateFulfillmentOrder(baseOrder(), state()), { ok: true });
+  const order = baseOrder();
+  order.items[0].price = 150;
+  assert.deepEqual(validateFulfillmentOrder(order, state()), { ok: true });
 });
 
 test('global sales switch blocks fulfillment even for an already-paid order', () => {

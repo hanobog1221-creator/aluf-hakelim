@@ -1,5 +1,6 @@
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { requireWorker } = require('../cj-worker-auth');
+const { pricingPolicy } = require('../pricing-engine');
 const {
   DEFAULT_MINIMUM_PROFIT_ILS,
   DEFAULT_TAX_RESERVE_PERCENT,
@@ -90,15 +91,21 @@ function legacyAlternativeOffers(product) {
 }
 
 function optimizerOptions(settings) {
+  const policy = pricingPolicy();
   const ttlMinutes = Math.max(15, Math.min(1440, Number(settings.supplier_quote_ttl_minutes || 480)));
   return {
     ttlMs: ttlMinutes * 60 * 1000,
     enabledProviders: AUTO_FULFILLMENT_PROVIDERS,
-    paymentFeePercent: Number(settings.pricing_fee_percent || 0),
+    paymentFeePercent: Number(settings.pricing_fee_percent || policy.processingFeeRate * 100),
     paymentFeeFixedIls: Number(settings.pricing_fee_fixed_ils || 0),
     reserveIls: Number(settings.pricing_reserve_ils || 0),
     taxReservePercent: Number(settings.pricing_tax_reserve_percent ?? DEFAULT_TAX_RESERVE_PERCENT),
-    insuranceReservePercent: Number(settings.pricing_insurance_reserve_percent ?? DEFAULT_INSURANCE_RESERVE_PERCENT)
+    insuranceReservePercent: Number(settings.pricing_insurance_reserve_percent ?? DEFAULT_INSURANCE_RESERVE_PERCENT),
+    vatRate: policy.vatRate,
+    serviceFeePercent: policy.serviceFeeRate * 100,
+    supplierBufferPercent: policy.supplierBufferRate * 100,
+    advertisingCostIls: policy.advertisingCostIls,
+    cancellationReserveIls: policy.cancellationRate * policy.refundFeeIls
   };
 }
 
