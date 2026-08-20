@@ -38,11 +38,11 @@ test('environment configuration cannot undercut production cost floors', () => {
   assert.equal(policy.supplierBufferRate, 0.05);
 });
 
-test('adds a one-shekel net safety margin above the required 20 ILS floor', () => {
+test('adds a five-shekel compatibility margin above the required 20 ILS floor', () => {
   const quote = quoteProductPrice({ supplierPriceIls: 50, supplierShippingIls: 10 });
-  assert.ok(quote.estimatedNetProfit >= 21);
+  assert.ok(quote.estimatedNetProfit >= 25);
   assert.equal(quote.policy.targetNetProfitIls, 20);
-  assert.equal(quote.policy.safetyNetProfitIls, 1);
+  assert.equal(quote.policy.safetyNetProfitIls, 5);
 });
 
 test('rounds a calculated price upward to a .90 retail ending', () => {
