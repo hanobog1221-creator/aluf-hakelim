@@ -12,6 +12,7 @@
 <style>
 .catalogTools{background:#fff;border:1px solid #dfe4e9;border-radius:18px;padding:16px;margin:0 0 24px;box-shadow:0 8px 28px #0000000b}.searchRow{display:grid;grid-template-columns:minmax(260px,2fr) repeat(3,minmax(145px,1fr));gap:10px}.searchField{position:relative}.searchField span{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:20px}.catalogTools input,.catalogTools select{width:100%;height:48px;border:1px solid #cfd6dd;border-radius:11px;background:#fff;padding:0 13px;font:inherit}.searchField input{padding-right:44px}.filterRow{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:12px}.filterRow label{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:800;color:#4b5865}.filterRow input[type=checkbox]{width:18px;height:18px}.clearFilters{margin-right:auto;border:0;background:#eef1f4;border-radius:9px;padding:9px 13px;font-weight:850}.noResults{grid-column:1/-1;background:#fff;border:1px dashed #b8c1ca;border-radius:16px;padding:38px;text-align:center;color:#68717c}.productSource{font-size:11px;color:#77818c;margin-top:5px}.cats{grid-template-columns:repeat(4,1fr)}
 @media(max-width:900px){.searchRow{grid-template-columns:1fr 1fr}.cats{grid-template-columns:repeat(3,1fr)}}
+.price.pendingPrice{font-size:20px;color:#8b6500}
 @media(max-width:620px){.searchRow{grid-template-columns:1fr}.catalogTools{padding:12px}.filterRow{gap:10px}.clearFilters{margin-right:0}.cats{display:flex}}
 </style>
 </head>
@@ -55,6 +56,7 @@ let cart=JSON.parse(localStorage.getItem('alufCart')||'{}');
 function money(n){return '₪'+Number(n).toFixed(2)}
 const catalogState={category:'all',query:'',price:'all',sort:'featured',supplier:'all',readyOnly:false,favoritesOnly:false};window.catalogState=catalogState;
 function supplierFor(p){return p.supplier||(String(p.id).startsWith('cj-')?'cj':'aliexpress')}
+function priceHtml(p){return p.purchaseReady===true&&Number.isFinite(Number(p.price))?`<span class="price">${money(p.price)}</span>${p.old?`<span class="old">${money(p.old)}</span>`:''}`:'<span class="price pendingPrice">מחיר בבדיקה</span>'}
 function favoriteIds(){try{return new Set(JSON.parse(localStorage.getItem('alufFavorites')||'[]').map(String))}catch{return new Set()}}
 function visibleProducts(){
  const query=catalogState.query.trim().toLocaleLowerCase('he');
@@ -62,14 +64,14 @@ function visibleProducts(){
  let list=products.filter(p=>{
   if(catalogState.category!=='all'&&!(Array.isArray(p.cat)&&p.cat.includes(catalogState.category)))return false;
   if(query&&!([p.name,p.kind,p.desc,...(p.specs||[])].join(' ').toLocaleLowerCase('he').includes(query)))return false;
-  if(catalogState.price!=='all'){const [min,max]=catalogState.price.split('-').map(Number);if(Number(p.price)<min||Number(p.price)>max)return false}
+  if(catalogState.price!=='all'){if(p.purchaseReady!==true||!Number.isFinite(Number(p.price)))return false;const [min,max]=catalogState.price.split('-').map(Number);if(Number(p.price)<min||Number(p.price)>max)return false}
   if(catalogState.supplier!=='all'&&supplierFor(p)!==catalogState.supplier)return false;
   if(catalogState.readyOnly&&p.purchaseReady!==true)return false;
   if(catalogState.favoritesOnly&&!favorites.has(String(p.id)))return false;
   return true;
  });
- if(catalogState.sort==='price-asc')list.sort((a,b)=>a.price-b.price);
- if(catalogState.sort==='price-desc')list.sort((a,b)=>b.price-a.price);
+ if(catalogState.sort==='price-asc')list.sort((a,b)=>(a.purchaseReady===true?Number(a.price):Infinity)-(b.purchaseReady===true?Number(b.price):Infinity));
+ if(catalogState.sort==='price-desc')list.sort((a,b)=>(b.purchaseReady===true?Number(b.price):-Infinity)-(a.purchaseReady===true?Number(a.price):-Infinity));
  if(catalogState.sort==='name')list.sort((a,b)=>a.name.localeCompare(b.name,'he'));
  return list;
 }
@@ -79,7 +81,7 @@ function renderProducts(filter=catalogState.category){
  const list=visibleProducts();
  document.getElementById('resultText').textContent=list.length+' מוצרים נמצאו מתוך '+products.length;
  if(!list.length){grid.innerHTML='<div class="noResults"><b>לא נמצאו מוצרים מתאימים</b><br>נסו לשנות את מילות החיפוש או לנקות את הסינון.</div>';return}
- grid.innerHTML=list.map(p=>{const blocked=p.purchaseReady!==true;const out=p.stockStatus==='out_of_stock'||p.inStock===false;const supplier=supplierFor(p)==='cj'?'CJ Dropshipping':'AliExpress';return `<article class="product" data-product-id="${p.id}" onclick="openProduct('${p.id}')"><div class="photo"><span class="badge ${p.badgeClass}">${p.badge}</span><img src="${p.img}" alt="${p.name}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}'"></div><div class="info"><span class="kind">${p.kind}</span><div class="productSource">ספק: ${supplier}</div><h3>${p.name}</h3><div class="desc">${p.desc}</div><div class="meta"><span class="stock ${out?'out':''}">${out?'✕ אזל מהמלאי':(blocked?'◷ זמינות בבדיקה':'✓ זמין להזמנה')}</span><span>לחץ לפרטים</span></div><div class="priceRow"><span class="price">${money(p.price)}</span>${p.old?`<span class="old">${money(p.old)}</span>`:''}</div><div class="productActions"><button class="add" ${blocked?'disabled':''} onclick="event.stopPropagation();addToCart('${p.id}')">${out?'אזל מהמלאי':(blocked?'זמינות בבדיקה':'הוסף לסל 🛒')}</button><button class="details" onclick="event.stopPropagation();openProduct('${p.id}')">ⓘ</button></div></div></article>`}).join('');
+ grid.innerHTML=list.map(p=>{const blocked=p.purchaseReady!==true;const out=p.stockStatus==='out_of_stock'||p.inStock===false;const supplier=supplierFor(p)==='cj'?'CJ Dropshipping':'AliExpress';return `<article class="product" data-product-id="${p.id}" onclick="openProduct('${p.id}')"><div class="photo"><span class="badge ${p.badgeClass}">${p.badge}</span><img src="${p.img}" alt="${p.name}" loading="lazy" onerror="this.onerror=null;this.src='${fallback}'"></div><div class="info"><span class="kind">${p.kind}</span><div class="productSource">ספק: ${supplier}</div><h3>${p.name}</h3><div class="desc">${p.desc}</div><div class="meta"><span class="stock ${out?'out':''}">${out?'✕ אזל מהמלאי':(blocked?'◷ זמינות בבדיקה':'✓ זמין להזמנה')}</span><span>לחץ לפרטים</span></div><div class="priceRow">${priceHtml(p)}</div><div class="productActions"><button class="add" ${blocked?'disabled':''} onclick="event.stopPropagation();addToCart('${p.id}')">${out?'אזל מהמלאי':(blocked?'זמינות בבדיקה':'הוסף לסל 🛒')}</button><button class="details" onclick="event.stopPropagation();openProduct('${p.id}')">ⓘ</button></div></div></article>`}).join('');
 }
 document.querySelectorAll('.cat').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.cat').forEach(x=>x.classList.remove('active'));btn.classList.add('active');renderProducts(btn.dataset.filter);document.getElementById('products').scrollIntoView({behavior:'smooth',block:'start'})}));
 document.getElementById('productSearch').addEventListener('input',e=>{catalogState.query=e.target.value;renderProducts()});
@@ -97,13 +99,13 @@ function renderCart(){let count=0,total=0;Object.entries(cart).forEach(([id,q])=
 function openCart(){document.getElementById('cartOverlay').classList.add('open');renderCart()}
 function closeCart(){document.getElementById('cartOverlay').classList.remove('open')}
 function overlayClose(e){if(e.target.id==='cartOverlay')closeCart()}
-function openProduct(id){const p=products.find(x=>x.id===id);if(!p)return;const blocked=p.purchaseReady!==true;document.getElementById('modalContent').innerHTML=`<div class="modalGrid"><div class="modalPic"><img src="${p.img}" alt="${p.name}" onerror="this.onerror=null;this.src='${fallback}'"></div><div class="modalInfo"><span class="kind">${p.kind}</span><h2>${p.name}</h2><p class="desc">${p.desc}</p><ul class="specs">${p.specs.map(s=>`<li>✓ ${s}</li>`).join('')}</ul><div class="priceRow"><span class="price">${money(p.price)}</span>${p.old?`<span class="old">${money(p.old)}</span>`:''}</div><button class="add" style="width:100%" ${blocked?'disabled':''} onclick="addToCart('${p.id}');closeModal()">${blocked?'זמינות בבדיקה':'הוסף לסל 🛒'}</button></div></div>`;document.getElementById('productModal').classList.add('open')}
+function openProduct(id){const p=products.find(x=>x.id===id);if(!p)return;const blocked=p.purchaseReady!==true;document.getElementById('modalContent').innerHTML=`<div class="modalGrid"><div class="modalPic"><img src="${p.img}" alt="${p.name}" onerror="this.onerror=null;this.src='${fallback}'"></div><div class="modalInfo"><span class="kind">${p.kind}</span><h2>${p.name}</h2><p class="desc">${p.desc}</p><ul class="specs">${p.specs.map(s=>`<li>✓ ${s}</li>`).join('')}</ul><div class="priceRow">${priceHtml(p)}</div><button class="add" style="width:100%" ${blocked?'disabled':''} onclick="addToCart('${p.id}');closeModal()">${blocked?'זמינות בבדיקה':'הוסף לסל 🛒'}</button></div></div>`;document.getElementById('productModal').classList.add('open')}
 function closeModal(){document.getElementById('productModal').classList.remove('open')}
 function checkoutNotice(){showToast('ממשיכים לפרטי ההזמנה')}
 function showToast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(window.toastT);window.toastT=setTimeout(()=>el.classList.remove('show'),2200)}
 renderProducts();renderCart();
 </script>
-<script src="/catalog-loader.js?v=20260819-4"></script>
+<script src="/catalog-loader.js?v=20260820-5"></script>
 </body>
 </html>
 

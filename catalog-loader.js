@@ -19,6 +19,9 @@
       .filter((product) => !managedIds.has(String(product.id)))
       .map((product) => ({
         ...product,
+        price: null,
+        old: null,
+        pricePending: true,
         available: true,
         purchaseReady: false,
         inStock: null,

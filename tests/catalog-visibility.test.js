@@ -52,6 +52,14 @@ test('unverified fallback products stay in checking state rather than being misl
   assert.match(source, /stockStatus: 'checking'/);
 });
 
+test('unverified products never display an uncalculated numeric price', () => {
+  assert.match(source, /price: null/);
+  assert.match(source, /pricePending: true/);
+  assert.match(storefront, /p\.purchaseReady===true&&Number\.isFinite\(Number\(p\.price\)\)/);
+  assert.match(storefront, /מחיר בבדיקה/);
+  assert.doesNotMatch(storefront, /<div class="priceRow"><span class="price">\$\{money\(p\.price\)\}/);
+});
+
 test('requested hidden products are restored while the failed battery bundle is removed', () => {
   assert.match(productsApi, /ae-1005007178140659/);
   assert.match(productsApi, /ae-1005009926657110/);
