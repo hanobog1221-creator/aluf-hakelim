@@ -42,7 +42,7 @@ module.exports = async function handler(req, res) {
 
     const [productsResponse, readinessResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_in_stock,supplier_shipping_available&or=(active.eq.true,id.in.(${[...RETAINED_CATALOG_IDS].join(',')}))&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_in_stock,supplier_shipping_available,fulfillment_provider_status,fulfillment_verified_at,last_sync_at,supplier_sync_error,shipping_sync_error&or=(active.eq.true,id.in.(${[...RETAINED_CATALOG_IDS].join(',')}))&order=sort_order.asc`,
         { headers }
       ),
       fetch(
@@ -116,7 +116,10 @@ module.exports = async function handler(req, res) {
         purchaseReady,
         inStock: row.supplier_in_stock == null ? null : row.supplier_in_stock === true,
         stockStatus,
-        shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true
+        shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true,
+        verificationStatus: row.fulfillment_provider_status || 'not_started',
+        verificationFailed: Boolean(row.supplier_sync_error || row.shipping_sync_error),
+        lastCheckedAt: row.fulfillment_verified_at || row.last_sync_at || null
       };
     });
 

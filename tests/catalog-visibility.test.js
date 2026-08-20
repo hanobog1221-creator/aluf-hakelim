@@ -92,3 +92,12 @@ test('every known CJ storefront product is seeded into the managed admin catalog
   assert.match(cjCatalogWorker, /variantFromSku\(mapping\.skuId\)/);
   assert.match(cjCatalogWorker, /fulfillment_ready: false/);
 });
+
+test('catalog exposes sanitized verification state and admin hides placeholder prices', () => {
+  const admin = fs.readFileSync(path.join(__dirname, '..', 'admin-v2.html'), 'utf8');
+  assert.match(productsApi, /verificationStatus:/);
+  assert.match(productsApi, /verificationFailed:/);
+  assert.match(productsApi, /lastCheckedAt:/);
+  assert.match(admin, /מחיר בבדיקה/);
+  assert.match(admin, /quote\.recommendedProductPrice/);
+});
