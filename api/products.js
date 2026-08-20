@@ -109,6 +109,7 @@ module.exports = async function handler(req, res) {
         'supplier_sync_error','shipping_sync_error','minimum_profit_not_met','minimum_net_profit_not_met','supplier_cost_unknown_for_auto_limit','supplier_cost_above_auto_limit','readiness_unknown'
       ]);
       const pricingSafe = blockers.every((blocker) => !pricingBlockers.has(blocker));
+      const priceBlockers = blockers.filter((blocker) => pricingBlockers.has(blocker));
       const priceVerified = Boolean(
         row.active === true && verifiedStatus && verifiedAt && fresh && row.supplier_in_stock === true && row.supplier_shipping_available === true &&
         !row.supplier_sync_error && !row.shipping_sync_error && pricingSafe && Number.isFinite(Number(row.selling_price)) && Number(row.selling_price) > 0
@@ -134,6 +135,7 @@ module.exports = async function handler(req, res) {
         stockStatus,
         shippingAvailable: row.supplier_shipping_available == null ? null : row.supplier_shipping_available === true,
         priceVerified,
+        priceBlockers,
         verificationStatus: row.fulfillment_provider_status || 'not_started',
         verificationFailed: Boolean(row.supplier_sync_error || row.shipping_sync_error),
         lastCheckedAt
