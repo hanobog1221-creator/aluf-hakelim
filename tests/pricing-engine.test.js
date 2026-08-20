@@ -20,6 +20,24 @@ test('keeps the owner-approved 20 ILS target when a stale deployment variable st
   assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25' }).targetNetProfitIls, 20);
 });
 
+test('environment configuration cannot undercut production cost floors', () => {
+  const policy = pricingPolicy({
+    PRICING_VAT_RATE: '0.17',
+    PRICING_SERVICE_FEE_RATE: '0.01',
+    PRICING_PROCESSING_FEE_RATE: '0.01',
+    PRICING_AD_COST_ILS: '1',
+    PRICING_CANCELLATION_RATE: '0.01',
+    PRICING_REFUND_FEE_ILS: '1',
+    PRICING_SUPPLIER_BUFFER_RATE: '0.01'
+  });
+  assert.equal(policy.vatRate, 0.18);
+  assert.equal(policy.serviceFeeRate, 0.05);
+  assert.equal(policy.processingFeeRate, 0.03);
+  assert.equal(policy.advertisingCostIls, 15);
+  assert.equal(policy.cancellationRate * policy.refundFeeIls, 2.45);
+  assert.equal(policy.supplierBufferRate, 0.05);
+});
+
 test('adds a one-shekel net safety margin above the required 20 ILS floor', () => {
   const quote = quoteProductPrice({ supplierPriceIls: 50, supplierShippingIls: 10 });
   assert.ok(quote.estimatedNetProfit >= 21);

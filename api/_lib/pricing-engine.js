@@ -28,14 +28,16 @@ function pricingPolicy(env = process.env) {
     // Keep this authoritative even if an older deployment environment still says 25.
     targetNetProfitIls: DEFAULT_POLICY.targetNetProfitIls,
     safetyNetProfitIls: DEFAULT_POLICY.safetyNetProfitIls,
-    vatRate: envNumber(env, 'PRICING_VAT_RATE', DEFAULT_POLICY.vatRate, 0, 1),
-    serviceFeeRate: envNumber(env, 'PRICING_SERVICE_FEE_RATE', DEFAULT_POLICY.serviceFeeRate, 0, 1),
-    processingFeeRate: envNumber(env, 'PRICING_PROCESSING_FEE_RATE', DEFAULT_POLICY.processingFeeRate, 0, 1),
-    taxReserveRate: envNumber(env, 'PRICING_TAX_RESERVE_RATE', DEFAULT_POLICY.taxReserveRate, 0, 0.95),
-    advertisingCostIls: envNumber(env, 'PRICING_AD_COST_ILS', DEFAULT_POLICY.advertisingCostIls),
-    cancellationRate: envNumber(env, 'PRICING_CANCELLATION_RATE', DEFAULT_POLICY.cancellationRate, 0, 1),
-    refundFeeIls: envNumber(env, 'PRICING_REFUND_FEE_ILS', DEFAULT_POLICY.refundFeeIls),
-    supplierBufferRate: envNumber(env, 'PRICING_SUPPLIER_BUFFER_RATE', DEFAULT_POLICY.supplierBufferRate, 0, 1),
+    // Production readiness in Supabase audits against these conservative floors.
+    // Environment overrides may add reserve, but must never undercut the audit.
+    vatRate: Math.max(DEFAULT_POLICY.vatRate, envNumber(env, 'PRICING_VAT_RATE', DEFAULT_POLICY.vatRate, 0, 1)),
+    serviceFeeRate: Math.max(DEFAULT_POLICY.serviceFeeRate, envNumber(env, 'PRICING_SERVICE_FEE_RATE', DEFAULT_POLICY.serviceFeeRate, 0, 1)),
+    processingFeeRate: Math.max(DEFAULT_POLICY.processingFeeRate, envNumber(env, 'PRICING_PROCESSING_FEE_RATE', DEFAULT_POLICY.processingFeeRate, 0, 1)),
+    taxReserveRate: Math.max(DEFAULT_POLICY.taxReserveRate, envNumber(env, 'PRICING_TAX_RESERVE_RATE', DEFAULT_POLICY.taxReserveRate, 0, 0.95)),
+    advertisingCostIls: Math.max(DEFAULT_POLICY.advertisingCostIls, envNumber(env, 'PRICING_AD_COST_ILS', DEFAULT_POLICY.advertisingCostIls)),
+    cancellationRate: Math.max(DEFAULT_POLICY.cancellationRate, envNumber(env, 'PRICING_CANCELLATION_RATE', DEFAULT_POLICY.cancellationRate, 0, 1)),
+    refundFeeIls: Math.max(DEFAULT_POLICY.refundFeeIls, envNumber(env, 'PRICING_REFUND_FEE_ILS', DEFAULT_POLICY.refundFeeIls)),
+    supplierBufferRate: Math.max(DEFAULT_POLICY.supplierBufferRate, envNumber(env, 'PRICING_SUPPLIER_BUFFER_RATE', DEFAULT_POLICY.supplierBufferRate, 0, 1)),
     priceEnding: envNumber(env, 'PRICING_PRICE_ENDING', DEFAULT_POLICY.priceEnding, 0, 0.99)
   };
 }
