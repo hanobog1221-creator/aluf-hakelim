@@ -235,7 +235,7 @@ module.exports = async function handler(req, res) {
           supplier_quote_ttl_minutes: hasOwn(body, 'supplier_quote_ttl_minutes')
             ? cleanIntegerRange(body.supplier_quote_ttl_minutes, 15, 1440, 480, 'invalid_supplier_quote_ttl')
             : cleanIntegerRange(current.supplier_quote_ttl_minutes, 15, 1440, 480, 'invalid_supplier_quote_ttl'),
-          pricing_fee_percent: hasOwn(body, 'pricing_fee_percent') ? cleanPercent(body.pricing_fee_percent) : cleanPercent(current.pricing_fee_percent, 0),
+          pricing_fee_percent: Math.max(pricingPolicy().processingFeeRate * 100, hasOwn(body, 'pricing_fee_percent') ? cleanPercent(body.pricing_fee_percent) : cleanPercent(current.pricing_fee_percent, 0)),
           pricing_fee_fixed_ils: hasOwn(body, 'pricing_fee_fixed_ils') ? cleanNumber(body.pricing_fee_fixed_ils) : Number(current.pricing_fee_fixed_ils || 0),
           pricing_reserve_ils: hasOwn(body, 'pricing_reserve_ils') ? cleanNumber(body.pricing_reserve_ils) : Number(current.pricing_reserve_ils || 0),
           pricing_tax_reserve_percent: hasOwn(body, 'pricing_tax_reserve_percent') ? cleanPercent(body.pricing_tax_reserve_percent) : cleanPercent(current.pricing_tax_reserve_percent, 22),

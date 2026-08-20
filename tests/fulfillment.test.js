@@ -137,5 +137,5 @@ test('blocks when minimum net profit after the 40 percent reserve would not be m
   );
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'minimum_profit_not_met');
-  assert.equal(result.profitPerUnit, 3);
+  assert.equal(result.profitPerUnit, 1.11);
 });

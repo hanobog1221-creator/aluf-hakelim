@@ -96,7 +96,7 @@ function optimizerOptions(settings) {
   return {
     ttlMs: ttlMinutes * 60 * 1000,
     enabledProviders: AUTO_FULFILLMENT_PROVIDERS,
-    paymentFeePercent: Number(settings.pricing_fee_percent || policy.processingFeeRate * 100),
+    paymentFeePercent: Math.max(policy.processingFeeRate * 100, Number(settings.pricing_fee_percent || 0)),
     paymentFeeFixedIls: Number(settings.pricing_fee_fixed_ils || 0),
     reserveIls: Number(settings.pricing_reserve_ils || 0),
     taxReservePercent: Number(settings.pricing_tax_reserve_percent ?? DEFAULT_TAX_RESERVE_PERCENT),

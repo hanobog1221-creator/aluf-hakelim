@@ -110,7 +110,7 @@ function minimumProfit(product, settings) {
 function pricingOptions(settings) {
   const policy = pricingPolicy();
   return {
-    paymentFeePercent: Number(settings.pricing_fee_percent || policy.processingFeeRate * 100),
+    paymentFeePercent: Math.max(policy.processingFeeRate * 100, Number(settings.pricing_fee_percent || 0)),
     paymentFeeFixedIls: Number(settings.pricing_fee_fixed_ils || 0), reserveIls: Number(settings.pricing_reserve_ils || 0),
     taxReservePercent: Number(settings.pricing_tax_reserve_percent ?? DEFAULT_TAX_RESERVE_PERCENT),
     insuranceReservePercent: Number(settings.pricing_insurance_reserve_percent ?? DEFAULT_INSURANCE_RESERVE_PERCENT),
@@ -362,6 +362,11 @@ module.exports = async function handler(req, res) {
       await patch('site_settings', 'id=eq.primary', { minimum_profit_ils: DEFAULT_MINIMUM_PROFIT_ILS });
       await patch('products', 'minimum_profit=eq.25', { minimum_profit: DEFAULT_MINIMUM_PROFIT_ILS }).catch(() => {});
       settings.minimum_profit_ils = DEFAULT_MINIMUM_PROFIT_ILS;
+    }
+    const minimumProcessingPercent = pricingPolicy().processingFeeRate * 100;
+    if (Number(settings.pricing_fee_percent || 0) < minimumProcessingPercent) {
+      await patch('site_settings', 'id=eq.primary', { pricing_fee_percent: minimumProcessingPercent });
+      settings.pricing_fee_percent = minimumProcessingPercent;
     }
     const allProducts = await dbGet('products?select=*');
     const knownCatalog = await ensureKnownCatalogProducts(allProducts, settings);

@@ -116,7 +116,7 @@ function validateFulfillmentOrder(order, supplierState = null, options = {}) {
       const productMinProfitRaw = current.minimum_profit, productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw), configuredMinimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
       const minimumProfit = Number.isFinite(configuredMinimumProfit) ? Math.max(20, configuredMinimumProfit) : null;
       if (!Number.isFinite(minimumProfit)) return { ok: false, reason: 'minimum_profit_not_configured', productId: item.id };
-      const paymentFeePercent = Number(supplierState?.settings?.pricing_fee_percent || 0);
+      const paymentFeePercent = Math.max(pricingPolicy().processingFeeRate * 100, Number(supplierState?.settings?.pricing_fee_percent || 0));
       const paymentFeeFixed = Number(supplierState?.settings?.pricing_fee_fixed_ils || 0);
       const pricingReserve = Number(supplierState?.settings?.pricing_reserve_ils || 0);
       const feeBase = salePrice + (Number.isFinite(supplierShipping) ? supplierShipping : 0);

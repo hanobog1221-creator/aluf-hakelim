@@ -108,3 +108,11 @@ test('catalog exposes sanitized verification state and admin hides placeholder p
   assert.match(admin, /מחיר בבדיקה/);
   assert.match(admin, /quote\.recommendedProductPrice/);
 });
+
+test('pricing workers never use a processing fee below the database three-percent floor', () => {
+  const optimizer = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'supplier-optimizer.js'), 'utf8');
+  const fulfillment = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'fulfillment.js'), 'utf8');
+  assert.match(cjCatalogWorker, /Math\.max\(policy\.processingFeeRate \* 100/);
+  assert.match(optimizer, /Math\.max\(policy\.processingFeeRate \* 100/);
+  assert.match(fulfillment, /Math\.max\(pricingPolicy\(\)\.processingFeeRate \* 100/);
+});
