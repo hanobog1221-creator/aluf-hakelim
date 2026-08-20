@@ -22,6 +22,9 @@ async function requireWorker(req, res) {
     res.status(405).json({ ok: false, error: 'method_not_allowed' });
     return false;
   }
+  const authorization = String(req.headers?.authorization || '').trim();
+  const cronSecret = String(process.env.CRON_SECRET || '').trim();
+  if (cronSecret && authorization.startsWith('Bearer ') && safeEqual(authorization.slice(7).trim(), cronSecret)) return true;
   const supplied = String(req.headers?.['x-cj-worker-token'] || '').trim();
   const expected = await expectedWorkerToken();
   if (!safeEqual(supplied, expected)) {

@@ -16,6 +16,10 @@ test('defaults to a 20 ILS target after a 40 percent tax and insurance reserve',
   assert.equal(policy.serviceFeeRate + policy.processingFeeRate, 0.08);
 });
 
+test('keeps the owner-approved 20 ILS target when a stale deployment variable still says 25', () => {
+  assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25' }).targetNetProfitIls, 20);
+});
+
 test('rounds a calculated price upward to a .90 retail ending', () => {
   assert.equal(roundRetailUp(197.10), 197.90);
   assert.equal(roundRetailUp(197.95), 198.90);

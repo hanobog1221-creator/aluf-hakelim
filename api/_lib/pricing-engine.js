@@ -23,7 +23,9 @@ function envNumber(env, key, fallback, min = 0, max = 1_000_000) {
 function pricingPolicy(env = process.env) {
   return {
     enabled: String(env.AUTO_PRICING_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
-    targetNetProfitIls: envNumber(env, 'PRICING_TARGET_NET_PROFIT_ILS', DEFAULT_POLICY.targetNetProfitIls),
+    // The owner set a fixed business target of 20 ILS net per product.
+    // Keep this authoritative even if an older deployment environment still says 25.
+    targetNetProfitIls: DEFAULT_POLICY.targetNetProfitIls,
     vatRate: envNumber(env, 'PRICING_VAT_RATE', DEFAULT_POLICY.vatRate, 0, 1),
     serviceFeeRate: envNumber(env, 'PRICING_SERVICE_FEE_RATE', DEFAULT_POLICY.serviceFeeRate, 0, 1),
     processingFeeRate: envNumber(env, 'PRICING_PROCESSING_FEE_RATE', DEFAULT_POLICY.processingFeeRate, 0, 1),

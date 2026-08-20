@@ -1,2 +1,39 @@
 <!doctype html>
-<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><title>חיבור CJ | אלוף הכלים</title><style>:root{--dark:#0b1118;--yellow:#ffc928;--line:#dfe4e9;--muted:#687581;--ok:#197342;--bad:#a51e28}*{box-sizing:border-box}body{margin:0;font-family:Arial,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#eef1f4;color:#171717}.top{background:var(--dark);color:#fff}.topin{max-width:860px;margin:auto;padding:14px;display:flex;justify-content:space-between;align-items:center}.brand{font-size:21px;font-weight:950}.brand span{color:var(--yellow)}.top a{color:#fff;text-decoration:none;font-weight:850}.wrap{max-width:860px;margin:20px auto;padding:0 14px}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:17px;margin-bottom:12px}.panel h1{margin:0 0 8px}.muted{color:var(--muted);font-size:13px;line-height:1.55}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:14px}.card{background:#f7f9fb;border-radius:11px;padding:12px}.card b{display:block;font-size:12px;margin-bottom:5px}.ok{color:var(--ok)}.bad{color:var(--bad)}.btn{border:0;border-radius:10px;background:var(--yellow);padding:11px 15px;font-weight:950;cursor:pointer;margin-top:12px;margin-left:8px}.btn:disabled{opacity:.5}@media(max-width:680px){.grid{grid-template-columns:1fr 1fr}}</style></head><body><div class="top"><div class="topin"><div class="brand">אלוף <span>הכלים</span> · CJ</div><a href="/admin-product-intake.html">קליטת מוצרים</a></div></div><main class="wrap"><section class="panel"><h1>חיבור CJ Dropshipping</h1><div class="muted">בדיקת ה-API נשארת במצב בטוח. המסך לא מפעיל תשלום אוטומטי ולא יוצר הזמנות אמיתיות.</div><div id="status" class="grid"><div class="card">טוען…</div></div><button id="test" class="btn">בדוק את החיבור</button><button id="grow" class="btn">מצא ואמת מוצרים זולים</button><div id="growStatus" class="muted" style="margin-top:10px"></div></section><section class="panel"><b>תור מוצרים</b><div id="queue" class="muted" style="margin-top:8px">טוען…</div></section></main><script>const s=document.getElementById('status'),q=document.getElementById('queue'),b=document.getElementById('test'),g=document.getElementById('grow'),gs=document.getElementById('growStatus');function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function card(t,v,g){return `<div class="card"><b>${esc(t)}</b><span class="${g?'ok':'bad'}">${esc(v)}</span></div>`}async function load(test=false){b.disabled=true;try{const r=await fetch('/api/admin/cj'+(test?'?test=1':''),{method:test?'POST':'GET'});const d=await r.json();if(r.status===401){location.href='/admin';return}if(!r.ok||!d.ok)throw new Error(d.error||'failed');const x=d.status;s.innerHTML=card('API Key',x.configured?'הוגדר':'חסר',x.configured)+card('חיבור',x.connected?'מחובר':'לא מחובר',x.connected)+card('מצב הזמנות',x.sandbox?'Sandbox':'אמיתי',x.sandbox)+card('Auto Pay',x.autoPay?'פעיל':'כבוי',!x.autoPay);q.textContent=Object.entries(d.intake||{}).map(([k,v])=>`${k}: ${v}`).join(' · ')||'אין מוצרים בתור'}catch(e){s.innerHTML='<div class="card bad">בדיקה נכשלה</div>';q.textContent=e.message}finally{b.disabled=false}}async function grow(){g.disabled=true;gs.textContent='מחפש, משווה עלות ומשלוח ומאמת מול CJ…';try{const r=await fetch('/api/admin/cj?grow=1',{method:'POST'});const d=await r.json();if(r.status===401){location.href='/admin';return}if(!r.ok||!d.ok)throw new Error(d.error||'failed');const added=d.catalog?.discovery?.added?.length||0,rejected=d.catalog?.discovery?.rejected?.length||0;gs.textContent=`הסבב הסתיים: ${added} נוספו, ${rejected} נפסלו בבדיקות.`}catch(e){gs.textContent=`הסבב נכשל: ${e.message}`}finally{g.disabled=false}}b.addEventListener('click',()=>load(true));g.addEventListener('click',grow);load(false);</script></body></html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>חיבור CJ | אלוף הכלים</title>
+  <style>
+    :root{--dark:#0b1118;--yellow:#ffc928;--line:#dfe4e9;--muted:#687581;--ok:#197342;--bad:#a51e28}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#eef1f4;color:#171717}
+    .top{background:var(--dark);color:#fff}.topin{max-width:860px;margin:auto;padding:14px;display:flex;justify-content:space-between;align-items:center}
+    .brand{font-size:21px;font-weight:950}.brand span{color:var(--yellow)}.top a{color:#fff;text-decoration:none;font-weight:850}
+    .wrap{max-width:860px;margin:20px auto;padding:0 14px}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;padding:17px;margin-bottom:12px}
+    .panel h1{margin:0 0 8px}.muted{color:var(--muted);font-size:13px;line-height:1.55}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:14px}
+    .card{background:#f7f9fb;border-radius:11px;padding:12px}.card b{display:block;font-size:12px;margin-bottom:5px}.ok{color:var(--ok)}.bad{color:var(--bad)}
+    .btn{border:0;border-radius:10px;background:var(--yellow);padding:11px 15px;font-weight:950;cursor:pointer;margin-top:12px}.btn:disabled{opacity:.5}
+    @media(max-width:680px){.grid{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <div class="top"><div class="topin"><div class="brand">אלוף <span>הכלים</span> · CJ</div><a href="/admin-product-intake.html">קליטת מוצרים</a></div></div>
+  <main class="wrap">
+    <section class="panel">
+      <h1>חיבור CJ Dropshipping</h1>
+      <div class="muted">אימות הקטלוג מתבצע אוטומטית. המסך לא מפעיל תשלום אוטומטי ולא יוצר הזמנות אמיתיות.</div>
+      <div id="status" class="grid"><div class="card">טוען…</div></div>
+      <button id="test" class="btn">בדוק את החיבור</button>
+    </section>
+    <section class="panel"><b>תור מוצרים</b><div id="queue" class="muted" style="margin-top:8px">טוען…</div></section>
+  </main>
+  <script>
+    const s=document.getElementById('status'),q=document.getElementById('queue'),b=document.getElementById('test');
+    function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+    function card(t,v,g){return `<div class="card"><b>${esc(t)}</b><span class="${g?'ok':'bad'}">${esc(v)}</span></div>`}
+    async function load(test=false){b.disabled=true;try{const r=await fetch('/api/admin/cj'+(test?'?test=1':''),{method:test?'POST':'GET'});const d=await r.json();if(r.status===401){location.href='/admin';return}if(!r.ok||!d.ok)throw new Error(d.error||'failed');const x=d.status;s.innerHTML=card('API Key',x.configured?'הוגדר':'חסר',x.configured)+card('חיבור',x.connected?'מחובר':'לא מחובר',x.connected)+card('מצב הזמנות',x.sandbox?'Sandbox':'אמיתי',x.sandbox)+card('Auto Pay',x.autoPay?'פעיל':'כבוי',!x.autoPay);q.textContent=Object.entries(d.intake||{}).map(([k,v])=>`${k}: ${v}`).join(' · ')||'אין מוצרים בתור'}catch(e){s.innerHTML='<div class="card bad">בדיקה נכשלה</div>';q.textContent=e.message}finally{b.disabled=false}}
+    b.addEventListener('click',()=>load(true));load(false);
+  </script>
+</body>
+</html>
