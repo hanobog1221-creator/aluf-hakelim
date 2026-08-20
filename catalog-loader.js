@@ -22,6 +22,7 @@
         price: null,
         old: null,
         pricePending: true,
+        priceVerified: false,
         available: true,
         purchaseReady: false,
         inStock: null,

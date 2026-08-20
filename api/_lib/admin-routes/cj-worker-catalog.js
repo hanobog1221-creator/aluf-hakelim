@@ -26,14 +26,14 @@ const DISCOVERY_SEARCHES = [
 ];
 const BLOCKED_DISCOVERY_WORDS = /\b(battery|charger|lithium|li-ion|li ion|spray|liquid|wax|polish|chemical|pesticide|medical|baby|makita|dewalt|bosch|milwaukee|jack stand|seat belt)\b/i;
 const KNOWN_CJ_CATALOG = [
-  { id: 'cj-detail-brush', name: 'מברשת דיטיילינג רכה לניקוי פנים הרכב', image: '/assets/products/cj-detail-brush.jpg', categories: ['car','cleaning','maintenance'], kind: 'ניקוי ודיטיילינג · פנים הרכב', badge: 'קלת משקל', description: 'מברשת ניילון רכה לניקוי פתחי מיזוג, לוח מחוונים, כפתורים ואזורים צרים בלי להשאיר שריטות.', specs: ['סיבי ניילון רכים','מתאימה לפתחי מיזוג ולחריצים','וריאנט מדויק ומשלוח לישראל באימות'] },
-  { id: 'cj-car-mop', name: 'מגב מיקרופייבר טלסקופי לניקוי הרכב', image: '/assets/products/cj-car-mop.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · שטיפת רכב', badge: 'טלסקופי', description: 'מגב ננו־פייבר נשלף להסרת אבק וניקוי מרכב הרכב, עם ידית טלסקופית.', specs: ['ידית טלסקופית','ראש ננו־פייבר','מתאים לניקוי יבש או לח','וריאנט מדויק ומשלוח לישראל באימות'] },
-  { id: 'cj-magnetic-ring', name: 'טבעת מגנטית חזקה לביטים 1/4 אינץ׳', image: '/assets/products/cj-magnetic-ring.jpg', categories: ['hand','gadgets','maintenance'], kind: 'גאדג׳טים לכלים · אביזרי מברגה', badge: 'מגנטית', description: 'טבעת מתכת מגנטית שמתלבשת על ביט 6.35 מ״מ ומחזיקה את הבורג במקום בזמן העבודה.', specs: ['מתאימה לביטים 6.35 מ״מ','אחיזה מגנטית חזקה','מבנה מתכתי','וריאנט מדויק ומשלוח לישראל באימות'] },
+  { id: 'cj-detail-brush', search: 'car detailing brush', name: 'מברשת דיטיילינג רכה לניקוי פנים הרכב', image: '/assets/products/cj-detail-brush.jpg', categories: ['car','cleaning','maintenance'], kind: 'ניקוי ודיטיילינג · פנים הרכב', badge: 'קלת משקל', description: 'מברשת ניילון רכה לניקוי פתחי מיזוג, לוח מחוונים, כפתורים ואזורים צרים בלי להשאיר שריטות.', specs: ['סיבי ניילון רכים','מתאימה לפתחי מיזוג ולחריצים','וריאנט מדויק ומשלוח לישראל באימות'] },
+  { id: 'cj-car-mop', search: 'car wash mop', name: 'מגב מיקרופייבר טלסקופי לניקוי הרכב', image: '/assets/products/cj-car-mop.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · שטיפת רכב', badge: 'טלסקופי', description: 'מגב ננו־פייבר נשלף להסרת אבק וניקוי מרכב הרכב, עם ידית טלסקופית.', specs: ['ידית טלסקופית','ראש ננו־פייבר','מתאים לניקוי יבש או לח','וריאנט מדויק ומשלוח לישראל באימות'] },
+  { id: 'cj-magnetic-ring', search: 'magnetic bit holder', name: 'טבעת מגנטית חזקה לביטים 1/4 אינץ׳', image: '/assets/products/cj-magnetic-ring.jpg', categories: ['hand','gadgets','maintenance'], kind: 'גאדג׳טים לכלים · אביזרי מברגה', badge: 'מגנטית', description: 'טבעת מתכת מגנטית שמתלבשת על ביט 6.35 מ״מ ומחזיקה את הבורג במקום בזמן העבודה.', specs: ['מתאימה לביטים 6.35 מ״מ','אחיזה מגנטית חזקה','מבנה מתכתי','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-k5-bits', name: 'סט 5 ביטים PH2 מגנטיים עמידים לאימפקט', image: '/assets/products/cj-k5-bits.jpg', categories: ['hand','power','gadgets'], kind: 'כלי עבודה · ביטים למברגה', badge: '5 יחידות', description: 'סט ביטים PH2 באורכים שונים עם מבנה נגד החלקה, מיועד לעבודה עם מברגות ואימפקט.', specs: ['5 ביטים PH2','מתאים למברגות אימפקט','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-microfiber-towel', name: 'מגבת מיקרופייבר עבה לרכב 30×60 ס״מ', image: '/assets/products/cj-microfiber-towel.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · ייבוש והברקה', badge: '600GSM', description: 'מגבת דו־צדדית סופגת לניקוי, ייבוש והברקת הרכב, עם שוליים תפורים לשימוש חוזר.', specs: ['מידה 30×60 ס״מ','בד בצפיפות גבוהה','מתאימה לשטיפה ולהברקה','וריאנט מדויק ומשלוח לישראל באימות'] },
-  { id: 'cj-wash-mitt', name: 'כפפת שטיפה דו־צדדית רכה לרכב', image: '/assets/products/cj-wash-mitt.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · שטיפת רכב', badge: 'דו־צדדית', description: 'כפפת קורל־פליס רכה עם אחיזת אגודל, להסרת אבק ולכלוך בלי לפגוע בצבע הרכב.', specs: ['בד רך וסופג','מתאימה לשימוש חוזר','וריאנט מדויק ומשלוח לישראל באימות'] },
-  { id: 'cj-silicone-squeegee', name: 'מגב סיליקון 30 ס״מ לחלונות ולמרכב', image: '/assets/products/cj-silicone-squeegee.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · חלונות', badge: 'אוניברסלי', description: 'מגב סיליקון גמיש להסרת מים מחלונות ומשטחי הרכב לאחר שטיפה.', specs: ['רוחב כ־30 ס״מ','חומר סיליקון גמיש','מתאים לחלונות ולמרכב','וריאנט מדויק ומשלוח לישראל באימות'] },
-  { id: 'cj-tire-gauge', name: 'מד לחץ אוויר דיגיטלי לצמיגים עד 150 PSI', image: '/assets/products/cj-tire-gauge.jpg', categories: ['car','diagnostics','gadgets'], kind: 'אבחון ותחזוקת רכב · צמיגים', badge: '4 יחידות מידה', description: 'מד לחץ קומפקטי עם תצוגה דיגיטלית לבדיקת לחץ בצמיגי רכב, אופנוע ואופניים.', specs: ['טווח 0–150 PSI','תצוגה דיגיטלית','יש לאמת מגבלות משלוח סוללה מול הספק'] },
+  { id: 'cj-wash-mitt', search: 'car wash mitt', name: 'כפפת שטיפה דו־צדדית רכה לרכב', image: '/assets/products/cj-wash-mitt.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · שטיפת רכב', badge: 'דו־צדדית', description: 'כפפת קורל־פליס רכה עם אחיזת אגודל, להסרת אבק ולכלוך בלי לפגוע בצבע הרכב.', specs: ['בד רך וסופג','מתאימה לשימוש חוזר','וריאנט מדויק ומשלוח לישראל באימות'] },
+  { id: 'cj-silicone-squeegee', search: 'silicone car squeegee', name: 'מגב סיליקון 30 ס״מ לחלונות ולמרכב', image: '/assets/products/cj-silicone-squeegee.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · חלונות', badge: 'אוניברסלי', description: 'מגב סיליקון גמיש להסרת מים מחלונות ומשטחי הרכב לאחר שטיפה.', specs: ['רוחב כ־30 ס״מ','חומר סיליקון גמיש','מתאים לחלונות ולמרכב','וריאנט מדויק ומשלוח לישראל באימות'] },
+  { id: 'cj-tire-gauge', search: 'pencil tire pressure gauge', name: 'מד לחץ אוויר לצמיגים עד 150 PSI', image: '/assets/products/cj-tire-gauge.jpg', categories: ['car','diagnostics','gadgets'], kind: 'אבחון ותחזוקת רכב · צמיגים', badge: 'ללא סוללה', description: 'מד לחץ קומפקטי לבדיקת לחץ בצמיגי רכב, אופנוע ואופניים.', specs: ['טווח עד 150 PSI לפי הדגם','ללא סוללת ליתיום','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-phone-holder', name: 'מעמד טלסקופי לרכב עם זרוע מסתובבת 360°', image: '/assets/products/cj-phone-holder.jpg', categories: ['car','gadgets'], kind: 'אביזרי רכב · מעמדים', badge: '360°', description: 'מעמד טלפון עם זרוע טלסקופית וכוס יניקה ללוח המחוונים או לשמשה.', specs: ['סיבוב 360 מעלות','זרוע טלסקופית','כוס יניקה נשטפת','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-kw310-obd', name: 'סורק תקלות OBD2 דגם KW310 לרכב 12V', image: '/assets/products/cj-kw310-obd.jpg', categories: ['car','diagnostics','gadgets'], kind: 'אבחון ותחזוקת רכב · OBD2', badge: 'כלי אבחון', badgeClass: 'red', description: 'קורא תקלות קומפקטי לרכבי 12V תואמי OBD2, להצגת קודי תקלה בסיסיים ומידע מהמחשב.', specs: ['חיבור OBD2','מיועד לרכבי 12V תואמים','יש לבדוק תאימות לדגם הרכב לפני הזמנה'] }
 ];
@@ -151,35 +151,57 @@ async function variantsForProduct(pid) {
 }
 async function variantFromSku(productId, sku) {
   const rows = await variantsForProduct(productId);
-  return rows.find((row) => clean(row?.variantSku, 180) === clean(sku, 180)) || rows[0] || null;
+  return rows.find((row) => clean(row?.variantSku, 180) === clean(sku, 180)) || null;
 }
 
 async function ensureKnownCatalogProducts(existingProducts, settings) {
   const existing = new Map(existingProducts.map((product) => [String(product.id), product]));
+  const usedSupplierIds = new Set(existingProducts.map((product) => String(product.fulfillment_product_id || product.supplier_product_id || '')).filter(Boolean));
   const results = [];
+  let repairsRemaining = 2;
+  let repairAttempts = 0;
   for (let index = 0; index < KNOWN_CJ_CATALOG.length; index += 1) {
     const seed = KNOWN_CJ_CATALOG[index], mapping = SUPPLIERS[seed.id], current = existing.get(seed.id);
     if (!mapping) { results.push({ id: seed.id, error: 'supplier_mapping_missing' }); continue; }
-    if (current?.fulfillment_product_id && current?.fulfillment_variant_id && current?.fulfillment_sku) {
+    let variant = null;
+    let selectedProductId = clean(current?.fulfillment_product_id || mapping.productId, 180);
+    let selectedSku = clean(current?.fulfillment_sku || mapping.skuId, 180);
+    let selectedUrl = current?.supplier_url || mapping.sourceUrl;
+    let selectedVariantLabel = current?.variant_label || mapping.variantLabel;
+    try { variant = await variantFromSku(selectedProductId, selectedSku); }
+    catch (error) { results.push({ id: seed.id, error: clean(error.message, 160) }); }
+    if (variant?.vid && current?.fulfillment_variant_id && clean(variant.vid, 160) === clean(current.fulfillment_variant_id, 160)) {
       results.push({ id: seed.id, seeded: false, mapped: true });
       continue;
     }
-    let variant = null;
-    try { variant = await variantFromSku(mapping.productId, mapping.skuId); }
-    catch (error) { results.push({ id: seed.id, error: clean(error.message, 160) }); }
+    if (!variant?.vid && repairsRemaining > 0 && seed.search) {
+      repairsRemaining -= 1;
+      repairAttempts += 1;
+      try {
+        const replacement = await findKnownReplacement(seed, usedSupplierIds);
+        if (replacement) {
+          variant = replacement.quote.variant;
+          selectedProductId = replacement.productId;
+          selectedSku = replacement.quote.variantSku;
+          selectedUrl = `https://cjdropshipping.com/product/-p-${selectedProductId}.html`;
+          selectedVariantLabel = clean(variant.variantNameEn || variant.variantKey || selectedSku, 300);
+          usedSupplierIds.add(selectedProductId);
+        }
+      } catch (error) { results.push({ id: seed.id, error: `replacement_${clean(error.message, 140)}` }); }
+    }
     const identity = variant?.vid ? {
-      fulfillment_product_id: mapping.productId,
+      fulfillment_product_id: selectedProductId,
       fulfillment_variant_id: clean(variant.vid, 160),
-      fulfillment_sku: mapping.skuId,
+      fulfillment_sku: selectedSku,
       fulfillment_provider_status: 'quote_ready'
     } : {
-      fulfillment_product_id: mapping.productId,
+      fulfillment_product_id: selectedProductId,
       fulfillment_variant_id: null,
-      fulfillment_sku: mapping.skuId,
+      fulfillment_sku: selectedSku,
       fulfillment_provider_status: 'variant_lookup_pending'
     };
     if (current) {
-      await patch('products', `id=eq.${encodeURIComponent(seed.id)}`, { supplier: 'cj', supplier_url: mapping.sourceUrl, supplier_product_id: mapping.productId, supplier_sku_id: variant?.vid || null, variant_label: mapping.variantLabel, fulfillment_provider: 'cj', fulfillment_ready: false, minimum_profit: minimumProfit(current, settings), ...identity });
+      await patch('products', `id=eq.${encodeURIComponent(seed.id)}`, { supplier: 'cj', supplier_url: selectedUrl, supplier_product_id: selectedProductId, supplier_sku_id: variant?.vid || null, variant_label: selectedVariantLabel, fulfillment_provider: 'cj', fulfillment_ready: false, minimum_profit: minimumProfit(current, settings), ...identity });
       results.push({ id: seed.id, seeded: false, mapped: Boolean(variant?.vid) });
       continue;
     }
@@ -187,14 +209,14 @@ async function ensureKnownCatalogProducts(existingProducts, settings) {
       id: seed.id, name: seed.name, selling_price: 0.90, old_price: null, currency: 'ILS', active: true,
       image_url: seed.image, categories: seed.categories, kind: seed.kind, badge: seed.badge, badge_class: seed.badgeClass || '',
       description: seed.description, specs: seed.specs, sort_order: 200 + index, max_order_quantity: 20,
-      supplier: 'cj', supplier_url: mapping.sourceUrl, supplier_product_id: mapping.productId, supplier_sku_id: variant?.vid || null,
-      variant_label: mapping.variantLabel, fulfillment_provider: 'cj', fulfillment_ready: false,
+      supplier: 'cj', supplier_url: selectedUrl, supplier_product_id: selectedProductId, supplier_sku_id: variant?.vid || null,
+      variant_label: selectedVariantLabel, fulfillment_provider: 'cj', fulfillment_ready: false,
       minimum_profit: minimumProfit({}, settings), ...identity
     });
     existing.set(seed.id, product);
     results.push({ id: seed.id, seeded: true, mapped: Boolean(variant?.vid) });
   }
-  return results;
+  return { results, repairAttempts };
 }
 function cheapestVariants(rows, limit = 2) {
   return (Array.isArray(rows) ? rows : []).filter((row) => {
@@ -219,6 +241,17 @@ async function bestVariantQuote(rows) {
   }
   quotes.sort((a, b) => a.landedCost - b.landedCost);
   return quotes[0] || null;
+}
+
+async function findKnownReplacement(seed, usedSupplierIds) {
+  const rows = await searchProducts({ keyword: seed.search }, 1);
+  for (const row of rows.slice(0, 3)) {
+    const productId = productIdentity(row), title = productTitle(row);
+    if (!productId || usedSupplierIds.has(productId) || BLOCKED_DISCOVERY_WORDS.test(title) || BLOCKED_DISCOVERY_WORDS.test(JSON.stringify(row))) continue;
+    const quote = await bestVariantQuote(await variantsForProduct(productId));
+    if (quote && quote.landedCost <= DISCOVERY_MAX_LANDED_COST_ILS) return { productId, quote };
+  }
+  return null;
 }
 
 async function discoverProducts(products, settings, limit = DISCOVERY_BATCH) {
@@ -278,6 +311,8 @@ async function syncProduct(product, settings, job = null, verifiedQuote = null) 
   const quoteMatches = verifiedQuote && verifiedQuote.variantId === variantId && verifiedQuote.variantSku === variantSku;
   const detail = quoteMatches ? verifiedQuote.detail : await getVariant(variantId);
   if (!detail) throw new Error('cj_variant_missing');
+  const detailSku = clean(detail.variantSku, 180);
+  if (!detailSku || detailSku !== variantSku) throw new Error('cj_variant_sku_mismatch');
   const origin = quoteMatches ? verifiedQuote.origin : originCountry(detail), stock = quoteMatches ? verifiedQuote.stock : inventoryTotal(detail);
   const freight = quoteMatches ? verifiedQuote.freight : chooseFreight(await getFreight(variantId, origin), product.fulfillment_logistic_name || job?.provider_snapshot?.selectedFreight?.logisticName);
   if (!freight) throw new Error('cj_shipping_to_il_unavailable');
@@ -329,7 +364,8 @@ module.exports = async function handler(req, res) {
       settings.minimum_profit_ils = DEFAULT_MINIMUM_PROFIT_ILS;
     }
     const allProducts = await dbGet('products?select=*');
-    const seeded = await ensureKnownCatalogProducts(allProducts, settings);
+    const knownCatalog = await ensureKnownCatalogProducts(allProducts, settings);
+    const seeded = knownCatalog.results;
     const products = await dbGet('products?select=*&active=eq.true');
     const byId = new Map(products.map((product) => [String(product.id), product]));
     const jobs = await dbGet('product_intake_jobs?select=*&provider_status=eq.cj_quote_ready'), results = [], synced = new Set();
@@ -349,7 +385,7 @@ module.exports = async function handler(req, res) {
     }
     const requestedBatch = Math.max(1, Math.min(DISCOVERY_BATCH, Number(req.query?.batch || DISCOVERY_BATCH)));
     const seededCount = seeded.filter((result) => result.seeded).length;
-    const discovery = seededCount === 0 && products.filter((product) => product.active === true).length < DISCOVERY_TARGET
+    const discovery = seededCount === 0 && knownCatalog.repairAttempts === 0 && products.filter((product) => product.active === true).length < DISCOVERY_TARGET
       ? await discoverProducts(products, settings, requestedBatch)
       : { added: [], rejected: [] };
     return res.status(200).json({ ok: true, minimumNetProfitIls: Math.max(DEFAULT_MINIMUM_PROFIT_ILS, Number(settings.minimum_profit_ils || DEFAULT_MINIMUM_PROFIT_ILS)), discoveryTarget: DISCOVERY_TARGET, seeded, discovery, results, ready: results.filter((result) => result.ready).length, errors: results.filter((result) => result.error).length });

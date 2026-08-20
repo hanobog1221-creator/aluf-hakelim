@@ -56,7 +56,7 @@ let cart=JSON.parse(localStorage.getItem('alufCart')||'{}');
 function money(n){return '₪'+Number(n).toFixed(2)}
 const catalogState={category:'all',query:'',price:'all',sort:'featured',supplier:'all',readyOnly:false,favoritesOnly:false};window.catalogState=catalogState;
 function supplierFor(p){return p.supplier||(String(p.id).startsWith('cj-')?'cj':'aliexpress')}
-function priceHtml(p){return p.purchaseReady===true&&Number.isFinite(Number(p.price))?`<span class="price">${money(p.price)}</span>${p.old?`<span class="old">${money(p.old)}</span>`:''}`:'<span class="price pendingPrice">מחיר בבדיקה</span>'}
+function priceHtml(p){return p.priceVerified===true&&Number.isFinite(Number(p.price))?`<span class="price">${money(p.price)}</span>${p.old?`<span class="old">${money(p.old)}</span>`:''}`:'<span class="price pendingPrice">מחיר בבדיקה</span>'}
 function favoriteIds(){try{return new Set(JSON.parse(localStorage.getItem('alufFavorites')||'[]').map(String))}catch{return new Set()}}
 function visibleProducts(){
  const query=catalogState.query.trim().toLocaleLowerCase('he');
@@ -64,14 +64,14 @@ function visibleProducts(){
  let list=products.filter(p=>{
   if(catalogState.category!=='all'&&!(Array.isArray(p.cat)&&p.cat.includes(catalogState.category)))return false;
   if(query&&!([p.name,p.kind,p.desc,...(p.specs||[])].join(' ').toLocaleLowerCase('he').includes(query)))return false;
-  if(catalogState.price!=='all'){if(p.purchaseReady!==true||!Number.isFinite(Number(p.price)))return false;const [min,max]=catalogState.price.split('-').map(Number);if(Number(p.price)<min||Number(p.price)>max)return false}
+  if(catalogState.price!=='all'){if(p.priceVerified!==true||!Number.isFinite(Number(p.price)))return false;const [min,max]=catalogState.price.split('-').map(Number);if(Number(p.price)<min||Number(p.price)>max)return false}
   if(catalogState.supplier!=='all'&&supplierFor(p)!==catalogState.supplier)return false;
   if(catalogState.readyOnly&&p.purchaseReady!==true)return false;
   if(catalogState.favoritesOnly&&!favorites.has(String(p.id)))return false;
   return true;
  });
- if(catalogState.sort==='price-asc')list.sort((a,b)=>(a.purchaseReady===true?Number(a.price):Infinity)-(b.purchaseReady===true?Number(b.price):Infinity));
- if(catalogState.sort==='price-desc')list.sort((a,b)=>(b.purchaseReady===true?Number(b.price):-Infinity)-(a.purchaseReady===true?Number(a.price):-Infinity));
+ if(catalogState.sort==='price-asc')list.sort((a,b)=>(a.priceVerified===true?Number(a.price):Infinity)-(b.priceVerified===true?Number(b.price):Infinity));
+ if(catalogState.sort==='price-desc')list.sort((a,b)=>(b.priceVerified===true?Number(b.price):-Infinity)-(a.priceVerified===true?Number(a.price):-Infinity));
  if(catalogState.sort==='name')list.sort((a,b)=>a.name.localeCompare(b.name,'he'));
  return list;
 }
@@ -105,7 +105,7 @@ function checkoutNotice(){showToast('ממשיכים לפרטי ההזמנה')}
 function showToast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(window.toastT);window.toastT=setTimeout(()=>el.classList.remove('show'),2200)}
 renderProducts();renderCart();
 </script>
-<script src="/catalog-loader.js?v=20260820-5"></script>
+<script src="/catalog-loader.js?v=20260820-6"></script>
 </body>
 </html>
 

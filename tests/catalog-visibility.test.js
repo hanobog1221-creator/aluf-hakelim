@@ -56,7 +56,7 @@ test('unverified fallback products stay in checking state rather than being misl
 test('unverified products never display an uncalculated numeric price', () => {
   assert.match(source, /price: null/);
   assert.match(source, /pricePending: true/);
-  assert.match(storefront, /p\.purchaseReady===true&&Number\.isFinite\(Number\(p\.price\)\)/);
+  assert.match(storefront, /p\.priceVerified===true&&Number\.isFinite\(Number\(p\.price\)\)/);
   assert.match(storefront, /מחיר בבדיקה/);
   assert.doesNotMatch(storefront, /<div class="priceRow"><span class="price">\$\{money\(p\.price\)\}/);
 });
@@ -89,7 +89,9 @@ test('every known CJ storefront product is seeded into the managed admin catalog
     assert.match(cjCatalogWorker, new RegExp(`id: '${id}'`));
   }
   assert.match(cjCatalogWorker, /ensureKnownCatalogProducts\(allProducts, settings\)/);
-  assert.match(cjCatalogWorker, /variantFromSku\(mapping\.productId, mapping\.skuId\)/);
+  assert.match(cjCatalogWorker, /variantFromSku\(selectedProductId, selectedSku\)/);
+  assert.match(cjCatalogWorker, /findKnownReplacement\(seed, usedSupplierIds\)/);
+  assert.match(cjCatalogWorker, /cj_variant_sku_mismatch/);
   assert.match(cjCatalogWorker, /fulfillment_ready: false/);
 });
 
@@ -97,7 +99,9 @@ test('catalog exposes sanitized verification state and admin hides placeholder p
   const admin = fs.readFileSync(path.join(__dirname, '..', 'admin-v2.html'), 'utf8');
   assert.match(productsApi, /verificationStatus:/);
   assert.match(productsApi, /verificationFailed:/);
-  assert.match(productsApi, /lastCheckedAt:/);
+  assert.match(productsApi, /lastCheckedAt/);
+  assert.match(productsApi, /priceVerified/);
+  assert.match(productsApi, /quoteProductPrice/);
   assert.match(admin, /מחיר בבדיקה/);
   assert.match(admin, /quote\.recommendedProductPrice/);
 });
