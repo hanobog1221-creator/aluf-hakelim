@@ -101,7 +101,9 @@ test('catalog exposes sanitized verification state and admin hides placeholder p
   assert.match(productsApi, /verificationFailed:/);
   assert.match(productsApi, /lastCheckedAt/);
   assert.match(productsApi, /priceVerified/);
-  assert.match(productsApi, /quoteProductPrice/);
+  assert.match(productsApi, /verifiedStatus/);
+  assert.match(productsApi, /minimum_net_profit_not_met/);
+  assert.match(productsApi, /pricingSafe/);
   assert.match(admin, /מחיר בבדיקה/);
   assert.match(admin, /quote\.recommendedProductPrice/);
 });

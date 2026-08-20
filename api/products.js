@@ -1,5 +1,4 @@
 const { apiKeyHeaders } = require('./_lib/supabase-server');
-const { quoteProductPrice } = require('./_lib/pricing-engine');
 
 const RETAINED_CATALOG_IDS = new Set([
   'socket',
@@ -43,11 +42,11 @@ module.exports = async function handler(req, res) {
 
     const [productsResponse, readinessResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_price_ils,supplier_shipping,supplier_in_stock,supplier_shipping_available,fulfillment_provider_status,fulfillment_verified_at,sku_verified_at,last_sync_at,shipping_last_checked_at,supplier_sync_error,shipping_sync_error&or=(active.eq.true,id.in.(${[...RETAINED_CATALOG_IDS].join(',')}))&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_in_stock,supplier_shipping_available,fulfillment_provider_status,fulfillment_verified_at,last_sync_at,supplier_sync_error,shipping_sync_error&or=(active.eq.true,id.in.(${[...RETAINED_CATALOG_IDS].join(',')}))&order=sort_order.asc`,
         { headers }
       ),
       fetch(
-        `${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,ready_for_paid_order`,
+        `${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,ready_for_paid_order,blockers`,
         { headers }
       ),
       fetch(
@@ -89,23 +88,30 @@ module.exports = async function handler(req, res) {
     }
 
     const readinessRows = await readinessResponse.json();
-    const readiness = new Map(readinessRows.map((row) => [String(row.id), row.ready_for_paid_order === true]));
+    const readiness = new Map(readinessRows.map((row) => [String(row.id), row]));
     const rows = await productsResponse.json();
     const products = rows.filter((row) => !REMOVED_CATALOG_IDS.has(String(row.id))).map((row) => {
       const id = String(row.id);
-      const fullReadiness = readiness.get(id) === true;
+      const readinessRow = readiness.get(id) || {};
+      const fullReadiness = readinessRow.ready_for_paid_order === true;
       const purchaseReady = row.active === true && fullReadiness;
       const storefrontVisible = row.active === true || RETAINED_CATALOG_IDS.has(id);
       const outOfStock = row.supplier_in_stock === false;
       const stockStatus = outOfStock ? 'out_of_stock' : (purchaseReady ? 'available' : 'checking');
-      const priceQuote = quoteProductPrice({ supplierPriceIls: row.supplier_price_ils, supplierShippingIls: row.supplier_shipping });
-      const verifiedAt = row.fulfillment_verified_at || row.sku_verified_at || null;
-      const lastCheckedAt = row.shipping_last_checked_at || row.last_sync_at || verifiedAt;
+      const verifiedStatus = /^verified(?:_|$)/.test(String(row.fulfillment_provider_status || '').toLowerCase());
+      const verifiedAt = row.fulfillment_verified_at || (verifiedStatus ? row.last_sync_at : null);
+      const lastCheckedAt = row.last_sync_at || verifiedAt;
       const fresh = Boolean(lastCheckedAt && Date.now() - Date.parse(lastCheckedAt) <= 24 * 60 * 60 * 1000);
+      const blockers = Array.isArray(readinessRow.blockers) ? readinessRow.blockers.map(String) : ['readiness_unknown'];
+      const pricingBlockers = new Set([
+        'supplier_product_id_missing','supplier_sku_id_missing','supplier_sku_not_verified','supplier_out_of_stock','supplier_stock_unknown',
+        'supplier_shipping_unavailable','supplier_shipping_unknown','supplier_price_unknown','supplier_product_sync_stale','supplier_shipping_sync_stale',
+        'supplier_sync_error','shipping_sync_error','minimum_profit_not_met','minimum_net_profit_not_met','supplier_cost_unknown_for_auto_limit','supplier_cost_above_auto_limit','readiness_unknown'
+      ]);
+      const pricingSafe = blockers.every((blocker) => !pricingBlockers.has(blocker));
       const priceVerified = Boolean(
-        row.active === true && verifiedAt && fresh && row.supplier_in_stock === true && row.supplier_shipping_available === true &&
-        !row.supplier_sync_error && !row.shipping_sync_error && priceQuote.ready &&
-        Number(row.selling_price) + 0.001 >= Number(priceQuote.recommendedProductPrice)
+        row.active === true && verifiedStatus && verifiedAt && fresh && row.supplier_in_stock === true && row.supplier_shipping_available === true &&
+        !row.supplier_sync_error && !row.shipping_sync_error && pricingSafe && Number.isFinite(Number(row.selling_price)) && Number(row.selling_price) > 0
       );
 
       return {
