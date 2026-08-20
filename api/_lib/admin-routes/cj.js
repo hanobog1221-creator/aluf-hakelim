@@ -36,14 +36,22 @@ async function growCatalog() {
   if (!tokenResponse.ok) throw new Error(`cj_worker_token_read_${tokenResponse.status}`);
   const workerToken = String((await tokenResponse.json())[0]?.worker_token || '').trim();
   if (!workerToken) throw new Error('cj_worker_token_missing');
-  const response = await fetch('https://aluf-hakelim-v2-ready.vercel.app/api/cj-worker-catalog?batch=2', {
-    headers: { Accept: 'application/json', 'x-cj-worker-token': workerToken }
+  const workerHeaders = { Accept: 'application/json', 'x-cj-worker-token': workerToken };
+  const aliResponse = await fetch('https://aluf-hakelim-v2-ready.vercel.app/api/aliexpress/catalog-worker', {
+    headers: workerHeaders
+  });
+  const aliRaw = await aliResponse.text();
+  let aliexpress = null;
+  try { aliexpress = aliRaw ? JSON.parse(aliRaw) : null; } catch { aliexpress = null; }
+  if (!aliResponse.ok) throw new Error(aliexpress?.error || `aliexpress_catalog_worker_${aliResponse.status}`);
+  const response = await fetch('https://aluf-hakelim-v2-ready.vercel.app/api/cj-worker-catalog?batch=1', {
+    headers: workerHeaders
   });
   const raw = await response.text();
   let data = null;
   try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
   if (!response.ok) throw new Error(data?.error || `cj_catalog_worker_${response.status}`);
-  return data;
+  return { ...data, aliexpressVerification: aliexpress };
 }
 
 module.exports = async function handler(req, res) {
