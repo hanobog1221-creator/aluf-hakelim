@@ -7,6 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'catalog-loader.js'), 
 const storefront = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const productsApi = fs.readFileSync(path.join(__dirname, '..', 'api', 'products.js'), 'utf8');
 const suppliers = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'suppliers.js'), 'utf8');
+const cjCatalogWorker = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'cj-worker-catalog.js'), 'utf8');
 
 test('active products remain visible while supplier verification is pending', () => {
   assert.match(source, /data\.products\.filter\(\(product\) => product\.available !== false\)/);
@@ -81,4 +82,13 @@ test('known products stay visible and show an explicit out-of-stock state', () =
 test('purchases remain blocked until supplier verification is complete', () => {
   assert.match(source, /product\.purchaseReady !== true/);
   assert.match(source, /addButton\.disabled = true/);
+});
+
+test('every known CJ storefront product is seeded into the managed admin catalog', () => {
+  for (const id of ['cj-detail-brush', 'cj-car-mop', 'cj-magnetic-ring', 'cj-k5-bits', 'cj-microfiber-towel', 'cj-wash-mitt', 'cj-silicone-squeegee', 'cj-tire-gauge', 'cj-phone-holder', 'cj-kw310-obd']) {
+    assert.match(cjCatalogWorker, new RegExp(`id: '${id}'`));
+  }
+  assert.match(cjCatalogWorker, /ensureKnownCatalogProducts\(allProducts, settings\)/);
+  assert.match(cjCatalogWorker, /variantFromSku\(mapping\.skuId\)/);
+  assert.match(cjCatalogWorker, /fulfillment_ready: false/);
 });
