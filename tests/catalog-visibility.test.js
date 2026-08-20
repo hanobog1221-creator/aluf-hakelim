@@ -116,3 +116,9 @@ test('pricing workers never use a processing fee below the database three-percen
   assert.match(optimizer, /Math\.max\(policy\.processingFeeRate \* 100/);
   assert.match(fulfillment, /Math\.max\(pricingPolicy\(\)\.processingFeeRate \* 100/);
 });
+
+test('catalog reprices stored verified costs before slow supplier repair calls', () => {
+  assert.match(cjCatalogWorker, /async function repriceStoredCatalog/);
+  assert.match(cjCatalogWorker, /minimum_profit=gt\.\$\{DEFAULT_MINIMUM_PROFIT_ILS\}/);
+  assert.ok(cjCatalogWorker.indexOf('repriceStoredCatalog(allProducts, settings)') < cjCatalogWorker.indexOf('ensureKnownCatalogProducts(allProducts, settings)'));
+});

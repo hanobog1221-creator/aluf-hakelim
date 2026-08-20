@@ -120,6 +120,21 @@ function pricingOptions(settings) {
   };
 }
 
+async function repriceStoredCatalog(products, settings) {
+  const updates = await Promise.all((Array.isArray(products) ? products : []).filter((product) => product.active === true).map(async (product) => {
+    if (product.supplier_price_ils == null || product.supplier_shipping == null) return null;
+    try {
+      const pricing = pricingForOffer(product, minimumProfit(product, settings), pricingOptions(settings));
+      if (Math.abs(Number(product.selling_price || 0) - pricing.sellingPrice) < 0.005) return null;
+      await patch('products', `id=eq.${encodeURIComponent(product.id)}`, { selling_price: pricing.sellingPrice });
+      return { id: product.id, sellingPrice: pricing.sellingPrice, projectedNetProfit: pricing.projectedNetProfit };
+    } catch (error) {
+      return { id: product.id, error: clean(error.message, 160) };
+    }
+  }));
+  return updates.filter(Boolean);
+}
+
 async function getVariant(variantId) {
   const json = await cj(`/product/variant/queryByVid?vid=${encodeURIComponent(variantId)}&features=enable_inventory`);
   return json.data && typeof json.data === 'object' ? json.data : null;
@@ -360,15 +375,16 @@ module.exports = async function handler(req, res) {
     const settings = (await dbGet('site_settings?id=eq.primary&select=*&limit=1'))[0] || {};
     if (Number(settings.minimum_profit_ils) !== DEFAULT_MINIMUM_PROFIT_ILS) {
       await patch('site_settings', 'id=eq.primary', { minimum_profit_ils: DEFAULT_MINIMUM_PROFIT_ILS });
-      await patch('products', 'minimum_profit=eq.25', { minimum_profit: DEFAULT_MINIMUM_PROFIT_ILS }).catch(() => {});
       settings.minimum_profit_ils = DEFAULT_MINIMUM_PROFIT_ILS;
     }
+    await patch('products', `minimum_profit=gt.${DEFAULT_MINIMUM_PROFIT_ILS}`, { minimum_profit: DEFAULT_MINIMUM_PROFIT_ILS }).catch(() => {});
     const minimumProcessingPercent = pricingPolicy().processingFeeRate * 100;
     if (Number(settings.pricing_fee_percent || 0) < minimumProcessingPercent) {
       await patch('site_settings', 'id=eq.primary', { pricing_fee_percent: minimumProcessingPercent });
       settings.pricing_fee_percent = minimumProcessingPercent;
     }
     const allProducts = await dbGet('products?select=*');
+    const repriced = await repriceStoredCatalog(allProducts, settings);
     const knownCatalog = await ensureKnownCatalogProducts(allProducts, settings);
     const seeded = knownCatalog.results;
     const products = await dbGet('products?select=*&active=eq.true');
@@ -393,7 +409,7 @@ module.exports = async function handler(req, res) {
     const discovery = seededCount === 0 && knownCatalog.repairAttempts === 0 && products.filter((product) => product.active === true).length < DISCOVERY_TARGET
       ? await discoverProducts(products, settings, requestedBatch)
       : { added: [], rejected: [] };
-    return res.status(200).json({ ok: true, minimumNetProfitIls: Math.max(DEFAULT_MINIMUM_PROFIT_ILS, Number(settings.minimum_profit_ils || DEFAULT_MINIMUM_PROFIT_ILS)), discoveryTarget: DISCOVERY_TARGET, seeded, discovery, results, ready: results.filter((result) => result.ready).length, errors: results.filter((result) => result.error).length });
+    return res.status(200).json({ ok: true, minimumNetProfitIls: DEFAULT_MINIMUM_PROFIT_ILS, discoveryTarget: DISCOVERY_TARGET, repriced, seeded, discovery, results, ready: results.filter((result) => result.ready).length, errors: results.filter((result) => result.error).length });
   } catch (error) {
     return res.status(500).json({ ok: false, error: clean(error.message, 240) });
   }
