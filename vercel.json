@@ -1,7 +1,10 @@
 {
   "crons": [
     { "path": "/api/aliexpress/catalog-worker", "schedule": "40 12 * * *" },
-    { "path": "/api/cj-worker-catalog", "schedule": "45 12 * * *" }
+    { "path": "/api/cj-worker-catalog", "schedule": "15 0 * * *" },
+    { "path": "/api/cj-worker-catalog", "schedule": "15 6 * * *" },
+    { "path": "/api/cj-worker-catalog", "schedule": "45 12 * * *" },
+    { "path": "/api/cj-worker-catalog", "schedule": "15 18 * * *" }
   ],
   "redirects": [
     { "source": "/", "destination": "/api/home", "permanent": false },
