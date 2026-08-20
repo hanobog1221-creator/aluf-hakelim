@@ -122,3 +122,10 @@ test('catalog reprices stored verified costs before slow supplier repair calls',
   assert.match(cjCatalogWorker, /minimum_profit=gt\.\$\{DEFAULT_MINIMUM_PROFIT_ILS\}/);
   assert.ok(cjCatalogWorker.indexOf('repriceStoredCatalog(allProducts, settings)') < cjCatalogWorker.indexOf('ensureKnownCatalogProducts(allProducts, settings)'));
 });
+
+test('catalog exposes a read-only pricing diagnostic without weakening purchase readiness', () => {
+  assert.match(productsApi, /function diagnosticPricingAudit/);
+  assert.match(productsApi, /adjustmentRequiredIls/);
+  assert.match(productsApi, /const purchaseReady = row\.active === true && fullReadiness/);
+  assert.match(productsApi, /const pricingAudit = diagnosticPricingAudit/);
+});
