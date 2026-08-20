@@ -89,7 +89,7 @@ test('every known CJ storefront product is seeded into the managed admin catalog
     assert.match(cjCatalogWorker, new RegExp(`id: '${id}'`));
   }
   assert.match(cjCatalogWorker, /ensureKnownCatalogProducts\(allProducts, settings\)/);
-  assert.match(cjCatalogWorker, /variantFromSku\(mapping\.skuId\)/);
+  assert.match(cjCatalogWorker, /variantFromSku\(mapping\.productId, mapping\.skuId\)/);
   assert.match(cjCatalogWorker, /fulfillment_ready: false/);
 });
 

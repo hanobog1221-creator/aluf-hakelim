@@ -5,6 +5,7 @@
     { "path": "/api/cj-worker-catalog", "schedule": "15 6 * * *" },
     { "path": "/api/cj-worker-catalog", "schedule": "45 12 * * *" },
     { "path": "/api/cj-worker-catalog", "schedule": "55 14 * * *" },
+    { "path": "/api/cj-worker-catalog", "schedule": "20 15 * * *" },
     { "path": "/api/cj-worker-catalog", "schedule": "15 18 * * *" }
   ],
   "redirects": [

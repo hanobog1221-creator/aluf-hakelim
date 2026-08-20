@@ -149,9 +149,8 @@ async function variantsForProduct(pid) {
   const json = await cj(`/product/variant/query?pid=${encodeURIComponent(pid)}`);
   return Array.isArray(json.data) ? json.data : (Array.isArray(json.data?.list) ? json.data.list : []);
 }
-async function variantFromSku(sku) {
-  const json = await cj(`/product/variant/query?variantSku=${encodeURIComponent(sku)}`);
-  const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json.data?.list) ? json.data.list : []);
+async function variantFromSku(productId, sku) {
+  const rows = await variantsForProduct(productId);
   return rows.find((row) => clean(row?.variantSku, 180) === clean(sku, 180)) || rows[0] || null;
 }
 
@@ -166,7 +165,7 @@ async function ensureKnownCatalogProducts(existingProducts, settings) {
       continue;
     }
     let variant = null;
-    try { variant = await variantFromSku(mapping.skuId); }
+    try { variant = await variantFromSku(mapping.productId, mapping.skuId); }
     catch (error) { results.push({ id: seed.id, error: clean(error.message, 160) }); }
     const identity = variant?.vid ? {
       fulfillment_product_id: mapping.productId,
