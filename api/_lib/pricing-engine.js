@@ -1,6 +1,7 @@
 const DEFAULT_POLICY = Object.freeze({
   enabled: true,
   targetNetProfitIls: 20,
+  safetyNetProfitIls: 1,
   vatRate: 0.18,
   serviceFeeRate: 0.05,
   processingFeeRate: 0.03,
@@ -26,6 +27,7 @@ function pricingPolicy(env = process.env) {
     // The owner set a fixed business target of 20 ILS net per product.
     // Keep this authoritative even if an older deployment environment still says 25.
     targetNetProfitIls: DEFAULT_POLICY.targetNetProfitIls,
+    safetyNetProfitIls: DEFAULT_POLICY.safetyNetProfitIls,
     vatRate: envNumber(env, 'PRICING_VAT_RATE', DEFAULT_POLICY.vatRate, 0, 1),
     serviceFeeRate: envNumber(env, 'PRICING_SERVICE_FEE_RATE', DEFAULT_POLICY.serviceFeeRate, 0, 1),
     processingFeeRate: envNumber(env, 'PRICING_PROCESSING_FEE_RATE', DEFAULT_POLICY.processingFeeRate, 0, 1),
@@ -68,7 +70,7 @@ function quoteProductPrice({ supplierPriceIls, supplierShippingIls, policy = pri
   const supplierTotal = supplierPrice + supplierShipping;
   const supplierBuffer = supplierTotal * policy.supplierBufferRate;
   const cancellationReserve = policy.cancellationRate * policy.refundFeeIls;
-  const operatingProfitTarget = policy.targetNetProfitIls / (1 - policy.taxReserveRate);
+  const operatingProfitTarget = (policy.targetNetProfitIls + policy.safetyNetProfitIls) / (1 - policy.taxReserveRate);
   const requiredCustomerTotal = (
     supplierTotal +
     supplierBuffer +

@@ -52,8 +52,8 @@ test('requires AliExpress SKU attributes before automatic selection', () => {
   assert.ok(result.evaluated[0].blockers.includes('supplier_sku_attr_missing'));
 });
 
-test('sets a whole-shekel price that preserves at least 20 ILS before configured fees', () => {
-  assert.equal(requiredSellingPrice(40.2, 20), 74);
+test('sets a whole-shekel price with a one-shekel net safety margin', () => {
+  assert.equal(requiredSellingPrice(40.2, 20), 76);
 });
 
 test('pricing includes fee and reserve configuration while shipping is charged separately', () => {
@@ -66,6 +66,6 @@ test('pricing includes fee and reserve configuration while shipping is charged s
 
 test('keeps 20 ILS after the configured 40 percent tax and insurance reserve', () => {
   const pricing = pricingForOffer(offer(), 20, { taxReservePercent: 22, insuranceReservePercent: 18 });
-  assert.ok(pricing.projectedNetProfit >= 20);
+  assert.ok(pricing.projectedNetProfit >= 21);
   assert.equal(Number((pricing.incomeTaxReserve + pricing.insuranceReserve).toFixed(2)), Number((pricing.preTaxProfit * 0.4).toFixed(2)));
 });

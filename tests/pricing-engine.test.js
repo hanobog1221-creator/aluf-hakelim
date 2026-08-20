@@ -20,6 +20,13 @@ test('keeps the owner-approved 20 ILS target when a stale deployment variable st
   assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25' }).targetNetProfitIls, 20);
 });
 
+test('adds a one-shekel net safety margin above the required 20 ILS floor', () => {
+  const quote = quoteProductPrice({ supplierPriceIls: 50, supplierShippingIls: 10 });
+  assert.ok(quote.estimatedNetProfit >= 21);
+  assert.equal(quote.policy.targetNetProfitIls, 20);
+  assert.equal(quote.policy.safetyNetProfitIls, 1);
+});
+
 test('rounds a calculated price upward to a .90 retail ending', () => {
   assert.equal(roundRetailUp(197.10), 197.90);
   assert.equal(roundRetailUp(197.95), 198.90);

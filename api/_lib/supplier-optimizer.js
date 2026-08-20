@@ -1,5 +1,6 @@
 const DEFAULT_QUOTE_TTL_MS = 8 * 60 * 60 * 1000;
 const DEFAULT_MINIMUM_PROFIT_ILS = 20;
+const DEFAULT_PRICING_SAFETY_NET_ILS = 1;
 const DEFAULT_TAX_RESERVE_PERCENT = 22;
 const DEFAULT_INSURANCE_RESERVE_PERCENT = 18;
 const AUTO_FULFILLMENT_PROVIDERS = new Set(['aliexpress', 'cj']);
@@ -98,7 +99,7 @@ function requiredSellingPrice(productPriceIls, minimumProfitIls = DEFAULT_MINIMU
   if (reserve === null || reserve < 0 || fixed === null || fixed < 0 || customerShipping === null || customerShipping < 0 || advertisingCost === null || advertisingCost < 0 || cancellationReserve === null || cancellationReserve < 0 || !Number.isFinite(percent) || percent < 0 || percent >= 100 || !Number.isFinite(taxPercent) || taxPercent < 0 || !Number.isFinite(insurancePercent) || insurancePercent < 0 || taxPercent + insurancePercent >= 100 || !Number.isFinite(vatRate) || vatRate < 0 || !Number.isFinite(serviceFeeRate) || serviceFeeRate < 0 || !Number.isFinite(supplierBufferRate) || supplierBufferRate < 0) throw new Error('invalid_pricing_costs');
   const rate = percent / 100;
   const netRetentionRate = 1 - (taxPercent + insurancePercent) / 100;
-  const preTaxProfitTarget = minimumProfit / netRetentionRate;
+  const preTaxProfitTarget = (minimumProfit + DEFAULT_PRICING_SAFETY_NET_ILS) / netRetentionRate;
   const collectedRetentionRate = (1 / (1 + vatRate)) - rate - serviceFeeRate;
   if (collectedRetentionRate <= 0) throw new Error('invalid_pricing_costs');
   const landedCost = productCost + customerShipping;
@@ -132,6 +133,7 @@ function pricingForOffer(offer, minimumProfitIls, options = {}) {
 module.exports = {
   DEFAULT_QUOTE_TTL_MS,
   DEFAULT_MINIMUM_PROFIT_ILS,
+  DEFAULT_PRICING_SAFETY_NET_ILS,
   DEFAULT_TAX_RESERVE_PERCENT,
   DEFAULT_INSURANCE_RESERVE_PERCENT,
   AUTO_FULFILLMENT_PROVIDERS,
