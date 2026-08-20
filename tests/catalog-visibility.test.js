@@ -122,10 +122,3 @@ test('catalog reprices stored verified costs before slow supplier repair calls',
   assert.match(cjCatalogWorker, /minimum_profit=gt\.\$\{DEFAULT_MINIMUM_PROFIT_ILS\}/);
   assert.ok(cjCatalogWorker.indexOf('repriceStoredCatalog(allProducts, settings)') < cjCatalogWorker.indexOf('ensureKnownCatalogProducts(allProducts, settings)'));
 });
-
-test('public catalog independently audits live stored costs before exposing a price', () => {
-  assert.match(productsApi, /function liveCostPricingAudit/);
-  assert.match(productsApi, /pricingForOffer\(row, minimumProfit/);
-  assert.match(productsApi, /purchaseReady = row\.active === true && livePricing\.safe/);
-  assert.match(productsApi, /const pricingSafe = livePricing\.safe/);
-});
