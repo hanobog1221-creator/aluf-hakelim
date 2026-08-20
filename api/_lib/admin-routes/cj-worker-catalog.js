@@ -377,7 +377,10 @@ module.exports = async function handler(req, res) {
       await patch('site_settings', 'id=eq.primary', { minimum_profit_ils: DEFAULT_MINIMUM_PROFIT_ILS });
       settings.minimum_profit_ils = DEFAULT_MINIMUM_PROFIT_ILS;
     }
-    await patch('products', `minimum_profit=gt.${DEFAULT_MINIMUM_PROFIT_ILS}`, { minimum_profit: DEFAULT_MINIMUM_PROFIT_ILS }).catch(() => {});
+    await Promise.all([
+      patch('products', `minimum_profit=lt.${DEFAULT_MINIMUM_PROFIT_ILS}`, { minimum_profit: DEFAULT_MINIMUM_PROFIT_ILS }).catch(() => {}),
+      patch('products', `minimum_profit=gt.${DEFAULT_MINIMUM_PROFIT_ILS}`, { minimum_profit: DEFAULT_MINIMUM_PROFIT_ILS }).catch(() => {})
+    ]);
     const minimumProcessingPercent = pricingPolicy().processingFeeRate * 100;
     if (Number(settings.pricing_fee_percent || 0) < minimumProcessingPercent) {
       await patch('site_settings', 'id=eq.primary', { pricing_fee_percent: minimumProcessingPercent });

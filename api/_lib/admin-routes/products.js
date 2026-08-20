@@ -230,7 +230,7 @@ module.exports = async function handler(req, res) {
             : (current.whatsapp_message || 'היי, אשמח לעזרה לגבי מוצר או הזמנה באתר אלוף הכלים.'),
           support_email: hasOwn(body, 'support_email') ? cleanText(body.support_email, 160) : (current.support_email || null),
           support_hours: hasOwn(body, 'support_hours') ? cleanText(body.support_hours, 240) : (current.support_hours || null),
-          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? Math.max(20, cleanNumber(body.minimum_profit_ils, true) ?? 20) : Math.max(20, Number(current.minimum_profit_ils ?? 20)),
+          minimum_profit_ils: hasOwn(body, 'minimum_profit_ils') ? Math.max(25, cleanNumber(body.minimum_profit_ils, true) ?? 25) : Math.max(25, Number(current.minimum_profit_ils ?? 25)),
           supplier_optimizer_enabled: hasOwn(body, 'supplier_optimizer_enabled') ? body.supplier_optimizer_enabled === true : current.supplier_optimizer_enabled === true,
           supplier_quote_ttl_minutes: hasOwn(body, 'supplier_quote_ttl_minutes')
             ? cleanIntegerRange(body.supplier_quote_ttl_minutes, 15, 1440, 480, 'invalid_supplier_quote_ttl')
@@ -368,7 +368,7 @@ module.exports = async function handler(req, res) {
         supplier_sku_id: cleanText(body.supplier_sku_id, 100),
         variant_label: cleanText(body.variant_label, 200),
         alternative_suppliers: cleanAlternativeSuppliers(Array.isArray(body.alternative_suppliers) ? body.alternative_suppliers : []),
-        minimum_profit: cleanNumber(body.minimum_profit, true),
+        minimum_profit: body.minimum_profit == null ? null : Math.max(25, cleanNumber(body.minimum_profit, true) ?? 25),
         auto_fulfill_max_cost: cleanNumber(body.auto_fulfill_max_cost, true),
         fulfillment_ready: false,
         last_sync_at: null,
@@ -434,7 +434,7 @@ module.exports = async function handler(req, res) {
       if ('supplier_in_stock' in body) {
         update.supplier_in_stock = body.supplier_in_stock === null ? null : Boolean(body.supplier_in_stock);
       }
-      if ('minimum_profit' in body) update.minimum_profit = cleanNumber(body.minimum_profit, true);
+      if ('minimum_profit' in body) update.minimum_profit = body.minimum_profit == null ? null : Math.max(25, cleanNumber(body.minimum_profit, true) ?? 25);
       if ('auto_fulfill_max_cost' in body) update.auto_fulfill_max_cost = cleanNumber(body.auto_fulfill_max_cost, true);
       if ('max_order_quantity' in body) update.max_order_quantity = cleanQuantityLimit(body.max_order_quantity, existing.max_order_quantity || 20);
       if ('sort_order' in body) {

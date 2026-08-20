@@ -1,5 +1,5 @@
 const DEFAULT_QUOTE_TTL_MS = 8 * 60 * 60 * 1000;
-const DEFAULT_MINIMUM_PROFIT_ILS = 20;
+const DEFAULT_MINIMUM_PROFIT_ILS = 25;
 const DEFAULT_PRICING_SAFETY_NET_ILS = 1;
 const DEFAULT_TAX_RESERVE_PERCENT = 22;
 const DEFAULT_INSURANCE_RESERVE_PERCENT = 18;
@@ -82,7 +82,8 @@ function selectBestOffer(offers, options = {}) {
 
 function requiredSellingPrice(productPriceIls, minimumProfitIls = DEFAULT_MINIMUM_PROFIT_ILS, options = {}) {
   const productCost = money(productPriceIls);
-  const minimumProfit = money(minimumProfitIls);
+  const requestedMinimumProfit = money(minimumProfitIls);
+  const minimumProfit = requestedMinimumProfit === null ? null : Math.max(DEFAULT_MINIMUM_PROFIT_ILS, requestedMinimumProfit);
   const reserve = money(options.reserveIls || 0);
   const percent = Number(options.paymentFeePercent || 0);
   const fixed = money(options.paymentFeeFixedIls || 0);

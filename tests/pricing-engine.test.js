@@ -8,16 +8,16 @@ const {
   roundRetailUp
 } = require('../api/_lib/pricing-engine');
 
-test('defaults to a 20 ILS target after a 40 percent tax and insurance reserve', () => {
+test('defaults to a 25 ILS target after a 40 percent tax and insurance reserve', () => {
   const policy = pricingPolicy({});
-  assert.equal(policy.targetNetProfitIls, 20);
+  assert.equal(policy.targetNetProfitIls, 25);
   assert.equal(policy.taxReserveRate, 0.40);
   assert.equal(policy.vatRate, 0.18);
   assert.equal(policy.serviceFeeRate + policy.processingFeeRate, 0.08);
 });
 
-test('keeps the owner-approved 20 ILS target when a stale deployment variable still says 25', () => {
-  assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25' }).targetNetProfitIls, 20);
+test('keeps the owner-approved 25 ILS target when a stale deployment variable still says 20', () => {
+  assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '20' }).targetNetProfitIls, 25);
 });
 
 test('environment configuration cannot undercut production cost floors', () => {
@@ -38,10 +38,10 @@ test('environment configuration cannot undercut production cost floors', () => {
   assert.equal(policy.supplierBufferRate, 0.05);
 });
 
-test('adds a one-shekel net safety margin above the required 20 ILS floor', () => {
+test('adds a one-shekel net safety margin above the required 25 ILS floor', () => {
   const quote = quoteProductPrice({ supplierPriceIls: 50, supplierShippingIls: 10 });
-  assert.ok(quote.estimatedNetProfit >= 21);
-  assert.equal(quote.policy.targetNetProfitIls, 20);
+  assert.ok(quote.estimatedNetProfit >= 26);
+  assert.equal(quote.policy.targetNetProfitIls, 25);
   assert.equal(quote.policy.safetyNetProfitIls, 1);
 });
 

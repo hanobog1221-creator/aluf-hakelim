@@ -119,6 +119,15 @@ test('pricing workers never use a processing fee below the database three-percen
 
 test('catalog reprices stored verified costs before slow supplier repair calls', () => {
   assert.match(cjCatalogWorker, /async function repriceStoredCatalog/);
+  assert.match(cjCatalogWorker, /minimum_profit=lt\.\$\{DEFAULT_MINIMUM_PROFIT_ILS\}/);
   assert.match(cjCatalogWorker, /minimum_profit=gt\.\$\{DEFAULT_MINIMUM_PROFIT_ILS\}/);
   assert.ok(cjCatalogWorker.indexOf('repriceStoredCatalog(allProducts, settings)') < cjCatalogWorker.indexOf('ensureKnownCatalogProducts(allProducts, settings)'));
+});
+
+test('the owner-approved 25 ILS net floor is enforced across admin and fulfillment', () => {
+  const adminProducts = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'products.js'), 'utf8');
+  const fulfillment = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'fulfillment.js'), 'utf8');
+  assert.match(adminProducts, /Math\.max\(25, cleanNumber\(body\.minimum_profit_ils/);
+  assert.match(adminProducts, /Math\.max\(25, cleanNumber\(body\.minimum_profit/);
+  assert.match(fulfillment, /Math\.max\(25, configuredMinimumProfit\)/);
 });

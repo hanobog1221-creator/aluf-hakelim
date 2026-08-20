@@ -1,6 +1,6 @@
 const DEFAULT_POLICY = Object.freeze({
   enabled: true,
-  targetNetProfitIls: 20,
+  targetNetProfitIls: 25,
   safetyNetProfitIls: 1,
   vatRate: 0.18,
   serviceFeeRate: 0.05,
@@ -24,8 +24,8 @@ function envNumber(env, key, fallback, min = 0, max = 1_000_000) {
 function pricingPolicy(env = process.env) {
   return {
     enabled: String(env.AUTO_PRICING_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
-    // The owner set a fixed business target of 20 ILS net per product.
-    // Keep this authoritative even if an older deployment environment still says 25.
+    // The owner set a fixed business target of 25 ILS net per product.
+    // Keep this authoritative even if an older deployment environment still says 20.
     targetNetProfitIls: DEFAULT_POLICY.targetNetProfitIls,
     safetyNetProfitIls: DEFAULT_POLICY.safetyNetProfitIls,
     // Production readiness in Supabase audits against these conservative floors.
