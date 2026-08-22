@@ -110,6 +110,16 @@ async function finalize() {
   };
 }
 
+async function runApprovedSync() {
+  const prepared = await prepare();
+  const cj = await runWorker(cjWorker, { discover: 'false' });
+  if (cj.status !== 200 || cj.body?.ok !== true) throw new Error(`cj_sync_failed_${cj.status}`);
+  const aliexpress = await runWorker(aliWorker);
+  if (aliexpress.status !== 200 || aliexpress.body?.ok !== true) throw new Error(`aliexpress_sync_failed_${aliexpress.status}`);
+  const completed = await finalize();
+  return { prepared, cj, aliexpress, completed };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
@@ -127,3 +137,5 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ ok: false, error: String(error.message || error).slice(0, 220) });
   }
 };
+
+module.exports.runApprovedSync = runApprovedSync;

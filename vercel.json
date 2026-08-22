@@ -1,4 +1,5 @@
 {
+  "buildCommand": "pnpm run build",
   "crons": [
     { "path": "/api/aliexpress/catalog-worker", "schedule": "40 12 * * *" },
     { "path": "/api/cj-worker-catalog", "schedule": "15 0 * * *" },
