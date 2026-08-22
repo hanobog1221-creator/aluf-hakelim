@@ -2,6 +2,7 @@
   "name": "aluf-hakelim",
   "private": true,
   "scripts": {
+    "build": "node scripts/manual-sales-launch-20260823.js",
     "test": "node --test"
   },
   "engines": {

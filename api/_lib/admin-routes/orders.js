@@ -13,6 +13,21 @@ function text(value, max) {
   return out || null;
 }
 
+function safeSupplierPaymentUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:' || !/(^|\.)cjdropshipping\.com$/i.test(url.hostname)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function paymentUrlFromAttempt(attempt) {
+  const created = Array.isArray(attempt?.response?.created) ? attempt.response.created : [];
+  return created.map((row) => safeSupplierPaymentUrl(row?.paymentUrl)).find(Boolean) || null;
+}
+
 function validYear(value) {
   const year = Number(value || new Date().getUTCFullYear());
   return Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : null;
@@ -186,7 +201,26 @@ module.exports = async function handler(req, res) {
       });
       if (!response.ok) throw new Error(`orders_read_${response.status}`);
       const orders = await response.json();
-      return res.status(200).json({ ok: true, orders });
+      const orderIds = orders.map((order) => String(order.order_id || '')).filter(Boolean);
+      let attempts = [];
+      if (orderIds.length) {
+        const filter = orderIds.map((id) => `"${id.replace(/"/g, '')}"`).join(',');
+        const attemptsResponse = await fetch(`${supabaseUrl}/rest/v1/supplier_order_attempts?order_id=in.(${encodeURIComponent(filter)})&status=eq.payment_pending&select=order_id,provider,response,updated_at&order=updated_at.desc`, { headers: dbHeaders() });
+        if (attemptsResponse.ok) attempts = await attemptsResponse.json();
+      }
+      const attemptByOrder = new Map();
+      for (const attempt of attempts) if (!attemptByOrder.has(String(attempt.order_id))) attemptByOrder.set(String(attempt.order_id), attempt);
+      const enriched = orders.map((order) => {
+        const attempt = attemptByOrder.get(String(order.order_id));
+        const directUrl = paymentUrlFromAttempt(attempt);
+        const provider = String(attempt?.provider || '').toLowerCase();
+        return {
+          ...order,
+          supplier_payment_url: directUrl || (provider === 'aliexpress' ? 'https://www.aliexpress.com/p/order/index.html' : null),
+          supplier_payment_provider: directUrl ? 'cj' : (provider === 'aliexpress' ? 'aliexpress' : null)
+        };
+      });
+      return res.status(200).json({ ok: true, orders: enriched });
     }
 
     if (req.method === 'POST') {

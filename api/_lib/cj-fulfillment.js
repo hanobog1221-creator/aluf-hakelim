@@ -11,6 +11,9 @@ function boolEnv(name, fallback = false) {
 }
 function sandboxMode() { return boolEnv('CJ_SANDBOX', true); }
 function autoPayEnabled() { return boolEnv('CJ_AUTO_PAY', false); }
+function manualPagePaymentEnabled() {
+  return process.env.VERCEL_ENV === 'production' && boolEnv('CJ_MANUAL_PAGE_PAYMENT_ENABLED', true);
+}
 function isForcedSandboxOrder(orderId) { return /^AH-SBX-PAY-[A-Z0-9-]{5,60}$/i.test(String(orderId || '')); }
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
@@ -75,7 +78,7 @@ function buildRequests(order, supplierState, sandbox, autoPay = false) {
   const nonCj = items.find((item) => clean(item.supplier,30).toLowerCase() !== 'cj');
   if (nonCj) throw new Error('mixed_or_non_cj_order_not_supported');
   const customer = order.customer || {};
-  const payType = !sandbox && autoPay ? 2 : 3;
+  const payType = sandbox ? 3 : (autoPay ? 2 : 1);
   return items.map((item,index) => {
     const current = supplierState.products.get(String(item.id));
     if (!current || clean(current.fulfillment_provider,20).toLowerCase() !== 'cj') throw new Error(`cj_product_mapping_missing_${item.id}`);
@@ -111,9 +114,19 @@ async function cjCreate(request) {
     shipmentOrderId:clean(data.shipmentOrderId,100) || null,
     orderNumber:clean(data.orderNumber || request.orderNumber,80),
     orderStatus:clean(data.orderStatus,30) || null,
+    paymentUrl:safeCjPaymentUrl(data.cjPayUrl),
     data,
     requestId:json.requestId || null
   };
+}
+function safeCjPaymentUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:' || !/(^|\.)cjdropshipping\.com$/i.test(url.hostname)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 async function cjOrderDetail(orderId) {
   const json = await cjRequest(`/shopping/order/getOrderDetail?orderId=${encodeURIComponent(orderId)}`);
@@ -169,8 +182,10 @@ async function simulateForcedSandboxPayment(created) {
 
 async function preflightCjOrder(orderId, options = {}) {
   const forcedSandbox = isForcedSandboxOrder(orderId);
-  const sandbox = forcedSandbox ? true : sandboxMode();
-  const autoPay = !sandbox && autoPayEnabled();
+  const configuredAutoPay = autoPayEnabled();
+  const manualPagePayment = !forcedSandbox && !configuredAutoPay && manualPagePaymentEnabled();
+  const sandbox = forcedSandbox ? true : (manualPagePayment ? false : sandboxMode());
+  const autoPay = !sandbox && configuredAutoPay;
   const previewClosedSandbox = options.allowClosedSandbox === true && sandbox && process.env.VERCEL_ENV !== 'production' && /^AH-SBX-/i.test(String(orderId||''));
   const allowClosedSandbox = forcedSandbox || previewClosedSandbox;
   const { order, validation, supplierState } = await getFulfillmentCandidate(orderId, { ignoreSalesDisabled:allowClosedSandbox });
@@ -181,7 +196,7 @@ async function preflightCjOrder(orderId, options = {}) {
     if (balanceUsd <= 0) return { ok:false, validation:{ok:false,reason:'cj_balance_empty'}, balanceUsd };
   }
   const requests = buildRequests(order,supplierState,sandbox,autoPay);
-  return { ok:true, order, validation, sandbox, autoPay, balanceUsd, requests, requestFingerprint:fingerprint(requests), allowClosedSandbox, forcedSandbox };
+  return { ok:true, order, validation, sandbox, autoPay, manualPagePayment, balanceUsd, requests, requestFingerprint:fingerprint(requests), allowClosedSandbox, forcedSandbox };
 }
 
 async function fulfillCjOrder(orderId, options = {}) {
@@ -190,7 +205,7 @@ async function fulfillCjOrder(orderId, options = {}) {
   const duplicate = await existingAttempt(orderId);
   if (duplicate) return {ok:false,validation:{ok:false,reason:'supplier_attempt_already_exists'},attempt:duplicate};
 
-  const paymentMode = preflight.forcedSandbox ? 'sandbox_simulated' : (preflight.autoPay ? 'balance_auto' : 'create_only');
+  const paymentMode = preflight.forcedSandbox ? 'sandbox_simulated' : (preflight.autoPay ? 'balance_auto' : (preflight.manualPagePayment ? 'page_manual' : 'create_only'));
   const attempt = await dbInsert('supplier_order_attempts', {
     order_id:orderId, request_fingerprint:preflight.requestFingerprint, status:'prepared', provider:'cj',
     provider_sandbox:preflight.sandbox, provider_payment_required:true, provider_payment_completed:false,
@@ -227,7 +242,7 @@ async function fulfillCjOrder(orderId, options = {}) {
     paymentMode,
     forcedSandbox:preflight.forcedSandbox===true,
     balanceBeforeUsd:preflight.balanceUsd,
-    created:created.map(x=>({id:x.id,shipmentOrderId:x.shipmentOrderId,orderNumber:x.orderNumber,itemId:x.itemId,orderStatus:x.orderStatus,postageAmount:x.data?.postageAmount??null,productAmount:x.data?.productAmount??null,logisticsMiss:x.data?.logisticsMiss??null})),
+    created:created.map(x=>({id:x.id,shipmentOrderId:x.shipmentOrderId,orderNumber:x.orderNumber,itemId:x.itemId,orderStatus:x.orderStatus,paymentUrl:x.paymentUrl,postageAmount:x.data?.postageAmount??null,productAmount:x.data?.productAmount??null,logisticsMiss:x.data?.logisticsMiss??null})),
     paymentChecks
   };
   await dbPatch('supplier_order_attempts',`id=eq.${attempt.id}`,{
@@ -237,15 +252,15 @@ async function fulfillCjOrder(orderId, options = {}) {
   });
   await dbPatch('orders',`order_id=eq.${encodeURIComponent(orderId)}`,{
     supplier_order_id:ids[0]||null, supplier_order_ids:ids,
-    fulfillment_status:supplierPaid?'ordered':'ordering', last_error:supplierPaid?null:((preflight.autoPay||preflight.forcedSandbox)?'cj_payment_not_confirmed':null)
+    fulfillment_status:supplierPaid?'ordered':'waiting', last_error:supplierPaid?null:'manual_supplier_payment_required'
   });
   return {
     ok:true, sandbox:preflight.sandbox, forcedSandbox:preflight.forcedSandbox===true, autoPay:preflight.autoPay,
     chargedSupplier:!preflight.sandbox && supplierPaid,
     paymentRequired, providerPaymentCompleted:supplierPaid,
     balanceBeforeUsd:preflight.balanceUsd,
-    orderId, supplierOrderIds:ids, attemptId:attempt.id, created, paymentChecks
+    orderId, supplierOrderIds:ids, paymentUrls:created.map(x=>x.paymentUrl).filter(Boolean), attemptId:attempt.id, created, paymentChecks
   };
 }
 
-module.exports={sandboxMode,autoPayEnabled,getBalanceUsd,buildRequests,preflightCjOrder,fulfillCjOrder};
+module.exports={sandboxMode,autoPayEnabled,manualPagePaymentEnabled,safeCjPaymentUrl,getBalanceUsd,buildRequests,preflightCjOrder,fulfillCjOrder};
