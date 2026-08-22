@@ -2,7 +2,6 @@
   "name": "aluf-hakelim",
   "private": true,
   "scripts": {
-    "build": "node scripts/production-sync-20260823.js",
     "test": "node --test"
   },
   "engines": {
