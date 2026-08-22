@@ -1,6 +1,7 @@
 const { requireAdmin, config, dbHeaders, audit } = require('../_lib/admin');
 const { requireWorker } = require('../cj-worker-auth');
 const { pricingPolicy } = require('../pricing-engine');
+const { verifiedCjReadiness } = require('./cj-worker-catalog');
 const {
   DEFAULT_MINIMUM_PROFIT_ILS,
   DEFAULT_TAX_RESERVE_PERCENT,
@@ -97,7 +98,7 @@ function optimizerOptions(settings) {
     ttlMs: ttlMinutes * 60 * 1000,
     enabledProviders: AUTO_FULFILLMENT_PROVIDERS,
     paymentFeePercent: Math.max(policy.processingFeeRate * 100, Number(settings.pricing_fee_percent || 0)),
-    paymentFeeFixedIls: Number(settings.pricing_fee_fixed_ils || 0),
+    paymentFeeFixedIls: Math.max(policy.processingFeeFixedIls, Number(settings.pricing_fee_fixed_ils || 0)),
     reserveIls: Number(settings.pricing_reserve_ils || 0),
     taxReservePercent: Number(settings.pricing_tax_reserve_percent ?? DEFAULT_TAX_RESERVE_PERCENT),
     insuranceReservePercent: Number(settings.pricing_insurance_reserve_percent ?? DEFAULT_INSURANCE_RESERVE_PERCENT),
@@ -124,6 +125,8 @@ function evaluateProduct(product, storedOffers, settings) {
     productId: product.id,
     name: product.name,
     currentProvider: providerOf(product.supplier || product.fulfillment_provider),
+    currentFulfillmentReady: product.fulfillment_ready === true,
+    currentSellingPrice: numberOrNull(product.selling_price),
     currentLandedCost: product.supplier_price_ils == null || product.supplier_shipping == null
       ? null
       : numberOrNull(Number(product.supplier_price_ils) + Number(product.supplier_shipping)),
@@ -144,6 +147,15 @@ function evaluateProduct(product, storedOffers, settings) {
       blockers: row.blockers
     }))
   };
+}
+
+function unchangedVerifiedCurrentOffer(result) {
+  if (!result?.selectedOffer || result.selectedOffer.source !== 'current_product' || result.currentFulfillmentReady !== true) return false;
+  if (result.currentProvider !== result.selectedProvider) return false;
+  if (!Number.isFinite(Number(result.currentLandedCost)) || !Number.isFinite(Number(result.selectedLandedCost))) return false;
+  if (!Number.isFinite(Number(result.currentSellingPrice)) || !Number.isFinite(Number(result.pricing?.sellingPrice))) return false;
+  return Math.abs(Number(result.currentLandedCost) - Number(result.selectedLandedCost)) < 0.01 &&
+    Math.abs(Number(result.currentSellingPrice) - Number(result.pricing.sellingPrice)) < 0.01;
 }
 
 function productPatch(result) {
@@ -295,6 +307,10 @@ module.exports = async function handler(req, res) {
         skipped.push({ productId: result.productId, reason: result.selectedOffer ? 'minimum_profit_not_met' : 'no_eligible_offer' });
         continue;
       }
+      if (unchangedVerifiedCurrentOffer(result)) {
+        skipped.push({ productId: result.productId, reason: 'current_verified_offer_unchanged' });
+        continue;
+      }
       const response = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(result.productId)}`, {
         method: 'PATCH', headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }), body: JSON.stringify(productPatch(result))
       });
@@ -304,11 +320,29 @@ module.exports = async function handler(req, res) {
       }
       applied.push({ productId: result.productId, provider: result.selectedProvider, landedCost: result.selectedLandedCost, sellingPrice: result.pricing.sellingPrice, projectedNetProfit: result.pricing.projectedNetProfit });
     }
-    await audit('supplier_optimizer_apply', 'site_settings', 'primary', { applied: applied.length, skipped: skipped.length });
-    return res.status(200).json({ ok: true, applied: true, minimumProfitFloorIls: DEFAULT_MINIMUM_PROFIT_ILS, results: applied, skipped });
+    // Updating supplier identity can make the database clear fulfillment_ready as a
+    // safety precaution. Restore it only after the complete, current CJ snapshot
+    // passes the same stock, shipping, identity, freshness, cost and profit gates
+    // used by the catalog worker.
+    const refreshedProducts = await dbJson(`${supabaseUrl}/rest/v1/products?select=*&active=eq.true`, { headers: dbHeaders() });
+    const reconciliationCandidates = (refreshedProducts || []).filter((product) => product.fulfillment_ready !== true && verifiedCjReadiness(product, settings));
+    const reconciled = [];
+    for (const product of reconciliationCandidates) {
+      const response = await fetch(`${supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(product.id)}`, {
+        method: 'PATCH',
+        headers: dbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify({ fulfillment_ready: true, fulfillment_provider_status: 'verified_reconciled', updated_at: new Date().toISOString() })
+      });
+      if (response.ok) reconciled.push(String(product.id));
+      else skipped.push({ productId: product.id, reason: `readiness_reconcile_${response.status}` });
+    }
+    await audit('supplier_optimizer_apply', 'site_settings', 'primary', { applied: applied.length, skipped: skipped.length, reconciled: reconciled.length });
+    return res.status(200).json({ ok: true, applied: true, minimumProfitFloorIls: DEFAULT_MINIMUM_PROFIT_ILS, results: applied, skipped, reconciled });
   } catch (error) {
     console.error('supplier optimizer failed:', error.message);
     const code = clean(error.message || error, 220) || 'supplier_optimizer_failed';
     return res.status(code.includes('invalid_') || code.includes('incomplete') ? 400 : 500).json({ ok: false, error: code });
   }
 };
+
+module.exports.unchangedVerifiedCurrentOffer = unchangedVerifiedCurrentOffer;

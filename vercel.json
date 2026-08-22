@@ -1,5 +1,9 @@
 {
   "crons": [
+    { "path": "/api/_maintenance-20260822?action=prepare", "schedule": "10 20 * * *" },
+    { "path": "/api/_maintenance-20260822?action=cj", "schedule": "15 20 * * *" },
+    { "path": "/api/_maintenance-20260822?action=aliexpress", "schedule": "20 20 * * *" },
+    { "path": "/api/_maintenance-20260822?action=finalize", "schedule": "25 20 * * *" },
     { "path": "/api/aliexpress/catalog-worker", "schedule": "40 12 * * *" },
     { "path": "/api/cj-worker-catalog", "schedule": "15 0 * * *" },
     { "path": "/api/cj-worker-catalog", "schedule": "15 6 * * *" },

@@ -8,16 +8,17 @@ const {
   roundRetailUp
 } = require('../api/_lib/pricing-engine');
 
-test('defaults to a 25 ILS target after a 40 percent tax and insurance reserve', () => {
+test('defaults to 10 ILS after supplier cost and transaction fees only', () => {
   const policy = pricingPolicy({});
-  assert.equal(policy.targetNetProfitIls, 25);
-  assert.equal(policy.taxReserveRate, 0.40);
-  assert.equal(policy.vatRate, 0.18);
-  assert.equal(policy.serviceFeeRate + policy.processingFeeRate, 0.08);
+  assert.equal(policy.targetNetProfitIls, 10);
+  assert.equal(policy.taxReserveRate, 0);
+  assert.equal(policy.vatRate, 0);
+  assert.equal(policy.processingFeeRate, 0.052);
+  assert.equal(policy.processingFeeFixedIls, 1.20);
 });
 
-test('keeps the owner-approved 25 ILS target when a stale deployment variable still says 20', () => {
-  assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '20' }).targetNetProfitIls, 25);
+test('keeps the owner-approved 10 ILS target when a stale deployment variable differs', () => {
+  assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25' }).targetNetProfitIls, 10);
 });
 
 test('environment configuration cannot undercut production cost floors', () => {
@@ -30,19 +31,19 @@ test('environment configuration cannot undercut production cost floors', () => {
     PRICING_REFUND_FEE_ILS: '1',
     PRICING_SUPPLIER_BUFFER_RATE: '0.01'
   });
-  assert.equal(policy.vatRate, 0.18);
-  assert.equal(policy.serviceFeeRate, 0.05);
-  assert.equal(policy.processingFeeRate, 0.03);
-  assert.equal(policy.advertisingCostIls, 15);
-  assert.equal(policy.cancellationRate * policy.refundFeeIls, 2.45);
-  assert.equal(policy.supplierBufferRate, 0.05);
+  assert.equal(policy.vatRate, 0);
+  assert.equal(policy.serviceFeeRate, 0);
+  assert.equal(policy.processingFeeRate, 0.052);
+  assert.equal(policy.advertisingCostIls, 0);
+  assert.equal(policy.cancellationRate * policy.refundFeeIls, 0);
+  assert.equal(policy.supplierBufferRate, 0);
 });
 
-test('adds a one-shekel net safety margin above the required 25 ILS floor', () => {
+test('meets the required 10 ILS floor without unrelated reserves', () => {
   const quote = quoteProductPrice({ supplierPriceIls: 50, supplierShippingIls: 10 });
-  assert.ok(quote.estimatedNetProfit >= 26);
-  assert.equal(quote.policy.targetNetProfitIls, 25);
-  assert.equal(quote.policy.safetyNetProfitIls, 1);
+  assert.ok(quote.estimatedNetProfit >= 10);
+  assert.equal(quote.policy.targetNetProfitIls, 10);
+  assert.equal(quote.policy.safetyNetProfitIls, 0);
 });
 
 test('rounds a calculated price upward to a .90 retail ending', () => {
@@ -50,14 +51,14 @@ test('rounds a calculated price upward to a .90 retail ending', () => {
   assert.equal(roundRetailUp(197.95), 198.90);
 });
 
-test('price quote includes VAT, provider fees, advertising, supplier buffer and cancellation reserve', () => {
+test('price quote includes only supplier cost and transaction fees', () => {
   const quote = quoteProductPrice({ supplierPriceIls: 100, supplierShippingIls: 0 });
   assert.equal(quote.ready, true);
-  assert.ok(quote.recommendedProductPrice > 192.90);
-  assert.ok(quote.estimatedNetProfit >= 20);
-  assert.equal(quote.cancellationReserve, 2.45);
-  assert.equal(quote.advertisingCost, 15);
-  assert.equal(quote.supplierBuffer, 5);
+  assert.ok(quote.recommendedProductPrice >= 117.90);
+  assert.ok(quote.estimatedNetProfit >= 10);
+  assert.equal(quote.cancellationReserve, 0);
+  assert.equal(quote.advertisingCost, 0);
+  assert.equal(quote.supplierBuffer, 0);
 });
 
 test('does not change a live price when supplier shipping is unknown', () => {
@@ -69,5 +70,5 @@ test('does not change a live price when supplier shipping is unknown', () => {
 test('updates the product price automatically when verified supplier costs change', () => {
   const result = autoPriceUpdate({ selling_price: 149.90, old_price: null }, { supplierPriceIls: 100, supplierShippingIls: 20 });
   assert.equal(result.quote.ready, true);
-  assert.ok(result.update.selling_price > 199.90);
+  assert.ok(result.update.selling_price >= 118.90);
 });

@@ -9,15 +9,13 @@ const productsApi = fs.readFileSync(path.join(__dirname, '..', 'api', 'products.
 const suppliers = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'suppliers.js'), 'utf8');
 const cjCatalogWorker = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'cj-worker-catalog.js'), 'utf8');
 
-test('active products remain visible while supplier verification is pending', () => {
-  assert.match(source, /data\.products\.filter\(\(product\) => product\.available !== false\)/);
-  assert.doesNotMatch(source, /product\.available !== false && product\.purchaseReady === true/);
+test('the customer catalog contains only products ready for purchase', () => {
+  assert.match(source, /data\.products\.filter\(\(product\) => product\.available !== false && product\.purchaseReady === true\)/);
 });
 
-test('legacy storefront items stay visible but fail closed when absent from the managed catalog', () => {
-  assert.match(source, /pendingLegacyProducts/);
-  assert.match(source, /purchaseReady: false/);
-  assert.match(source, /shippingAvailable: null/);
+test('legacy fallback items are not merged into the live managed catalog', () => {
+  assert.doesNotMatch(source, /pendingLegacyProducts/);
+  assert.match(source, /products\.splice\(0, products\.length, \.\.\.visibleProducts\)/);
 });
 
 test('the storefront fallback preserves every known catalog product and cache-busts the loader', () => {
@@ -39,25 +37,26 @@ test('CJ catalog images are self-hosted and present on disk', () => {
 });
 
 test('advanced catalog search and filters are present', () => {
-  for (const id of ['productSearch', 'priceRange', 'productSort', 'supplierFilter', 'readyOnly', 'favoritesOnly']) {
+  for (const id of ['productSearch', 'priceRange', 'productSort', 'readyOnly', 'favoritesOnly']) {
     assert.match(storefront, new RegExp(`id="${id}"`));
   }
+  assert.doesNotMatch(storefront, /id="supplierFilter"/);
+  assert.doesNotMatch(storefront, /productSource/);
   for (const category of ['cleaning', 'diagnostics', 'gadgets']) {
     assert.match(storefront, new RegExp(`data-filter="${category}"`));
   }
   assert.match(storefront, /data-product-id=/);
 });
 
-test('unverified fallback products stay in checking state rather than being mislabeled out of stock', () => {
-  assert.match(source, /inStock: null/);
-  assert.match(source, /stockStatus: 'checking'/);
+test('unverified managed products are not exposed in the customer catalog', () => {
+  assert.match(source, /product\.purchaseReady === true/);
+  assert.doesNotMatch(source, /pendingLegacyProducts/);
 });
 
 test('unverified products never display an uncalculated numeric price', () => {
-  assert.match(source, /price: null/);
-  assert.match(source, /pricePending: true/);
+  assert.match(source, /product\.purchaseReady === true/);
   assert.match(storefront, /p\.priceVerified===true&&Number\.isFinite\(Number\(p\.price\)\)/);
-  assert.match(storefront, /מחיר בבדיקה/);
+  assert.match(storefront, /פרטים בקרוב/);
   assert.doesNotMatch(storefront, /<div class="priceRow"><span class="price">\$\{money\(p\.price\)\}/);
 });
 
@@ -75,7 +74,7 @@ test('known products stay visible and show an explicit out-of-stock state', () =
   assert.match(productsApi, /const outOfStock = row\.supplier_in_stock === false/);
   assert.match(productsApi, /stockStatus = outOfStock \? 'out_of_stock'/);
   assert.match(source, /product\.stockStatus === 'out_of_stock'/);
-  assert.match(source, /אזל מהמלאי — אפשר לשלוח קישור חלופי/);
+  assert.match(source, /המוצר אזל מהמלאי/);
   assert.match(source, /המוצר אזל מהמלאי ולא ניתן להזמין אותו כרגע/);
 });
 
@@ -89,8 +88,10 @@ test('every known CJ storefront product is seeded into the managed admin catalog
     assert.match(cjCatalogWorker, new RegExp(`id: '${id}'`));
   }
   assert.match(cjCatalogWorker, /ensureKnownCatalogProducts\(allProducts, settings\)/);
-  assert.match(cjCatalogWorker, /variantFromSku\(selectedProductId, selectedSku\)/);
+  assert.match(cjCatalogWorker, /variantFromSku\(selectedProductId, selectedSku, selectedVariantLabel\)/);
   assert.match(cjCatalogWorker, /findKnownReplacement\(seed, usedSupplierIds\)/);
+  assert.match(cjCatalogWorker, /current && verifiedCjReadiness\(current, settings\)/);
+  assert.match(cjCatalogWorker, /id: 'cj-phone-holder', search: 'car phone holder'/);
   assert.match(cjCatalogWorker, /cj_variant_sku_mismatch/);
   assert.match(cjCatalogWorker, /fulfillment_ready: false/);
 });
@@ -109,7 +110,7 @@ test('catalog exposes sanitized verification state and admin hides placeholder p
   assert.match(admin, /quote\.recommendedProductPrice/);
 });
 
-test('pricing workers never use a processing fee below the database three-percent floor', () => {
+test('pricing workers never use a processing fee below the Whop policy floor', () => {
   const optimizer = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'supplier-optimizer.js'), 'utf8');
   const fulfillment = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'fulfillment.js'), 'utf8');
   assert.match(cjCatalogWorker, /Math\.max\(policy\.processingFeeRate \* 100/);
@@ -124,10 +125,31 @@ test('catalog reprices stored verified costs before slow supplier repair calls',
   assert.ok(cjCatalogWorker.indexOf('repriceStoredCatalog(allProducts, settings)') < cjCatalogWorker.indexOf('ensureKnownCatalogProducts(allProducts, settings)'));
 });
 
-test('the owner-approved 25 ILS net floor is enforced across admin and fulfillment', () => {
+test('customer storefront hides supplier and verification language', () => {
+  assert.doesNotMatch(storefront, /ספק: \$\{supplier\}/);
+  assert.doesNotMatch(storefront, /זמינות בבדיקה/);
+  assert.doesNotMatch(source, /PayPal LIVE|זמינות ומשלוח בבדיקה/);
+  assert.match(storefront, /customerSpecs/);
+  assert.match(storefront, /לא זמין כרגע/);
+});
+
+test('launch storefront prioritizes purchasable products and easy navigation', () => {
+  const policies = fs.readFileSync(path.join(__dirname, '..', 'policies.html'), 'utf8');
+  const tracking = fs.readFileSync(path.join(__dirname, '..', 'track.html'), 'utf8');
+  assert.match(storefront, /readyOnly:true/);
+  assert.match(storefront, /id="readyOnly" type="checkbox" checked/);
+  assert.match(storefront, /class="mobileDock"/);
+  assert.match(storefront, /href="\/track"/);
+  assert.match(storefront, /href="\/policies"/);
+  assert.match(storefront, /קנייה פשוטה, בלי הפתעות/);
+  assert.doesNotMatch(policies, /ספק חלופי מאומת|אותו מוצר ווריאנט/);
+  assert.doesNotMatch(tracking, /מסנכרן מעקב|דורשת בדיקה/);
+});
+
+test('the owner-approved 10 ILS net floor is enforced across admin and fulfillment', () => {
   const adminProducts = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'products.js'), 'utf8');
   const fulfillment = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'fulfillment.js'), 'utf8');
-  assert.match(adminProducts, /Math\.max\(25, cleanNumber\(body\.minimum_profit_ils/);
-  assert.match(adminProducts, /Math\.max\(25, cleanNumber\(body\.minimum_profit/);
-  assert.match(fulfillment, /Math\.max\(25, configuredMinimumProfit\)/);
+  assert.match(adminProducts, /Math\.max\(10, cleanNumber\(body\.minimum_profit_ils/);
+  assert.match(adminProducts, /Math\.max\(10, cleanNumber\(body\.minimum_profit/);
+  assert.match(fulfillment, /Math\.max\(10, configuredMinimumProfit\)/);
 });

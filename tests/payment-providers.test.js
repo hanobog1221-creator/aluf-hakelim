@@ -4,11 +4,20 @@ const {
   selectedPaymentProvider,
   providerStatuses,
   routeBCandidates,
-  fourthwallProviderStatus
+  fourthwallProviderStatus,
+  whopProviderStatus
 } = require('../api/_lib/payment-providers');
 
 test('keeps PayPal as the backwards-compatible default provider', () => {
   assert.equal(selectedPaymentProvider({}), 'paypal');
+});
+
+test('selects Whop by default when all live Whop credentials are installed', () => {
+  assert.equal(selectedPaymentProvider({
+    WHOP_API_KEY: 'configured',
+    WHOP_COMPANY_ID: 'biz_configured',
+    WHOP_WEBHOOK_SECRET: 'configured'
+  }), 'whop');
 });
 
 test('Route B intermediary is present and fails closed', async () => {
@@ -22,6 +31,19 @@ test('Route B intermediary is present and fails closed', async () => {
 
 test('unknown providers are rejected', () => {
   assert.throws(() => selectedPaymentProvider({ PAYMENT_PROVIDER: 'invented' }), /payment_provider_invalid/);
+});
+
+test('Whop stays fail-closed until checkout and webhook credentials are complete', () => {
+  assert.equal(selectedPaymentProvider({ PAYMENT_PROVIDER: 'whop' }), 'whop');
+  assert.equal(whopProviderStatus({ WHOP_API_KEY: 'test', WHOP_COMPANY_ID: 'biz_test' }).configured, false);
+  const ready = whopProviderStatus({
+    WHOP_API_KEY: 'test-key-not-a-real-credential',
+    WHOP_COMPANY_ID: 'biz_test123',
+    WHOP_WEBHOOK_SECRET: 'test-secret-not-a-real-credential'
+  });
+  assert.equal(ready.enabled, true);
+  assert.equal(ready.configured, true);
+  assert.equal(ready.live, true);
 });
 
 test('Fourthwall can be selected but remains fail-closed before approval and adapter verification', () => {

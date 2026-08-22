@@ -130,12 +130,12 @@ test('blocks supplier cost above the per-product automatic limit', () => {
   assert.equal(result.totalSupplierCost, 60);
 });
 
-test('blocks when minimum net profit after the 40 percent reserve would not be met', () => {
+test('blocks when minimum net profit after transaction fees would not be met', () => {
   const result = validateFulfillmentOrder(
     baseOrder(),
     state(baseProduct({ supplier_price_ils: 95 }), { minimum_profit_ils: 10 })
   );
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'minimum_profit_not_met');
-  assert.equal(result.profitPerUnit, 1.11);
+  assert.equal(result.profitPerUnit, -1.66);
 });

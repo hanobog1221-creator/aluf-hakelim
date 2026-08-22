@@ -1,15 +1,19 @@
 const DEFAULT_POLICY = Object.freeze({
   enabled: true,
-  targetNetProfitIls: 25,
-  safetyNetProfitIls: 1,
-  vatRate: 0.18,
-  serviceFeeRate: 0.05,
-  processingFeeRate: 0.03,
-  taxReserveRate: 0.40,
-  advertisingCostIls: 15,
-  cancellationRate: 0.05,
-  refundFeeIls: 49,
-  supplierBufferRate: 0.05,
+  targetNetProfitIls: 10,
+  safetyNetProfitIls: 0,
+  vatRate: 0,
+  serviceFeeRate: 0,
+  // Whop card pricing is 2.7% + $0.30. The additional 1.5% international
+  // and 1% FX fees are included so the ten-shekel floor survives ordinary
+  // cross-border card transactions. $0.30 is rounded up at the current rate.
+  processingFeeRate: 0.052,
+  processingFeeFixedIls: 1.20,
+  taxReserveRate: 0,
+  advertisingCostIls: 0,
+  cancellationRate: 0,
+  refundFeeIls: 0,
+  supplierBufferRate: 0,
   priceEnding: 0.90
 });
 
@@ -24,20 +28,20 @@ function envNumber(env, key, fallback, min = 0, max = 1_000_000) {
 function pricingPolicy(env = process.env) {
   return {
     enabled: String(env.AUTO_PRICING_ENABLED ?? 'true').trim().toLowerCase() !== 'false',
-    // The owner set a fixed business target of 25 ILS net per product.
-    // Keep this authoritative even if an older deployment environment still says 20.
+    // The owner set a fixed target of 10 ILS per unit after supplier cost and
+    // transaction fees only. Old deployment variables must not restore the
+    // former VAT, advertising, insurance, cancellation or buffer reserves.
     targetNetProfitIls: DEFAULT_POLICY.targetNetProfitIls,
     safetyNetProfitIls: DEFAULT_POLICY.safetyNetProfitIls,
-    // Production readiness in Supabase audits against these conservative floors.
-    // Environment overrides may add reserve, but must never undercut the audit.
-    vatRate: Math.max(DEFAULT_POLICY.vatRate, envNumber(env, 'PRICING_VAT_RATE', DEFAULT_POLICY.vatRate, 0, 1)),
-    serviceFeeRate: Math.max(DEFAULT_POLICY.serviceFeeRate, envNumber(env, 'PRICING_SERVICE_FEE_RATE', DEFAULT_POLICY.serviceFeeRate, 0, 1)),
+    vatRate: DEFAULT_POLICY.vatRate,
+    serviceFeeRate: DEFAULT_POLICY.serviceFeeRate,
     processingFeeRate: Math.max(DEFAULT_POLICY.processingFeeRate, envNumber(env, 'PRICING_PROCESSING_FEE_RATE', DEFAULT_POLICY.processingFeeRate, 0, 1)),
-    taxReserveRate: Math.max(DEFAULT_POLICY.taxReserveRate, envNumber(env, 'PRICING_TAX_RESERVE_RATE', DEFAULT_POLICY.taxReserveRate, 0, 0.95)),
-    advertisingCostIls: Math.max(DEFAULT_POLICY.advertisingCostIls, envNumber(env, 'PRICING_AD_COST_ILS', DEFAULT_POLICY.advertisingCostIls)),
-    cancellationRate: Math.max(DEFAULT_POLICY.cancellationRate, envNumber(env, 'PRICING_CANCELLATION_RATE', DEFAULT_POLICY.cancellationRate, 0, 1)),
-    refundFeeIls: Math.max(DEFAULT_POLICY.refundFeeIls, envNumber(env, 'PRICING_REFUND_FEE_ILS', DEFAULT_POLICY.refundFeeIls)),
-    supplierBufferRate: Math.max(DEFAULT_POLICY.supplierBufferRate, envNumber(env, 'PRICING_SUPPLIER_BUFFER_RATE', DEFAULT_POLICY.supplierBufferRate, 0, 1)),
+    processingFeeFixedIls: Math.max(DEFAULT_POLICY.processingFeeFixedIls, envNumber(env, 'PRICING_PROCESSING_FEE_FIXED_ILS', DEFAULT_POLICY.processingFeeFixedIls)),
+    taxReserveRate: DEFAULT_POLICY.taxReserveRate,
+    advertisingCostIls: DEFAULT_POLICY.advertisingCostIls,
+    cancellationRate: DEFAULT_POLICY.cancellationRate,
+    refundFeeIls: DEFAULT_POLICY.refundFeeIls,
+    supplierBufferRate: DEFAULT_POLICY.supplierBufferRate,
     priceEnding: envNumber(env, 'PRICING_PRICE_ENDING', DEFAULT_POLICY.priceEnding, 0, 0.99)
   };
 }
@@ -78,6 +82,7 @@ function quoteProductPrice({ supplierPriceIls, supplierShippingIls, policy = pri
     supplierBuffer +
     policy.advertisingCostIls +
     cancellationReserve +
+    policy.processingFeeFixedIls +
     operatingProfitTarget
   ) / retainedRate;
   const unroundedProductPrice = Math.max(0, requiredCustomerTotal - supplierShipping);
@@ -85,7 +90,7 @@ function quoteProductPrice({ supplierPriceIls, supplierShippingIls, policy = pri
   const customerTotal = recommendedProductPrice + supplierShipping;
   const vat = customerTotal - (customerTotal / (1 + policy.vatRate));
   const serviceFee = customerTotal * policy.serviceFeeRate;
-  const processingFee = customerTotal * policy.processingFeeRate;
+  const processingFee = customerTotal * policy.processingFeeRate + policy.processingFeeFixedIls;
   const operatingProfit = customerTotal - vat - serviceFee - processingFee - supplierTotal - supplierBuffer - policy.advertisingCostIls - cancellationReserve;
   const estimatedNetProfit = operatingProfit * (1 - policy.taxReserveRate);
 

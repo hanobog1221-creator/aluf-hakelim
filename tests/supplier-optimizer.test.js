@@ -6,6 +6,7 @@ const {
   requiredSellingPrice,
   pricingForOffer
 } = require('../api/_lib/supplier-optimizer');
+const { unchangedVerifiedCurrentOffer } = require('../api/_lib/admin-routes/supplier-optimizer');
 
 const NOW = Date.parse('2026-08-19T10:00:00.000Z');
 
@@ -52,20 +53,45 @@ test('requires AliExpress SKU attributes before automatic selection', () => {
   assert.ok(result.evaluated[0].blockers.includes('supplier_sku_attr_missing'));
 });
 
-test('sets a whole-shekel price with a one-shekel net safety margin', () => {
-  assert.equal(requiredSellingPrice(40.2, 20), 84);
+test('sets a whole-shekel price for the requested net profit', () => {
+  assert.equal(requiredSellingPrice(40.2, 20), 61);
 });
 
 test('pricing includes fee and reserve configuration while shipping is charged separately', () => {
   const pricing = pricingForOffer(offer(), 20, { paymentFeePercent: 4, paymentFeeFixedIls: 1, reserveIls: 2 });
   assert.equal(pricing.customerShipping, 12);
-  assert.ok(pricing.projectedNetProfit >= 26);
-  assert.ok(pricing.incomeTaxReserve > 0);
-  assert.ok(pricing.insuranceReserve > 0);
+  assert.ok(pricing.projectedNetProfit >= 20);
+  assert.equal(pricing.incomeTaxReserve, 0);
+  assert.equal(pricing.insuranceReserve, 0);
 });
 
-test('keeps 25 ILS after the configured 40 percent tax and insurance reserve', () => {
+test('can still model an explicit reserve without changing the live default', () => {
   const pricing = pricingForOffer(offer(), 20, { taxReservePercent: 22, insuranceReservePercent: 18 });
-  assert.ok(pricing.projectedNetProfit >= 26);
+  assert.ok(pricing.projectedNetProfit >= 20);
   assert.equal(Number((pricing.incomeTaxReserve + pricing.insuranceReserve).toFixed(2)), Number((pricing.preTaxProfit * 0.4).toFixed(2)));
+});
+
+test('does not rewrite an unchanged current offer that is already fulfillment-ready', () => {
+  assert.equal(unchangedVerifiedCurrentOffer({
+    selectedOffer: { source: 'current_product' },
+    currentFulfillmentReady: true,
+    currentProvider: 'cj',
+    selectedProvider: 'cj',
+    currentLandedCost: 52,
+    selectedLandedCost: 52,
+    currentSellingPrice: 89,
+    pricing: { sellingPrice: 89 }
+  }), true);
+});
+
+test('still applies a changed price, supplier, cost, or unready current offer', () => {
+  const base = {
+    selectedOffer: { source: 'current_product' }, currentFulfillmentReady: true,
+    currentProvider: 'cj', selectedProvider: 'cj', currentLandedCost: 52,
+    selectedLandedCost: 52, currentSellingPrice: 89, pricing: { sellingPrice: 89 }
+  };
+  assert.equal(unchangedVerifiedCurrentOffer({ ...base, currentFulfillmentReady: false }), false);
+  assert.equal(unchangedVerifiedCurrentOffer({ ...base, selectedProvider: 'aliexpress' }), false);
+  assert.equal(unchangedVerifiedCurrentOffer({ ...base, selectedLandedCost: 53 }), false);
+  assert.equal(unchangedVerifiedCurrentOffer({ ...base, pricing: { sellingPrice: 90 } }), false);
 });

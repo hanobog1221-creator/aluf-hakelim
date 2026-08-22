@@ -1,6 +1,7 @@
 const { readPayPalRuntimeCredentials } = require('./provider-credentials');
 
 const PAYPAL = 'paypal';
+const WHOP = 'whop';
 const ROUTE_B_INTERMEDIARY = 'route_b_intermediary';
 const FOURTHWALL_MOR = 'fourthwall_mor';
 
@@ -68,9 +69,27 @@ const ROUTE_B_CANDIDATES = Object.freeze([
 ]);
 
 function selectedPaymentProvider(env = process.env) {
-  const id = String(env.PAYMENT_PROVIDER || PAYPAL).trim().toLowerCase();
-  if (![PAYPAL, ROUTE_B_INTERMEDIARY, FOURTHWALL_MOR].includes(id)) throw new Error('payment_provider_invalid');
+  const explicit = String(env.PAYMENT_PROVIDER || '').trim().toLowerCase();
+  const id = explicit || (whopProviderStatus(env).configured ? WHOP : PAYPAL);
+  if (![PAYPAL, WHOP, ROUTE_B_INTERMEDIARY, FOURTHWALL_MOR].includes(id)) throw new Error('payment_provider_invalid');
   return id;
+}
+
+function whopProviderStatus(env = process.env) {
+  const apiKeyPresent = Boolean(String(env.WHOP_API_KEY || '').trim());
+  const webhookSecretPresent = Boolean(String(env.WHOP_WEBHOOK_SECRET || '').trim());
+  const companyIdPresent = /^biz_[A-Za-z0-9]+$/.test(String(env.WHOP_COMPANY_ID || '').trim());
+  const configured = apiKeyPresent && webhookSecretPresent && companyIdPresent;
+  return {
+    id: WHOP,
+    label: 'Whop Checkout',
+    enabled: true,
+    configured,
+    environment: 'live',
+    live: configured,
+    credentialSource: configured ? 'environment' : 'none',
+    status: configured ? 'ready' : 'api_key_company_id_and_webhook_secret_required'
+  };
 }
 
 function fourthwallProviderStatus(env = process.env) {
@@ -120,6 +139,7 @@ async function providerStatuses() {
       credentialSource: 'none',
       status: 'provider_approval_and_api_credentials_required'
     },
+    whopProviderStatus(),
     fourthwallProviderStatus()
   ];
 }
@@ -141,9 +161,11 @@ function routeBCandidates() {
 
 module.exports = {
   PAYPAL,
+  WHOP,
   ROUTE_B_INTERMEDIARY,
   FOURTHWALL_MOR,
   selectedPaymentProvider,
+  whopProviderStatus,
   fourthwallProviderStatus,
   providerStatuses,
   selectedProviderStatus,

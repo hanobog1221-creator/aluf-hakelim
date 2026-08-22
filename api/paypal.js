@@ -96,7 +96,7 @@ async function handleCreate(req,res,body){
   if(!created?.id)throw new Error('paypal_order_id_missing');
   const approveUrl=approvalLink(created,cfg.environment);if(!approveUrl)throw new Error('paypal_approval_url_missing');
   await markPaymentPending(orderId,created.id);
-  return res.status(200).json({ok:true,orderId:created.id,storeOrderId:orderId,environment:cfg.environment,sandboxTest,approveUrl});
+  return res.status(200).json({ok:true,provider:'paypal',orderId:created.id,storeOrderId:orderId,environment:cfg.environment,sandboxTest,approveUrl});
 }
 
 async function handleCapture(res,body){

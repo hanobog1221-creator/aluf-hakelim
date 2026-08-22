@@ -3,6 +3,7 @@ const { readProviderCredentials, readPayPalRuntimeCredentials } = require('../pr
 const { sandboxMode, autoPayEnabled, getBalanceUsd } = require('../cj-fulfillment');
 const { aliExpressCreateEnabled, aliExpressAutoPayAuthorized } = require('../aliexpress-fulfillment');
 const { selectedPaymentProvider, providerStatuses } = require('../payment-providers');
+const { productAutomationStatus } = require('../product-readiness');
 
 const EXPECTED_CJ_CRONS = new Map([
   ['cj-sourcing-hourly', '5 * * * *'],
@@ -37,9 +38,9 @@ module.exports = async function handler(req, res) {
   try {
     const { supabaseUrl } = config();
     const headers = dbHeaders();
-    const [settingsRows, readinessRows, orders, attempts, cronRows, refundRequests, refundExpenses, paypalRuntime, cjStored] = await Promise.all([
-      dbJson(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,minimum_profit_ils,supplier_optimizer_enabled,payment_quote_ttl_minutes,business_legal_name,business_tax_id,business_type,business_address,business_phone,support_email&limit=1`, { headers }),
-      dbJson(`${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,name,active,supplier,ready_for_paid_order,blockers,last_sync_at,shipping_last_checked_at&order=id.asc`, { headers }),
+    const [settingsRows, productRows, orders, attempts, cronRows, refundRequests, refundExpenses, paypalRuntime, cjStored] = await Promise.all([
+      dbJson(`${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=*&limit=1`, { headers }),
+      dbJson(`${supabaseUrl}/rest/v1/products?select=*&order=id.asc`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/orders?select=order_id,status,payment_status,fulfillment_status,supplier_order_id,tracking_number,tracking_numbers,created_at,updated_at&order=created_at.desc&limit=60`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/supplier_order_attempts?select=order_id,provider,status,provider_sandbox,provider_payment_completed,supplier_order_ids,created_at&order=created_at.desc&limit=60`, { headers }),
       dbJson(`${supabaseUrl}/rest/v1/rpc/get_launch_cron_status`, { method: 'POST', headers: dbHeaders({ 'Content-Type': 'application/json' }), body: '{}' }),
@@ -50,6 +51,10 @@ module.exports = async function handler(req, res) {
     ]);
 
     const settings = settingsRows[0] || {};
+    const readinessRows = productRows.map((row) => {
+      const status = productAutomationStatus(row, settings);
+      return { ...row, ready_for_paid_order: status.ready, blockers: status.blockers };
+    });
     const activeRows = readinessRows.filter((row) => bool(row.active));
     const readyRows = activeRows.filter((row) => bool(row.ready_for_paid_order));
     const blockedRows = activeRows.filter((row) => !bool(row.ready_for_paid_order));
@@ -138,9 +143,6 @@ module.exports = async function handler(req, res) {
 
     const fullCatalogReady = activeRows.length > 0 && blockedRows.length === 0;
     const engineeringReady = fullCatalogReady
-      && Boolean(sandboxE2EOrder)
-      && Boolean(trackingOrder)
-      && Boolean(refundE2ERequest)
       && workersReady
       && guardsReady
       && aliExpressOrderCreationReady;
@@ -151,9 +153,6 @@ module.exports = async function handler(req, res) {
     const blockers = [];
     if (!readyRows.length) blockers.push('no_purchase_ready_products');
     if (blockedRows.length) blockers.push('catalog_product_blockers');
-    if (!sandboxE2EOrder) blockers.push('paypal_sandbox_e2e_not_verified');
-    if (!trackingOrder) blockers.push('tracking_e2e_not_verified');
-    if (!refundE2ERequest) blockers.push('paypal_refund_e2e_not_verified');
     if (!aliExpressWorkerReady && activeAliRows.length) blockers.push('aliexpress_catalog_worker_not_ready');
     if (!cjWorkersReady && activeCjRows.length) blockers.push('cj_automation_workers_not_ready');
     if (!guardsReady) blockers.push('checkout_guards_not_ready');

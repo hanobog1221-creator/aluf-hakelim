@@ -1,4 +1,5 @@
 const { apiKeyHeaders } = require('./_lib/supabase-server');
+const { productAutomationStatus } = require('./_lib/product-readiness');
 
 const RETAINED_CATALOG_IDS = new Set([
   'socket',
@@ -40,24 +41,20 @@ module.exports = async function handler(req, res) {
     }
     const headers = apiKeyHeaders({}, configuredKey);
 
-    const [productsResponse, readinessResponse, settingsResponse] = await Promise.all([
+    const [productsResponse, settingsResponse] = await Promise.all([
       fetch(
-        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier_in_stock,supplier_shipping_available,fulfillment_provider_status,fulfillment_verified_at,last_sync_at,supplier_sync_error,shipping_sync_error&or=(active.eq.true,id.in.(${[...RETAINED_CATALOG_IDS].join(',')}))&order=sort_order.asc`,
+        `${supabaseUrl}/rest/v1/products?select=id,name,selling_price,old_price,currency,image_url,active,categories,kind,badge,badge_class,description,specs,sort_order,max_order_quantity,supplier,supplier_product_id,supplier_sku_id,supplier_sku_attr,supplier_in_stock,supplier_shipping_available,supplier_price_ils,supplier_shipping,fulfillment_ready,fulfillment_provider,fulfillment_product_id,fulfillment_variant_id,fulfillment_sku,fulfillment_provider_status,fulfillment_verified_at,last_sync_at,shipping_last_checked_at,supplier_sync_error,shipping_sync_error,minimum_profit,auto_fulfill_max_cost&active=eq.true&order=sort_order.asc`,
         { headers }
       ),
       fetch(
-        `${supabaseUrl}/rest/v1/product_fulfillment_readiness?select=id,ready_for_paid_order,blockers`,
-        { headers }
-      ),
-      fetch(
-        `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,whatsapp_enabled,whatsapp_number,whatsapp_message,support_email,support_hours&limit=1`,
+        `${supabaseUrl}/rest/v1/site_settings?id=eq.primary&select=sales_enabled,whatsapp_enabled,whatsapp_number,whatsapp_message,support_email,support_hours,minimum_profit_ils,supplier_quote_ttl_minutes,pricing_fee_percent,pricing_fee_fixed_ils,pricing_reserve_ils,pricing_tax_reserve_percent,pricing_insurance_reserve_percent&limit=1`,
         { headers }
       )
     ]);
 
-    if (!productsResponse.ok || !readinessResponse.ok) {
-      const details = !productsResponse.ok ? await productsResponse.text() : await readinessResponse.text();
-      console.error('Supabase product catalog/readiness failed:', !productsResponse.ok ? productsResponse.status : readinessResponse.status, details.slice(0, 300));
+    if (!productsResponse.ok) {
+      const details = await productsResponse.text();
+      console.error('Supabase product catalog failed:', productsResponse.status, details.slice(0, 300));
       return res.status(500).json({ ok: false, error: 'catalog_unavailable' });
     }
 
@@ -70,10 +67,12 @@ module.exports = async function handler(req, res) {
       supportHours: null
     };
 
+    let pricingSettings = {};
     if (settingsResponse.ok) {
       const settingsRows = await settingsResponse.json();
       const row = settingsRows[0];
       if (row) {
+        pricingSettings = row;
         store = {
           salesEnabled: row.sales_enabled === true,
           whatsappEnabled: row.whatsapp_enabled === true,
@@ -87,15 +86,13 @@ module.exports = async function handler(req, res) {
       console.error('Public store settings read failed:', settingsResponse.status, (await settingsResponse.text()).slice(0, 300));
     }
 
-    const readinessRows = await readinessResponse.json();
-    const readiness = new Map(readinessRows.map((row) => [String(row.id), row]));
     const rows = await productsResponse.json();
     const products = rows.filter((row) => !REMOVED_CATALOG_IDS.has(String(row.id))).map((row) => {
       const id = String(row.id);
-      const readinessRow = readiness.get(id) || {};
-      const fullReadiness = readinessRow.ready_for_paid_order === true;
+      const readinessRow = productAutomationStatus(row, pricingSettings);
+      const fullReadiness = readinessRow.ready === true;
       const purchaseReady = row.active === true && fullReadiness;
-      const storefrontVisible = row.active === true || RETAINED_CATALOG_IDS.has(id);
+      const storefrontVisible = purchaseReady;
       const outOfStock = row.supplier_in_stock === false;
       const stockStatus = outOfStock ? 'out_of_stock' : (purchaseReady ? 'available' : 'checking');
       const verifiedStatus = /^verified(?:_|$)/.test(String(row.fulfillment_provider_status || '').toLowerCase());
@@ -111,7 +108,7 @@ module.exports = async function handler(req, res) {
       const pricingSafe = blockers.every((blocker) => !pricingBlockers.has(blocker));
       const priceBlockers = blockers.filter((blocker) => pricingBlockers.has(blocker));
       const priceVerified = Boolean(
-        row.active === true && verifiedStatus && verifiedAt && fresh && row.supplier_in_stock === true && row.supplier_shipping_available === true &&
+        purchaseReady && row.supplier_in_stock === true && row.supplier_shipping_available === true &&
         !row.supplier_sync_error && !row.shipping_sync_error && pricingSafe && Number.isFinite(Number(row.selling_price)) && Number(row.selling_price) > 0
       );
 
@@ -140,7 +137,7 @@ module.exports = async function handler(req, res) {
         verificationFailed: Boolean(row.supplier_sync_error || row.shipping_sync_error),
         lastCheckedAt
       };
-    });
+    }).filter((product) => product.purchaseReady === true);
 
     return res.status(200).json({ ok: true, products, store });
   } catch (error) {

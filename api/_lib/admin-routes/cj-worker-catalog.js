@@ -34,7 +34,7 @@ const KNOWN_CJ_CATALOG = [
   { id: 'cj-wash-mitt', search: 'car wash mitt', name: 'כפפת שטיפה דו־צדדית רכה לרכב', image: '/assets/products/cj-wash-mitt.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · שטיפת רכב', badge: 'דו־צדדית', description: 'כפפת קורל־פליס רכה עם אחיזת אגודל, להסרת אבק ולכלוך בלי לפגוע בצבע הרכב.', specs: ['בד רך וסופג','מתאימה לשימוש חוזר','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-silicone-squeegee', search: 'silicone car squeegee', name: 'מגב סיליקון 30 ס״מ לחלונות ולמרכב', image: '/assets/products/cj-silicone-squeegee.jpg', categories: ['car','cleaning'], kind: 'ניקוי ודיטיילינג · חלונות', badge: 'אוניברסלי', description: 'מגב סיליקון גמיש להסרת מים מחלונות ומשטחי הרכב לאחר שטיפה.', specs: ['רוחב כ־30 ס״מ','חומר סיליקון גמיש','מתאים לחלונות ולמרכב','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-tire-gauge', search: 'pencil tire pressure gauge', name: 'מד לחץ אוויר לצמיגים עד 150 PSI', image: '/assets/products/cj-tire-gauge.jpg', categories: ['car','diagnostics','gadgets'], kind: 'אבחון ותחזוקת רכב · צמיגים', badge: 'ללא סוללה', description: 'מד לחץ קומפקטי לבדיקת לחץ בצמיגי רכב, אופנוע ואופניים.', specs: ['טווח עד 150 PSI לפי הדגם','ללא סוללת ליתיום','וריאנט מדויק ומשלוח לישראל באימות'] },
-  { id: 'cj-phone-holder', name: 'מעמד טלסקופי לרכב עם זרוע מסתובבת 360°', image: '/assets/products/cj-phone-holder.jpg', categories: ['car','gadgets'], kind: 'אביזרי רכב · מעמדים', badge: '360°', description: 'מעמד טלפון עם זרוע טלסקופית וכוס יניקה ללוח המחוונים או לשמשה.', specs: ['סיבוב 360 מעלות','זרוע טלסקופית','כוס יניקה נשטפת','וריאנט מדויק ומשלוח לישראל באימות'] },
+  { id: 'cj-phone-holder', search: 'car phone holder', name: 'מעמד טלסקופי לרכב עם זרוע מסתובבת 360°', image: '/assets/products/cj-phone-holder.jpg', categories: ['car','gadgets'], kind: 'אביזרי רכב · מעמדים', badge: '360°', description: 'מעמד טלפון עם זרוע טלסקופית וכוס יניקה ללוח המחוונים או לשמשה.', specs: ['סיבוב 360 מעלות','זרוע טלסקופית','כוס יניקה נשטפת','וריאנט מדויק ומשלוח לישראל באימות'] },
   { id: 'cj-kw310-obd', name: 'סורק תקלות OBD2 דגם KW310 לרכב 12V', image: '/assets/products/cj-kw310-obd.jpg', categories: ['car','diagnostics','gadgets'], kind: 'אבחון ותחזוקת רכב · OBD2', badge: 'כלי אבחון', badgeClass: 'red', description: 'קורא תקלות קומפקטי לרכבי 12V תואמי OBD2, להצגת קודי תקלה בסיסיים ומידע מהמחשב.', specs: ['חיבור OBD2','מיועד לרכבי 12V תואמים','יש לבדוק תאימות לדגם הרכב לפני הזמנה'] }
 ];
 
@@ -111,7 +111,7 @@ function pricingOptions(settings) {
   const policy = pricingPolicy();
   return {
     paymentFeePercent: Math.max(policy.processingFeeRate * 100, Number(settings.pricing_fee_percent || 0)),
-    paymentFeeFixedIls: Number(settings.pricing_fee_fixed_ils || 0), reserveIls: Number(settings.pricing_reserve_ils || 0),
+    paymentFeeFixedIls: Math.max(policy.processingFeeFixedIls, Number(settings.pricing_fee_fixed_ils || 0)), reserveIls: Number(settings.pricing_reserve_ils || 0),
     taxReservePercent: Number(settings.pricing_tax_reserve_percent ?? DEFAULT_TAX_RESERVE_PERCENT),
     insuranceReservePercent: Number(settings.pricing_insurance_reserve_percent ?? DEFAULT_INSURANCE_RESERVE_PERCENT),
     vatRate: policy.vatRate, serviceFeePercent: policy.serviceFeeRate * 100,
@@ -133,6 +133,46 @@ async function repriceStoredCatalog(products, settings) {
     }
   }));
   return updates.filter(Boolean);
+}
+
+function supplierStateFresh(value, settings, now = Date.now()) {
+  const timestamp = value ? Date.parse(value) : NaN;
+  const ttlMinutes = Math.min(1440, Math.max(15, Number(settings.supplier_quote_ttl_minutes || 480)));
+  return Number.isFinite(timestamp) && timestamp <= now + 60_000 && now - timestamp <= ttlMinutes * 60_000;
+}
+
+function verifiedCjReadiness(product, settings, now = Date.now()) {
+  if (product.active !== true || String(product.supplier || '').toLowerCase() !== 'cj' || String(product.fulfillment_provider || '').toLowerCase() !== 'cj') return false;
+  if (!product.supplier_product_id || !product.supplier_sku_id || !product.fulfillment_product_id || !product.fulfillment_variant_id || !product.fulfillment_sku || !product.fulfillment_verified_at) return false;
+  if (String(product.supplier_product_id) !== String(product.fulfillment_product_id) || String(product.supplier_sku_id) !== String(product.fulfillment_variant_id)) return false;
+  if (product.supplier_in_stock !== true || product.supplier_shipping_available !== true || product.supplier_sync_error || product.shipping_sync_error) return false;
+  if (!supplierStateFresh(product.last_sync_at, settings, now) || !supplierStateFresh(product.shipping_last_checked_at, settings, now)) return false;
+  const productCost = Number(product.supplier_price_ils), shippingCost = Number(product.supplier_shipping), sellingPrice = Number(product.selling_price);
+  if (![productCost, shippingCost, sellingPrice].every(Number.isFinite) || productCost < 0 || shippingCost < 0 || sellingPrice <= 0) return false;
+  const landedCost = Number((productCost + shippingCost).toFixed(2));
+  const maxCost = product.auto_fulfill_max_cost == null ? null : Number(product.auto_fulfill_max_cost);
+  if (Number.isFinite(maxCost) && landedCost > maxCost) return false;
+  try {
+    const floor = minimumProfit(product, settings);
+    const pricing = pricingForOffer(product, floor, pricingOptions(settings));
+    return sellingPrice + 0.001 >= pricing.sellingPrice && pricing.projectedNetProfit + 0.001 >= floor;
+  } catch {
+    return false;
+  }
+}
+
+async function reconcileVerifiedCjReadiness(products, settings) {
+  const candidates = (Array.isArray(products) ? products : []).filter((product) => product.fulfillment_ready !== true && verifiedCjReadiness(product, settings));
+  const reconciled = [];
+  for (const product of candidates) {
+    await patch('products', `id=eq.${encodeURIComponent(product.id)}`, {
+      fulfillment_ready: true,
+      fulfillment_provider_status: 'verified_reconciled',
+      updated_at: new Date().toISOString()
+    });
+    reconciled.push({ id: product.id, fulfillmentReady: true });
+  }
+  return reconciled;
 }
 
 async function getVariant(variantId) {
@@ -164,9 +204,24 @@ async function variantsForProduct(pid) {
   const json = await cj(`/product/variant/query?pid=${encodeURIComponent(pid)}`);
   return Array.isArray(json.data) ? json.data : (Array.isArray(json.data?.list) ? json.data.list : []);
 }
-async function variantFromSku(productId, sku) {
+function pickVariantFromSku(rows, sku, variantLabel = '') {
+  const wanted = clean(sku, 180);
+  const variants = Array.isArray(rows) ? rows : [];
+  const exact = variants.find((row) => clean(row?.variantSku, 180) === wanted);
+  if (exact) return exact;
+  const prefixed = variants.filter((row) => {
+    const candidate = clean(row?.variantSku, 180);
+    return candidate.startsWith(`${wanted}-`) || candidate.startsWith(`${wanted}_`);
+  });
+  if (prefixed.length === 1) return prefixed[0];
+  const labelToken = clean(variantLabel, 300).split(/[\/|,]/)[0].trim().toLowerCase();
+  if (!labelToken || prefixed.length < 2) return null;
+  const labeled = prefixed.filter((row) => clean(`${row?.variantNameEn || ''} ${row?.variantKey || ''} ${row?.variantSku || ''}`, 600).toLowerCase().includes(labelToken));
+  return labeled.length === 1 ? labeled[0] : null;
+}
+async function variantFromSku(productId, sku, variantLabel = '') {
   const rows = await variantsForProduct(productId);
-  return rows.find((row) => clean(row?.variantSku, 180) === clean(sku, 180)) || null;
+  return pickVariantFromSku(rows, sku, variantLabel);
 }
 
 async function ensureKnownCatalogProducts(existingProducts, settings) {
@@ -178,12 +233,16 @@ async function ensureKnownCatalogProducts(existingProducts, settings) {
   for (let index = 0; index < KNOWN_CJ_CATALOG.length; index += 1) {
     const seed = KNOWN_CJ_CATALOG[index], mapping = SUPPLIERS[seed.id], current = existing.get(seed.id);
     if (!mapping) { results.push({ id: seed.id, error: 'supplier_mapping_missing' }); continue; }
+    if (current && verifiedCjReadiness(current, settings)) {
+      results.push({ id: seed.id, seeded: false, mapped: true, preserved: true });
+      continue;
+    }
     let variant = null;
     let selectedProductId = clean(current?.fulfillment_product_id || mapping.productId, 180);
     let selectedSku = clean(current?.fulfillment_sku || mapping.skuId, 180);
     let selectedUrl = current?.supplier_url || mapping.sourceUrl;
     let selectedVariantLabel = current?.variant_label || mapping.variantLabel;
-    try { variant = await variantFromSku(selectedProductId, selectedSku); }
+    try { variant = await variantFromSku(selectedProductId, selectedSku, selectedVariantLabel); }
     catch (error) { results.push({ id: seed.id, error: clean(error.message, 160) }); }
     if (variant?.vid && current?.fulfillment_variant_id && clean(variant.vid, 160) === clean(current.fulfillment_variant_id, 160)) {
       results.push({ id: seed.id, seeded: false, mapped: true });
@@ -260,11 +319,11 @@ async function bestVariantQuote(rows) {
 
 async function findKnownReplacement(seed, usedSupplierIds) {
   const rows = await searchProducts({ keyword: seed.search }, 1);
-  for (const row of rows.slice(0, 3)) {
+  for (const row of rows.slice(0, 8)) {
     const productId = productIdentity(row), title = productTitle(row);
     if (!productId || usedSupplierIds.has(productId) || BLOCKED_DISCOVERY_WORDS.test(title) || BLOCKED_DISCOVERY_WORDS.test(JSON.stringify(row))) continue;
     const quote = await bestVariantQuote(await variantsForProduct(productId));
-    if (quote && quote.landedCost <= DISCOVERY_MAX_LANDED_COST_ILS) return { productId, quote };
+    if (quote && quote.landedCost <= 120) return { productId, quote };
   }
   return null;
 }
@@ -407,13 +466,18 @@ module.exports = async function handler(req, res) {
         results.push({ kind: 'refresh', id: product.id, error: clean(error.message, 220) });
       }
     }
+    const currentProducts = await dbGet('products?select=*&active=eq.true');
+    const reconciled = await reconcileVerifiedCjReadiness(currentProducts, settings);
     const requestedBatch = Math.max(1, Math.min(DISCOVERY_BATCH, Number(req.query?.batch || DISCOVERY_BATCH)));
     const seededCount = seeded.filter((result) => result.seeded).length;
-    const discovery = seededCount === 0 && knownCatalog.repairAttempts === 0 && products.filter((product) => product.active === true).length < DISCOVERY_TARGET
+    const discovery = req.query?.discover !== 'false' && seededCount === 0 && knownCatalog.repairAttempts === 0 && products.filter((product) => product.active === true).length < DISCOVERY_TARGET
       ? await discoverProducts(products, settings, requestedBatch)
       : { added: [], rejected: [] };
-    return res.status(200).json({ ok: true, minimumNetProfitIls: DEFAULT_MINIMUM_PROFIT_ILS, discoveryTarget: DISCOVERY_TARGET, repriced, seeded, discovery, results, ready: results.filter((result) => result.ready).length, errors: results.filter((result) => result.error).length });
+    return res.status(200).json({ ok: true, minimumNetProfitIls: DEFAULT_MINIMUM_PROFIT_ILS, discoveryTarget: DISCOVERY_TARGET, repriced, seeded, reconciled, discovery, results, ready: results.filter((result) => result.ready).length, errors: results.filter((result) => result.error).length });
   } catch (error) {
     return res.status(500).json({ ok: false, error: clean(error.message, 240) });
   }
 };
+
+module.exports.verifiedCjReadiness = verifiedCjReadiness;
+module.exports.pickVariantFromSku = pickVariantFromSku;

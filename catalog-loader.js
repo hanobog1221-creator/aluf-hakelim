@@ -1,36 +1,24 @@
 (async function loadManagedCatalog() {
+  function finishWithFallback() {
+    window.catalogLoaded = true;
+    if (typeof renderProducts === 'function') renderProducts(document.querySelector('.cat.active')?.dataset?.filter || 'all');
+  }
   try {
     const response = await fetch('/api/products', {
       headers: { accept: 'application/json' },
       cache: 'no-store'
     });
-    if (!response.ok) return;
+    if (!response.ok) { finishWithFallback(); return; }
 
     const data = await response.json();
-    if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) return;
+    if (!data || data.ok !== true || !Array.isArray(data.products) || !data.products.length) { finishWithFallback(); return; }
 
-    if (typeof products === 'undefined' || !Array.isArray(products)) return;
-    // Keep managed products plus the storefront's existing catalog visible even
-    // when a supplier runs out of stock. Only an explicit removal may delete a
-    // product; purchase controls remain fail-closed until the API marks it ready.
-    const managedProducts = data.products.filter((product) => product.available !== false);
-    const managedIds = new Set(managedProducts.map((product) => String(product.id)));
-    const pendingLegacyProducts = products
-      .filter((product) => !managedIds.has(String(product.id)))
-      .map((product) => ({
-        ...product,
-        price: null,
-        old: null,
-        pricePending: true,
-        priceVerified: false,
-        available: true,
-        purchaseReady: false,
-        inStock: null,
-        stockStatus: 'checking',
-        shippingAvailable: null
-      }));
-    const visibleProducts = [...managedProducts, ...pendingLegacyProducts];
+    if (typeof products === 'undefined' || !Array.isArray(products)) { finishWithFallback(); return; }
+    // The storefront contains only products that passed the complete current
+    // automation, supplier, shipping and ten-shekel net-profit checks.
+    const visibleProducts = data.products.filter((product) => product.available !== false && product.purchaseReady === true);
     products.splice(0, products.length, ...visibleProducts);
+    window.catalogLoaded = true;
     const store = data.store || {};
 
     const style = document.createElement('style');
@@ -43,7 +31,7 @@
       .ahCardActions{position:absolute;top:9px;left:9px;z-index:4;display:flex;gap:6px}.ahMiniBtn{width:35px;height:35px;border:1px solid #d8dde2;border-radius:999px;background:#fffffff2;box-shadow:0 3px 12px #0002;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}.ahMiniBtn.saved{background:#fff1f1;border-color:#f1b8bd}
       .ahModalActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.ahActionBtn{border:1px solid #d7dde3;border-radius:10px;background:#fff;padding:11px 12px;font-weight:900;cursor:pointer}.ahActionBtn.saved{background:#fff1f1;border-color:#f1b8bd;color:#9d1e2a}
       #modalContent .add:disabled{opacity:.58;cursor:not-allowed}
-      @media(max-width:620px){.ahWaFloat{left:10px;bottom:10px;padding:11px 13px}.ahWaFloat b{display:none}.ahSalesNotice{margin:8px 10px 0}}
+      @media(max-width:620px){.ahWaFloat{left:10px;bottom:74px;padding:11px 13px}.ahWaFloat b{display:none}.ahSalesNotice{margin:8px 10px 0}}
     `;
     document.head.appendChild(style);
 
@@ -52,12 +40,9 @@
     }
 
     function shippingText(product) {
-      if (product.stockStatus === 'out_of_stock' || product.inStock === false) return 'אזל מהמלאי — אפשר לשלוח קישור חלופי';
-      if (product.purchaseReady !== true) {
-        if (product.shippingAvailable === false) return 'אין אפשרות משלוח כרגע';
-        return 'זמינות ומשלוח בבדיקה';
-      }
-      return 'משלוח יחושב לפי הכתובת';
+      if (product.stockStatus === 'out_of_stock' || product.inStock === false) return 'המוצר אזל מהמלאי';
+      if (product.purchaseReady !== true) return 'המוצר אינו זמין כרגע';
+      return 'עלות המשלוח תחושב לפי הכתובת';
     }
 
     function normalizeWhatsApp(value) {
@@ -129,7 +114,7 @@
 
     function blockedPurchaseMessage(product) {
       if (product && (product.stockStatus === 'out_of_stock' || product.inStock === false)) return 'המוצר אזל מהמלאי ולא ניתן להזמין אותו כרגע';
-      if (!product || product.purchaseReady !== true) return 'המוצר עדיין בבדיקת זמינות ולא ניתן להזמין אותו כרגע';
+      if (!product || product.purchaseReady !== true) return 'המוצר אינו זמין להזמנה כרגע';
       return '';
     }
 
@@ -137,7 +122,7 @@
       const notice = document.createElement('div');
       notice.id = 'ahSalesNotice';
       notice.className = 'ahSalesNotice';
-      notice.textContent = 'אפשר להוסיף מוצרים זמינים לסל. התשלום ייפתח לאחר חיבור PayPal LIVE.';
+      notice.textContent = 'הקנייה באתר אינה זמינה כרגע. לשאלות על מוצרים אפשר לפנות אלינו ב-WhatsApp.';
       const firstMain = document.querySelector('main') || document.querySelector('.wrap') || document.body.firstElementChild;
       if (firstMain?.parentNode) firstMain.parentNode.insertBefore(notice, firstMain);
       else document.body.prepend(notice);
@@ -188,12 +173,12 @@
         const outOfStock = product.stockStatus === 'out_of_stock' || product.inStock === false;
         if (stock) {
           stock.classList.toggle('out', outOfStock);
-          stock.textContent = outOfStock ? '✕ אזל מהמלאי' : (product.purchaseReady === true ? '✓ זמין להזמנה' : '◷ זמינות בבדיקה');
+          stock.textContent = outOfStock ? '✕ אזל מהמלאי' : (product.purchaseReady === true ? '✓ זמין להזמנה' : 'לא זמין כרגע');
         }
         const addButton = card.querySelector('.add');
         if (addButton) {
           addButton.disabled = product.purchaseReady !== true;
-          addButton.textContent = outOfStock ? 'אזל מהמלאי' : (product.purchaseReady === true ? 'הוסף לסל 🛒' : 'זמינות בבדיקה');
+          addButton.textContent = outOfStock ? 'אזל מהמלאי' : (product.purchaseReady === true ? 'הוסף לסל 🛒' : 'לא זמין כרגע');
         }
 
         let actions = card.querySelector('.ahCardActions');
@@ -367,5 +352,6 @@
     }
   } catch (error) {
     console.warn('Managed catalog unavailable; using storefront fallback.');
+    finishWithFallback();
   }
 })();

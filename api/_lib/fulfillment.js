@@ -114,16 +114,16 @@ function validateFulfillmentOrder(order, supplierState = null, options = {}) {
         if (Number.isFinite(maxSupplierCost) && totalSupplierCost > maxSupplierCost) return { ok: false, reason: 'supplier_cost_above_auto_limit', productId: item.id, totalSupplierCost, maxSupplierCost };
       }
       const productMinProfitRaw = current.minimum_profit, productMinimumProfit = productMinProfitRaw == null ? null : Number(productMinProfitRaw), configuredMinimumProfit = Number.isFinite(productMinimumProfit) ? productMinimumProfit : globalMinimumProfit;
-      const minimumProfit = Number.isFinite(configuredMinimumProfit) ? Math.max(25, configuredMinimumProfit) : null;
+      const minimumProfit = Number.isFinite(configuredMinimumProfit) ? Math.max(10, configuredMinimumProfit) : null;
       if (!Number.isFinite(minimumProfit)) return { ok: false, reason: 'minimum_profit_not_configured', productId: item.id };
       const paymentFeePercent = Math.max(pricingPolicy().processingFeeRate * 100, Number(supplierState?.settings?.pricing_fee_percent || 0));
-      const paymentFeeFixed = Number(supplierState?.settings?.pricing_fee_fixed_ils || 0);
+      const paymentFeeFixed = Math.max(pricingPolicy().processingFeeFixedIls, Number(supplierState?.settings?.pricing_fee_fixed_ils || 0));
       const pricingReserve = Number(supplierState?.settings?.pricing_reserve_ils || 0);
       const feeBase = salePrice + (Number.isFinite(supplierShipping) ? supplierShipping : 0);
       const estimatedPaymentFee = Number((feeBase * paymentFeePercent / 100 + paymentFeeFixed / items.length).toFixed(2));
       const preTaxProfit = Number((salePrice - supplierPrice - estimatedPaymentFee - pricingReserve).toFixed(2));
-      const taxReservePercent = Number(supplierState?.settings?.pricing_tax_reserve_percent ?? 22);
-      const insuranceReservePercent = Number(supplierState?.settings?.pricing_insurance_reserve_percent ?? 18);
+      const taxReservePercent = Number(supplierState?.settings?.pricing_tax_reserve_percent ?? 0);
+      const insuranceReservePercent = Number(supplierState?.settings?.pricing_insurance_reserve_percent ?? 0);
       const profitPerUnit = Number((preTaxProfit * (1 - (taxReservePercent + insuranceReservePercent) / 100)).toFixed(2));
       if (profitPerUnit < minimumProfit) return { ok: false, reason: 'minimum_profit_not_met', productId: item.id, profitPerUnit, minimumProfit };
       const comprehensiveQuote = quoteProductPrice({
