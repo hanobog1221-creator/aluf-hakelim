@@ -1,7 +1,7 @@
 const { runApprovedSync } = require('../api/_maintenance-20260822');
 
 async function main() {
-  const approvedCommitMessage = 'Run one-time approved production catalog sync';
+  const approvedCommitMessage = 'Retry one-time approved production catalog sync';
   if (process.env.VERCEL_ENV !== 'production' || process.env.VERCEL_GIT_COMMIT_MESSAGE !== approvedCommitMessage) {
     console.log('One-time production catalog sync skipped for this deployment.');
     return;

@@ -55,7 +55,11 @@ async function prepare() {
       pricing_insurance_reserve_percent: 0
     })
   });
-  await db('products', { method: 'PATCH', headers, body: JSON.stringify({ minimum_profit: 10 }) });
+  await Promise.all([
+    db('products?minimum_profit=lt.10', { method: 'PATCH', headers, body: JSON.stringify({ minimum_profit: 10 }) }),
+    db('products?minimum_profit=gt.10', { method: 'PATCH', headers, body: JSON.stringify({ minimum_profit: 10 }) }),
+    db('products?minimum_profit=is.null', { method: 'PATCH', headers, body: JSON.stringify({ minimum_profit: 10 }) })
+  ]);
   return { ok: true, salesEnabled: false, minimumProfitIls: 10, feePercent: 5.2, feeFixedIls: 1.2 };
 }
 
