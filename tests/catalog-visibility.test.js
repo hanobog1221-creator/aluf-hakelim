@@ -10,7 +10,7 @@ const suppliers = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'sup
 const cjCatalogWorker = fs.readFileSync(path.join(__dirname, '..', 'api', '_lib', 'admin-routes', 'cj-worker-catalog.js'), 'utf8');
 
 test('the customer catalog contains only products ready for purchase', () => {
-  assert.match(source, /data\.products\.filter\(\(product\) => product\.available !== false && product\.purchaseReady === true\)/);
+  assert.match(source, /data\.products\s*\.filter\(\(product\) => product\.available !== false && product\.purchaseReady === true\)/);
 });
 
 test('legacy fallback items are not merged into the live managed catalog', () => {
@@ -36,6 +36,26 @@ test('CJ catalog images are self-hosted and present on disk', () => {
   assert.doesNotMatch(storefront, /img:'https:\/\/placehold\.co/);
 });
 
+test('launch product images are self-hosted and also replace managed API hotlinks', () => {
+  const images = {
+    socket: 'socket-set.jpg',
+    'ae-1005012832500138': 'ae-bits-set.png',
+    'ae-1005007178140659': 'angle-adapter.png',
+    ratchet: 'electric-ratchet.jpg',
+    impact: 'impact-wrench.jpg',
+    washer: 'cordless-washer.png',
+    'ae-1005009577109019': 'car-charger.jpg',
+    'ae-1005009926657110': 'wireless-carplay.webp'
+  };
+  for (const [id, filename] of Object.entries(images)) {
+    assert.match(storefront, new RegExp(`id:'${id}'.*img:'/assets/products/${filename.replace('.', '\\.')}'`));
+    assert.match(source, new RegExp(`['"]?${id.replaceAll('-', '\\-')}['"]?: '/assets/products/${filename.replace('.', '\\.')}'`));
+    const image = path.join(__dirname, '..', 'assets', 'products', filename);
+    assert.ok(fs.existsSync(image), `${filename} is missing`);
+    assert.ok(fs.statSync(image).size > 10_000, `${filename} is unexpectedly small`);
+  }
+});
+
 test('advanced catalog search and filters are present', () => {
   for (const id of ['productSearch', 'priceRange', 'productSort', 'readyOnly', 'favoritesOnly']) {
     assert.match(storefront, new RegExp(`id="${id}"`));
@@ -46,6 +66,8 @@ test('advanced catalog search and filters are present', () => {
     assert.match(storefront, new RegExp(`data-filter="${category}"`));
   }
   assert.match(storefront, /data-product-id=/);
+  assert.match(storefront, /role="search" aria-label="חיפוש וסינון מוצרים"/);
+  assert.doesNotMatch(storefront, /<article class="product"[^>]+role="button"/);
 });
 
 test('unverified managed products are not exposed in the customer catalog', () => {
@@ -142,8 +164,15 @@ test('launch storefront prioritizes purchasable products and easy navigation', (
   assert.match(storefront, /href="\/track"/);
   assert.match(storefront, /href="\/policies"/);
   assert.match(storefront, /קנייה פשוטה, בלי הפתעות/);
+  assert.match(storefront, /<script src="\/checkout\.js\?v=\d{8}-\d+"><\/script>/);
+  assert.match(source, /\.locked \.ahWaFloat\{display:none\}/);
   assert.doesNotMatch(policies, /ספק חלופי מאומת|אותו מוצר ווריאנט/);
   assert.doesNotMatch(tracking, /מסנכרן מעקב|דורשת בדיקה/);
+  assert.match(tracking, /label for="orderId"/);
+  assert.match(tracking, /label for="phone"/);
+  const checkout = fs.readFileSync(path.join(__dirname, '..', 'checkout.js'), 'utf8');
+  assert.match(checkout, /label for="ahFullName"/);
+  assert.doesNotMatch(checkout, /לא בוצע Capture|החזרה מ-PayPal|מבצע Capture מאובטח/);
 });
 
 test('the owner-approved 10 ILS net floor is enforced across admin and fulfillment', () => {

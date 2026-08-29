@@ -16,7 +16,22 @@
     if (typeof products === 'undefined' || !Array.isArray(products)) { finishWithFallback(); return; }
     // The storefront contains only products that passed the complete current
     // automation, supplier, shipping and ten-shekel net-profit checks.
-    const visibleProducts = data.products.filter((product) => product.available !== false && product.purchaseReady === true);
+    const localProductImages = {
+      socket: '/assets/products/socket-set.jpg',
+      'ae-1005012832500138': '/assets/products/ae-bits-set.png',
+      'ae-1005007178140659': '/assets/products/angle-adapter.png',
+      ratchet: '/assets/products/electric-ratchet.jpg',
+      impact: '/assets/products/impact-wrench.jpg',
+      washer: '/assets/products/cordless-washer.png',
+      'ae-1005009577109019': '/assets/products/car-charger.jpg',
+      'ae-1005009926657110': '/assets/products/wireless-carplay.webp'
+    };
+    const visibleProducts = data.products
+      .filter((product) => product.available !== false && product.purchaseReady === true)
+      .map((product) => {
+        const localImage = localProductImages[String(product.id)];
+        return localImage ? { ...product, img: localImage, image: localImage } : product;
+      });
     products.splice(0, products.length, ...visibleProducts);
     window.catalogLoaded = true;
     const store = data.store || {};
@@ -25,7 +40,7 @@
     style.textContent = `
       .ahShippingLine{font-size:13px;font-weight:850;color:#344454;margin:2px 0 8px}.ahShippingLine.pending{color:#8b6500}.ahShippingLine.out{color:#b4232e}.stock.out{color:#b4232e}.product .add:disabled{opacity:.58;cursor:not-allowed}
       .ahSalesNotice{max-width:1180px;margin:10px auto 0;padding:10px 14px;background:#fff8d8;border:1px solid #efd36d;border-radius:11px;font-size:13px;font-weight:850;color:#6e5200;text-align:center}
-      .ahWaFloat{position:fixed;left:18px;bottom:18px;z-index:145;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#073b1a;padding:12px 16px;font-weight:950;box-shadow:0 10px 28px #0003;text-decoration:none}
+      .ahWaFloat{position:fixed;left:18px;bottom:18px;z-index:145;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:#25D366;color:#073b1a;padding:12px 16px;font-weight:950;box-shadow:0 10px 28px #0003;text-decoration:none}.locked .ahWaFloat{display:none}
       .ahWaFloat svg{width:24px;height:24px;display:block;flex:0 0 auto}.ahWaProduct{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;text-align:center;border:1px solid #20b858;border-radius:10px;padding:11px 13px;font-weight:900;color:#126832;background:#effdf4;text-decoration:none}.ahWaProduct svg{width:20px;height:20px;flex:0 0 auto}
       .ahTrackFooter{color:#fff;font-weight:850;text-decoration:underline;text-underline-offset:3px}
       .ahCardActions{position:absolute;top:9px;left:9px;z-index:4;display:flex;gap:6px}.ahMiniBtn{width:35px;height:35px;border:1px solid #d8dde2;border-radius:999px;background:#fffffff2;box-shadow:0 3px 12px #0002;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}.ahMiniBtn.saved{background:#fff1f1;border-color:#f1b8bd}
@@ -193,12 +208,14 @@
         fav.className = 'ahMiniBtn' + (favorites.has(String(product.id)) ? ' saved' : '');
         fav.textContent = favorites.has(String(product.id)) ? '♥' : '♡';
         fav.title = favorites.has(String(product.id)) ? 'הסר ממועדפים' : 'שמור למועדפים';
+        fav.setAttribute('aria-label', fav.title);
         fav.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(product.id); });
         const share = document.createElement('button');
         share.type = 'button';
         share.className = 'ahMiniBtn';
         share.textContent = '↗';
         share.title = 'שתף מוצר';
+        share.setAttribute('aria-label', 'שתף מוצר');
         share.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); shareProduct(product); });
         actions.append(fav, share);
       });
