@@ -1,4 +1,5 @@
 const DEFAULT_QUOTE_TTL_MS = 8 * 60 * 60 * 1000;
+const { roundRetailUp } = require('./pricing-engine');
 const DEFAULT_MINIMUM_PROFIT_ILS = 10;
 const DEFAULT_PRICING_SAFETY_NET_ILS = 0;
 const DEFAULT_TAX_RESERVE_PERCENT = 0;
@@ -106,7 +107,8 @@ function requiredSellingPrice(productPriceIls, minimumProfitIls = DEFAULT_MINIMU
   const landedCost = productCost + customerShipping;
   const fixedCosts = landedCost + landedCost * supplierBufferRate + advertisingCost + cancellationReserve + reserve + fixed;
   const raw = (fixedCosts + preTaxProfitTarget) / collectedRetentionRate - customerShipping;
-  const rounded = options.roundToWholeShekel === false ? Math.ceil(raw * 100) / 100 : Math.ceil(raw);
+  const priceEnding = Number.isFinite(Number(options.priceEnding)) ? Number(options.priceEnding) : 0.90;
+  const rounded = options.roundToWholeShekel === true ? Math.ceil(raw) : roundRetailUp(raw, priceEnding);
   return money(rounded);
 }
 

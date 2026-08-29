@@ -53,8 +53,8 @@ test('requires AliExpress SKU attributes before automatic selection', () => {
   assert.ok(result.evaluated[0].blockers.includes('supplier_sku_attr_missing'));
 });
 
-test('sets a whole-shekel price for the requested net profit', () => {
-  assert.equal(requiredSellingPrice(40.2, 20), 61);
+test('uses the same upward .90 retail ending as the automatic pricing engine', () => {
+  assert.equal(requiredSellingPrice(40.2, 20), 60.9);
 });
 
 test('pricing includes fee and reserve configuration while shipping is charged separately', () => {

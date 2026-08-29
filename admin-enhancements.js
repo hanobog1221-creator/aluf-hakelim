@@ -9,10 +9,11 @@
     .productToolbarActions{display:flex;gap:7px;flex-wrap:wrap}.ahQtyField{margin-top:9px;max-width:230px}.ahQtyField label{font-size:12px;font-weight:900;display:block;margin-bottom:5px}.ahQtyField input{width:100%;border:1px solid #cfd5dc;border-radius:10px;padding:10px;background:#fff}
     .productTools{display:grid;grid-template-columns:minmax(220px,1fr) 210px auto;gap:8px;margin:0 0 14px}
     .ahOpsSummary{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:-4px 0 14px}.ahOpsStat{background:#fff;border:1px solid #dfe4e9;border-radius:13px;padding:12px}.ahOpsStat b{display:block;font-size:22px}.ahOpsStat small{color:#6f7b87}
-    .ahFinance{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 12px}.ahFinanceBox{border:1px solid #e2e6ea;background:#f8fafb;border-radius:11px;padding:10px}.ahFinanceBox b{display:block;font-size:17px;margin-top:3px}.ahFinanceBox small{color:#68717c}.ahFinanceBox.profit.ok{background:#eef9f2;border-color:#c6e9d3}.ahFinanceBox.profit.bad{background:#fff0f0;border-color:#ffc8cb}.ahFinanceBox.unknown b{font-size:13px;color:#68717c}
+    .ahFinance{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:0 0 12px}.ahFinanceBox{border:1px solid #e2e6ea;background:#f8fafb;border-radius:11px;padding:10px}.ahFinanceBox b{display:block;font-size:17px;margin-top:3px}.ahFinanceBox small{color:#68717c}.ahFinanceBox.total{background:#eef6ff;border-color:#c8dcf4}.ahFinanceBox.profit.ok{background:#eef9f2;border-color:#c6e9d3}.ahFinanceBox.profit.bad{background:#fff0f0;border-color:#ffc8cb}.ahFinanceBox.unknown b{font-size:13px;color:#68717c}
     .ahProductStatus{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 11px}.ahState{border-radius:999px;padding:5px 8px;font-size:11px;font-weight:900;background:#eef1f4;color:#54606b}.ahState.ok{background:#e5f7ed;color:#197342}.ahState.warn{background:#fff4cf;color:#8b6500}.ahState.bad{background:#ffe8e9;color:#a51e28}
     .ahBlockers{background:#fff8d8;border:1px solid #efd36d;border-radius:10px;padding:9px 11px;margin:0 0 11px;font-size:12px;line-height:1.55}.ahBlockers strong{display:block;margin-bottom:3px}.ahProductActions{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 12px}.ahProductActions button,.ahProductActions a{border:1px solid #d7dde3;background:#fff;border-radius:9px;padding:8px 10px;font-size:12px;font-weight:900;text-decoration:none;color:#171717;cursor:pointer}.ahProductActions .sync{background:#111923;color:#fff;border-color:#111923}.ahProductActionMsg{font-size:12px;font-weight:850;color:#197342;align-self:center}
     .ahResolveRow{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:6px}.ahResolveRow button{border:1px solid #d7dde3;background:#fff;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:900;cursor:pointer}.ahResolveRow span{font-size:12px;color:#68717c}
+    @media(max-width:1150px){.ahFinance{grid-template-columns:repeat(3,1fr)}}
     @media(max-width:950px){.ahFinance,.ahOpsSummary{grid-template-columns:1fr 1fr}}
     @media(max-width:850px){.orderTools,.productTools{grid-template-columns:1fr 1fr}.orderTools input,.productTools input{grid-column:1/-1}.orderTools .btn,.productTools .btn{width:100%}.orderNotes{grid-template-columns:1fr}}
     @media(max-width:520px){.orderTools,.productTools,.ahFinance,.ahOpsSummary{grid-template-columns:1fr}.orderTools input,.productTools input{grid-column:auto}}
@@ -58,8 +59,10 @@
     const margin = profit != null && customerTotal > 0 ? Number((profit / customerTotal * 100).toFixed(1)) : null;
     const quote = product.pricing_quote || {};
     const recommendedPrice = quote.ready ? numberOrNull(quote.recommendedProductPrice) : null;
+    const recommendedCustomerTotal = quote.ready ? numberOrNull(quote.recommendedCustomerTotal) : null;
     const estimatedNetProfit = quote.ready ? numberOrNull(quote.estimatedNetProfit) : null;
-    return { selling, supplierPrice, shipping, shippingKnown, supplierTotal, customerTotal, profit, margin, quote, recommendedPrice, estimatedNetProfit };
+    const targetNetProfit = numberOrNull(quote?.policy?.targetNetProfitIls) ?? 10;
+    return { selling, supplierPrice, shipping, shippingKnown, supplierTotal, customerTotal, profit, margin, quote, recommendedPrice, recommendedCustomerTotal, estimatedNetProfit, targetNetProfit };
   }
 
   function productBlockers(product) {
@@ -267,8 +270,9 @@
         finance.className = 'ahFinance';
         const costText = product.supplier_shipping_available === false ? 'משלוח לא זמין' : moneyMaybe(f.supplierTotal);
         const sellText = product.supplier_shipping_available === false ? 'משלוח לא זמין' : moneyMaybe(f.customerTotal);
-        const profitClass = f.estimatedNetProfit == null ? 'unknown' : (f.estimatedNetProfit >= 20 ? 'ok' : 'bad');
-        finance.innerHTML = `<div class="ahFinanceBox ${f.supplierTotal == null ? 'unknown' : ''}"><small>העלות שלך כולל משלוח</small><b>${esc(costText)}</b></div><div class="ahFinanceBox ${f.recommendedPrice == null ? 'unknown' : ''}"><small>מחיר אוטומטי באתר</small><b>${f.recommendedPrice == null ? 'ממתין לסנכרון' : money(f.recommendedPrice)}</b></div><div class="ahFinanceBox profit ${profitClass}"><small>נטו אישי משוער</small><b>${f.estimatedNetProfit == null ? 'ממתין לנתוני עלות' : money(f.estimatedNetProfit)}</b></div><div class="ahFinanceBox"><small>משלוח</small><b>${product.supplier_shipping_available === false ? 'לא זמין' : (f.shippingKnown ? (f.shipping <= 0 ? 'חינם' : money(f.shipping)) : 'ממתין לסנכרון')}</b></div>`;
+        const profitClass = f.estimatedNetProfit == null ? 'unknown' : (f.estimatedNetProfit >= f.targetNetProfit ? 'ok' : 'bad');
+        const shippingText = product.supplier_shipping_available === false ? 'לא זמין' : (f.shippingKnown ? (f.shipping <= 0 ? 'חינם' : money(f.shipping)) : 'ממתין לסנכרון');
+        finance.innerHTML = `<div class="ahFinanceBox ${f.supplierTotal == null ? 'unknown' : ''}"><small>עלות ספק כולל משלוח</small><b>${esc(costText)}</b></div><div class="ahFinanceBox"><small>מחיר המוצר באתר</small><b>${money(f.selling)}</b></div><div class="ahFinanceBox"><small>משלוח שמתווסף בקופה</small><b>${shippingText}</b></div><div class="ahFinanceBox total ${f.customerTotal == null ? 'unknown' : ''}"><small>סה״כ שהלקוח משלם</small><b>${esc(sellText)}</b></div><div class="ahFinanceBox ${f.recommendedPrice == null ? 'unknown' : ''}"><small>מחיר מוצר אוטומטי מומלץ</small><b>${f.recommendedPrice == null ? 'ממתין לסנכרון' : money(f.recommendedPrice)}</b></div><div class="ahFinanceBox profit ${profitClass}"><small>רווח נטו אחרי עמלת Whop</small><b>${f.estimatedNetProfit == null ? 'ממתין לנתוני עלות' : money(f.estimatedNetProfit)}</b></div>`;
         body.insertBefore(finance, body.firstChild);
       }
 
