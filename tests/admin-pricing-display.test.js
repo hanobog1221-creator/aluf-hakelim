@@ -20,6 +20,7 @@ test('profitability screen describes the live ten-shekel fee-only policy', () =>
   const source = read('admin-profitability.html');
   assert.match(source, /עלות ספק \+ משלוח \+ עמלת Whop/);
   assert.match(source, /סה״כ ללקוח/);
+  assert.match(source, /לשקל שלם/);
   assert.doesNotMatch(source, /מע״מ 18%/);
   assert.doesNotMatch(source, /\?\?20/);
 });

@@ -15,10 +15,13 @@ test('defaults to 10 ILS after supplier cost and transaction fees only', () => {
   assert.equal(policy.vatRate, 0);
   assert.equal(policy.processingFeeRate, 0.052);
   assert.equal(policy.processingFeeFixedIls, 1.20);
+  assert.equal(policy.priceEnding, 0);
 });
 
 test('keeps the owner-approved 10 ILS target when a stale deployment variable differs', () => {
-  assert.equal(pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25' }).targetNetProfitIls, 10);
+  const policy = pricingPolicy({ PRICING_TARGET_NET_PROFIT_ILS: '25', PRICING_PRICE_ENDING: '0.90' });
+  assert.equal(policy.targetNetProfitIls, 10);
+  assert.equal(policy.priceEnding, 0);
 });
 
 test('environment configuration cannot undercut production cost floors', () => {
@@ -70,5 +73,5 @@ test('does not change a live price when supplier shipping is unknown', () => {
 test('updates the product price automatically when verified supplier costs change', () => {
   const result = autoPriceUpdate({ selling_price: 149.90, old_price: null }, { supplierPriceIls: 100, supplierShippingIls: 20 });
   assert.equal(result.quote.ready, true);
-  assert.ok(result.update.selling_price >= 118.90);
+  assert.ok(result.update.selling_price >= 118);
 });

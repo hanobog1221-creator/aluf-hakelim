@@ -14,7 +14,7 @@ const DEFAULT_POLICY = Object.freeze({
   cancellationRate: 0,
   refundFeeIls: 0,
   supplierBufferRate: 0,
-  priceEnding: 0.90
+  priceEnding: 0
 });
 
 function envNumber(env, key, fallback, min = 0, max = 1_000_000) {
@@ -42,7 +42,7 @@ function pricingPolicy(env = process.env) {
     cancellationRate: DEFAULT_POLICY.cancellationRate,
     refundFeeIls: DEFAULT_POLICY.refundFeeIls,
     supplierBufferRate: DEFAULT_POLICY.supplierBufferRate,
-    priceEnding: envNumber(env, 'PRICING_PRICE_ENDING', DEFAULT_POLICY.priceEnding, 0, 0.99)
+    priceEnding: DEFAULT_POLICY.priceEnding
   };
 }
 
